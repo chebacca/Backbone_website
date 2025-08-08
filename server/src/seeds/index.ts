@@ -113,6 +113,14 @@ async function main(): Promise<void> {
       seats: 1,
       role: 'USER',
     },
+    {
+      email: 'chrismole@gmail.com',
+      name: 'Chris Mole',
+      password: 'admin1234',
+      tier: 'PRO',
+      seats: 3, // 2 individual + 1 bulk license
+      role: 'USER',
+    },
   ];
 
   const priceByTier: Record<SubscriptionTier, number> = {

@@ -317,6 +317,24 @@ class InvoiceSeeder {
           taxAmount: 39.60,
         }],
       },
+      {
+        userId: (await prisma.user.findFirst({ where: { email: 'chrismole@gmail.com' } }))?.id,
+        subscriptionId: (await prisma.subscription.findFirst({ 
+          where: { 
+            user: { email: 'chrismole@gmail.com' } 
+          } 
+        }))?.id,
+        description: 'Monthly Pro Plan - January 2024 (2 Individual + 1 Bulk License)',
+        amount: 93.96, // $87 + tax (3 seats)
+        items: [{
+          description: 'Dashboard v14 Pro License',
+          quantity: 3,
+          unitPrice: 29,
+          total: 87,
+          taxRate: 0.08,
+          taxAmount: 6.96,
+        }],
+      },
     ];
 
     for (const invoice of sampleInvoices) {

@@ -1,0 +1,498 @@
+import React, { useState } from 'react';
+import {
+  Box,
+  Drawer,
+  AppBar,
+  Toolbar,
+  List,
+  Typography,
+  Divider,
+  IconButton,
+  Button,
+  Avatar,
+  Menu,
+  MenuItem,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Badge,
+  Chip,
+  useTheme,
+  useMediaQuery,
+} from '@mui/material';
+import {
+  Menu as MenuIcon,
+  Dashboard,
+  CardMembership,
+  Analytics,
+  Payment,
+  Settings,
+  AccountCircle,
+  Logout,
+  Notifications,
+  Support,
+  Download,
+  Group,
+  Business,
+  Security,
+  Description,
+  Home,
+} from '@mui/icons-material';
+import { Link as RouterLink, useLocation, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
+import { motion } from 'framer-motion';
+
+const drawerWidth = 280;
+
+interface NavigationItem {
+  text: string;
+  icon: React.ReactNode;
+  path: string;
+  badge?: number;
+  chip?: string;
+}
+
+const baseNavigationItems: NavigationItem[] = [
+  { text: 'Overview', icon: <Dashboard />, path: '/dashboard' },
+  { text: 'Licenses', icon: <CardMembership />, path: '/dashboard/licenses', badge: 3 },
+  { text: 'Usage Analytics', icon: <Analytics />, path: '/dashboard/analytics' },
+  { text: 'Billing & Payments', icon: <Payment />, path: '/dashboard/billing' },
+  { text: 'Team Management', icon: <Group />, path: '/dashboard/team' },
+  { text: 'Downloads', icon: <Download />, path: '/dashboard/downloads', chip: 'SDK' },
+  { text: 'Documentation', icon: <Description />, path: '/dashboard/documentation' },
+  { text: 'Support', icon: <Support />, path: '/dashboard/support' },
+  { text: 'Settings', icon: <Settings />, path: '/dashboard/settings' },
+];
+
+const enterpriseItems: NavigationItem[] = [
+  { text: 'Organization', icon: <Business />, path: '/dashboard/organization' },
+  { text: 'Security Center', icon: <Security />, path: '/dashboard/security' },
+  { text: 'Compliance', icon: <Security />, path: '/dashboard/compliance' },
+];
+
+export const DashboardLayout: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const location = useLocation();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
+
+  const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleProfileMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLogout = () => {
+    logout();
+    handleProfileMenuClose();
+  };
+
+  const isEnterprise = user?.subscription?.plan === 'enterprise';
+
+  // Compute navigation, hiding Billing for Master Admins
+  const navigationItems: NavigationItem[] = React.useMemo(() => {
+    const items = [...baseNavigationItems];
+    const roleUpper = String(user?.role || '').toUpperCase();
+    const isAdminLike = ['ADMIN', 'SUPERADMIN', 'ENTERPRISE_ADMIN'].includes(roleUpper);
+    if (isAdminLike) {
+      return items.filter((item) => item.path !== '/dashboard/billing');
+    }
+    return items;
+  }, [user?.role]);
+
+  const NavigationList = () => (
+    <Box sx={{ width: drawerWidth, height: '100%', backgroundColor: 'background.paper' }}>
+      {/* Logo and Brand */}
+      <Box sx={{ p: 3, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+        <Typography
+          variant="h6"
+          sx={{
+            fontWeight: 600,
+            background: 'linear-gradient(135deg, #ffffff 0%, #00d4ff 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
+          BackboneLogic, Inc.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          License Management
+        </Typography>
+      </Box>
+
+      {/* User Info */}
+      <Box sx={{ p: 3, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar sx={{ width: 48, height: 48, bgcolor: 'primary.main' }}>
+            {user?.name?.[0] || user?.email?.[0] || 'U'}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }} noWrap>
+              {user?.name || user?.email || 'User'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" noWrap>
+              {user?.email}
+            </Typography>
+            {user?.subscription && (
+              <Chip
+                label={user.subscription.plan}
+                size="small"
+                color={user.subscription.plan === 'enterprise' ? 'primary' : 'default'}
+                sx={{ mt: 0.5, fontSize: '0.7rem' }}
+              />
+            )}
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Navigation Items */}
+      <List sx={{ px: 2, py: 1 }}>
+        {navigationItems.map((item) => {
+          const isActive = location.pathname === item.path;
+          return (
+            <motion.div
+              key={item.text}
+              whileHover={{ x: 4 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            >
+              <ListItem disablePadding sx={{ mb: 0.5 }}>
+                <ListItemButton
+                  component={RouterLink}
+                  to={item.path}
+                  sx={{
+                    borderRadius: 2,
+                    py: 1.5,
+                    backgroundColor: isActive ? 'rgba(0, 212, 255, 0.1)' : 'transparent',
+                    color: isActive ? 'primary.main' : 'text.primary',
+                    '&:hover': {
+                      backgroundColor: isActive 
+                        ? 'rgba(0, 212, 255, 0.15)' 
+                        : 'rgba(255, 255, 255, 0.05)',
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
+                    {item.badge ? (
+                      <Badge badgeContent={item.badge} color="primary">
+                        {item.icon}
+                      </Badge>
+                    ) : (
+                      item.icon
+                    )}
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={item.text}
+                    sx={{ 
+                      '& .MuiListItemText-primary': { 
+                        fontWeight: isActive ? 600 : 400,
+                        fontSize: '0.95rem',
+                      } 
+                    }}
+                  />
+                  {item.chip && (
+                    <Chip
+                      label={item.chip}
+                      size="small"
+                      sx={{ 
+                        fontSize: '0.7rem', 
+                        height: 20,
+                        backgroundColor: 'rgba(0, 212, 255, 0.2)',
+                        color: 'primary.main',
+                      }}
+                    />
+                  )}
+                </ListItemButton>
+              </ListItem>
+            </motion.div>
+          );
+        })}
+
+        {/* Enterprise Section */}
+        {isEnterprise && (
+          <>
+            <Divider sx={{ my: 2, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                px: 2, 
+                py: 1, 
+                display: 'block', 
+                fontWeight: 600, 
+                color: 'text.secondary',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+              }}
+            >
+              Enterprise
+            </Typography>
+            {enterpriseItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <motion.div
+                  key={item.text}
+                  whileHover={{ x: 4 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                >
+                  <ListItem disablePadding sx={{ mb: 0.5 }}>
+                    <ListItemButton
+                      component={RouterLink}
+                      to={item.path}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        backgroundColor: isActive ? 'rgba(0, 212, 255, 0.1)' : 'transparent',
+                        color: isActive ? 'primary.main' : 'text.primary',
+                        '&:hover': {
+                          backgroundColor: isActive 
+                            ? 'rgba(0, 212, 255, 0.15)' 
+                            : 'rgba(255, 255, 255, 0.05)',
+                        },
+                      }}
+                    >
+                      <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
+                        {item.icon}
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={item.text}
+                        sx={{ 
+                          '& .MuiListItemText-primary': { 
+                            fontWeight: isActive ? 600 : 400,
+                            fontSize: '0.95rem',
+                          } 
+                        }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                </motion.div>
+              );
+            })}
+          </>
+        )}
+      </List>
+
+      {/* Support Section */}
+      <Box sx={{ mt: 'auto', p: 2 }}>
+        <Divider sx={{ mb: 2, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
+        <ListItem disablePadding>
+          <ListItemButton
+            component={RouterLink}
+            to="/dashboard/support"
+            sx={{
+              borderRadius: 2,
+              py: 1.5,
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              },
+            }}
+          >
+            <ListItemIcon sx={{ color: 'text.secondary', minWidth: 40 }}>
+              <Support />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Help & Support"
+              sx={{ 
+                '& .MuiListItemText-primary': { 
+                  fontSize: '0.95rem',
+                  color: 'text.secondary',
+                } 
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
+      </Box>
+    </Box>
+  );
+
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      {/* App Bar */}
+      <AppBar
+        position="fixed"
+        sx={{
+          width: { lg: `calc(100% - ${drawerWidth}px)` },
+          ml: { lg: `${drawerWidth}px` },
+          backgroundColor: 'background.paper',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          boxShadow: 'none',
+        }}
+      >
+        <Toolbar>
+          <IconButton
+            color="inherit"
+            aria-label="open drawer"
+            edge="start"
+            onClick={handleDrawerToggle}
+            sx={{ mr: 2, display: { lg: 'none' } }}
+          >
+            <MenuIcon />
+          </IconButton>
+
+          {/* Back to Landing */}
+          {isMobile ? (
+            <IconButton
+              color="inherit"
+              aria-label="Back to landing"
+              onClick={() => navigate('/')}
+              sx={{ mr: 1 }}
+            >
+              <Home />
+            </IconButton>
+          ) : (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<Home />}
+              onClick={() => navigate('/')}
+              sx={{
+                mr: 1,
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+                color: 'text.primary',
+                textTransform: 'none',
+                '&:hover': {
+                  borderColor: 'primary.main',
+                  backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                },
+              }}
+            >
+              Back to Landing
+            </Button>
+          )}
+
+          <Box sx={{ flexGrow: 1 }} />
+
+          {/* Notification Icon */}
+          <IconButton
+            size="large"
+            color="inherit"
+            sx={{ mr: 1 }}
+          >
+            <Badge badgeContent={2} color="primary">
+              <Notifications />
+            </Badge>
+          </IconButton>
+
+          {/* Profile Menu */}
+          <IconButton
+            size="large"
+            edge="end"
+            aria-label="account of current user"
+            aria-controls="profile-menu"
+            aria-haspopup="true"
+            onClick={handleProfileMenuOpen}
+            color="inherit"
+          >
+            <AccountCircle />
+          </IconButton>
+
+          <Menu
+            id="profile-menu"
+            anchorEl={anchorEl}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            keepMounted
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            open={Boolean(anchorEl)}
+            onClose={handleProfileMenuClose}
+            PaperProps={{
+              sx: {
+                backgroundColor: 'background.paper',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                mt: 1,
+              },
+            }}
+          >
+            <MenuItem component={RouterLink} to="/dashboard/settings" onClick={handleProfileMenuClose}>
+              <ListItemIcon>
+                <Settings fontSize="small" />
+              </ListItemIcon>
+              Settings
+            </MenuItem>
+            <MenuItem onClick={handleLogout}>
+              <ListItemIcon>
+                <Logout fontSize="small" />
+              </ListItemIcon>
+              Logout
+            </MenuItem>
+          </Menu>
+        </Toolbar>
+      </AppBar>
+
+      {/* Navigation Drawer */}
+      <Box
+        component="nav"
+        sx={{ width: { lg: drawerWidth }, flexShrink: { lg: 0 } }}
+      >
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{
+            keepMounted: true, // Better open performance on mobile.
+          }}
+          sx={{
+            display: { xs: 'block', lg: 'none' },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: drawerWidth,
+              backgroundColor: 'background.paper',
+              border: 'none',
+              borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+            },
+          }}
+        >
+          <NavigationList />
+        </Drawer>
+        <Drawer
+          variant="permanent"
+          sx={{
+            display: { xs: 'none', lg: 'block' },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: drawerWidth,
+              backgroundColor: 'background.paper',
+              border: 'none',
+              borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+            },
+          }}
+          open
+        >
+          <NavigationList />
+        </Drawer>
+      </Box>
+
+      {/* Main Content */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          width: { lg: `calc(100% - ${drawerWidth}px)` },
+          backgroundColor: 'background.default',
+          minHeight: '100vh',
+        }}
+      >
+        <Toolbar />
+        <Box sx={{ p: 3 }}>
+          <Outlet />
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+
+export default DashboardLayout;

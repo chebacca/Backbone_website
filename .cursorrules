@@ -1,0 +1,89 @@
+# Cursor Project Rules — Dashboard v14 Licensing Website
+
+Project: Dashboard v14 Licensing Website (React + Vite frontend, Express + Prisma backend, Stripe payments, SendGrid emails)
+Workspace: pnpm monorepo with `client`, `server`, `shared`
+
+Core Ports:
+- Frontend: http://localhost:3002
+- Backend API: http://localhost:3003
+- DB (Postgres): 5432 (via env/Docker)
+
+Package Manager & Node:
+- Use pnpm (>= 8). Do not use npm/yarn.
+- Node >= 18.
+
+Key Commands (run at repo root):
+- Dev: `pnpm dev` (concurrently runs server and client)
+- Build: `pnpm build`
+- Start (prod): `pnpm start` (starts compiled server on 3003)
+- DB (from root): `pnpm setup:db`, `pnpm db:reset`, `pnpm db:studio`
+- Alt scripts: `./quick-start.sh`, `./launch.sh`, `./status.sh`
+
+Environment (server/.env):
+- PORT=3003, FRONTEND_URL=http://localhost:3002, CORS_ORIGIN=http://localhost:3002
+- DATABASE_URL=postgresql://.../licensing_db
+- JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN
+- Stripe: STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_*_PRICE_ID
+- SendGrid: SENDGRID_API_KEY, FROM_EMAIL, FROM_NAME
+
+Environment (client .env):
+- VITE_API_BASE_URL=http://localhost:3003
+- VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+
+Architecture:
+- `client/`: React 18 + TS + Vite + MUI + React Query + Stripe.js
+- `server/`: Express + Prisma + PostgreSQL + Stripe SDK + SendGrid + Zod + Helmet + CORS + Rate limiting
+- `shared/`: shared TS types
+
+Authoritative Docs:
+- Always consult `mpc-library/` for architecture, flows, API contracts, compliance, payments, licensing, prompts, and runbooks.
+
+Coding Standards:
+- TypeScript everywhere; explicit types for exported APIs; avoid `any`.
+- Follow Clean Code naming; functions are verbs; variables are meaningful nouns.
+- Prefer early returns; shallow nesting; handle errors first.
+- Never log secrets or raw tokens.
+- Use centralized error helpers and consistent JSON responses.
+- Validate inputs via `express-validator`/Zod; sanitize user inputs.
+- Prisma: favor explicit selects; no raw SQL unless unavoidable.
+- Don’t change ports or package manager in code.
+
+Security & Compliance:
+- Enforce JSON-only responses on API routes; never return HTML from API.
+- Use JWT via `JwtUtil`; never expose full tokens in logs.
+- Apply `helmet`, CORS, rate limiting on `/api/`.
+- Webhooks: verify signatures (Stripe) and store events in `webhook_events`.
+- Record consent and audit logs for key actions as per `UserAuditLog`, `PrivacyConsent`.
+- Follow GDPR, KYC/AML flows described in `mpc-library/COMPLIANCE_SECURITY_MPC.md`.
+
+API Surface (server/src/routes):
+- Auth: register, login, refresh, verify-email, forgot/reset password, me, update profile, logout
+- Payments: pricing, create-subscription, history, payment details, cancel, update payment method, calculate-tax, webhook
+- Subscriptions: list, details, update, cancel, reactivate, invoices, usage, payment method, billing history, preview changes, renewal, add seats
+- Licenses: my-licenses, activate, deactivate, validate, details, analytics, transfer, bulk create, sdk versions, report issue, usage, SDK downloads
+- Users: billing address, tax info, business profile, KYC verify, consent, consent history, audit log, export data, request deletion, statistics, notifications
+- Admin: dashboard stats, users, user details/update, subscriptions, licenses, revoke license, compliance events, resolve, analytics, reports, enterprise customers, system health
+- Webhooks: stripe, sendgrid, test, health, retry-failed
+
+Client API Usage:
+- Use `client/src/services/api.ts` `api` instance, `endpoints` map, and `apiUtils` helpers.
+- Set `VITE_API_BASE_URL` to backend origin (default http://localhost:3003).
+- Auth token stored in `localStorage` key `auth_token`.
+
+Testing & Quality:
+- Prefer lightweight unit tests (to be added) and integration via REST clients/Postman.
+- Run `pnpm build` before shipping; ensure ESLint/TS passes in client and server.
+
+Pull Request Review Checklist:
+- API: typed inputs/outputs, validation, consistent error schema.
+- Security: authentication/authorization enforced; no leakage of PII/secrets.
+- Compliance: audit/consent/compliance events created where required.
+- Performance: N+1 avoided; indices implied by query patterns.
+- DX: clear naming, small functions, docs updated in `mpc-library/`.
+
+Cursor Agent Guidance:
+- Always read relevant doc in `mpc-library/` before edits.
+- Prefer changes scoped to `client/`, `server/`, or `shared/` as needed.
+- After server edits: run `pnpm build` and (if needed) `pnpm setup:db`.
+- Do not introduce new frameworks or switch package manager.
+- Maintain port mapping (3002 web, 3003 API) and Stripe/SendGrid flows.

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cursor-plugins/schema/main/cursor-settings.v1.json",
+  "projectTitle": "Dashboard v14 Licensing Website",
+  "workspace": {
+    "type": "pnpm-monorepo",
+    "packages": ["client", "server", "shared"],
+    "node": ">=18"
+  },
+  "commands": {
+    "dev": {
+      "command": "pnpm dev",
+      "cwd": ".",
+      "longRunning": true,
+      "description": "Run client (3002) and server (3003) concurrently"
+    },
+    "build": {
+      "command": "pnpm build",
+      "cwd": ".",
+      "description": "Build client and server"
+    },
+    "start": {
+      "command": "pnpm start",
+      "cwd": ".",
+      "description": "Start compiled server on 3003"
+    },
+    "db:setup": {
+      "command": "pnpm setup:db",
+      "cwd": ".",
+      "description": "Generate Prisma client and push schema"
+    },
+    "db:reset": {
+      "command": "pnpm db:reset",
+      "cwd": ".",
+      "description": "Force reset database schema"
+    },
+    "db:studio": {
+      "command": "pnpm db:studio",
+      "cwd": ".",
+      "description": "Open Prisma Studio"
+    }
+  },
+  "quality": {
+    "lint": {
+      "commands": [
+        { "command": "pnpm -C client lint", "cwd": "." }
+      ],
+      "autoFix": true
+    },
+    "typecheck": {
+      "commands": [
+        { "command": "pnpm -C client tsc --noEmit", "cwd": "." },
+        { "command": "pnpm -C server tsc --noEmit", "cwd": "." }
+      ]
+    },
+    "test": {
+      "commands": [
+        { "command": "pnpm -C client test", "cwd": "." },
+        { "command": "pnpm -C server test", "cwd": "." }
+      ],
+      "autoRun": false
+    }
+  },
+  "env": {
+    "devServerUrls": [
+      "http://localhost:3002",
+      "http://localhost:3003"
+    ]
+  },
+  "conventions": {
+    "commits": "conventional",
+    "codeStyle": "typescript-strict"
+  }
+}

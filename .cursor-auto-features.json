@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cursor-plugins/schema/main/auto-features.v1.json",
+  "features": {
+    "writeTests": { "enabled": true },
+    "fixLints": { "enabled": true },
+    "runBuildOnEdit": { "enabled": false },
+    "runTypecheckOnEdit": { "enabled": true },
+    "devServer": {
+      "enabled": false,
+      "commands": [
+        { "command": "pnpm dev", "cwd": "." }
+      ]
+    }
+  },
+  "tasks": [
+    { "name": "Start Dev", "command": "pnpm dev", "cwd": ".", "longRunning": true },
+    { "name": "Build", "command": "pnpm build", "cwd": ".", "longRunning": false },
+    { "name": "Setup DB", "command": "pnpm setup:db", "cwd": ".", "longRunning": false }
+  ]
+}

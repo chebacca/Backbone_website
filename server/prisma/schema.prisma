@@ -1,0 +1,768 @@
+// Database schema for Dashboard v14 Licensing Website
+// Enhanced with comprehensive compliance and legal requirements
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String
+  password        String
+  role            UserRole  @default(USER)
+  isEmailVerified Boolean   @default(false)
+  emailVerifyToken String?
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  // Two-Factor Authentication (TOTP)
+  twoFactorEnabled    Boolean   @default(false)
+  twoFactorSecret     String?
+  twoFactorTempSecret String?
+  twoFactorBackupCodes String[]
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Compliance & Legal Information
+  complianceProfile UserComplianceProfile?
+  billingAddress    BillingAddress?
+  taxInformation    TaxInformation?
+  
+  // Privacy & Consent
+  privacyConsent    PrivacyConsent[]
+  marketingConsent  Boolean   @default(false)
+  dataProcessingConsent Boolean @default(false)
+  termsAcceptedAt   DateTime?
+  privacyPolicyAcceptedAt DateTime?
+  
+  // Identity Verification
+  identityVerified  Boolean   @default(false)
+  identityVerificationData Json?
+  kycStatus         KYCStatus @default(PENDING)
+  kycCompletedAt    DateTime?
+  
+  // Business Information (for Enterprise)
+  businessProfile   BusinessProfile?
+  
+  // Audit Trail
+  ipAddress         String?
+  userAgent         String?
+  registrationSource String?
+  
+  // Relationships
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  ownedOrganization Organization? @relation("OrganizationAdmin")
+  subscriptions    Subscription[]
+  licenses         License[]
+  payments         Payment[]
+  usageAnalytics   UsageAnalytics[]
+  auditLogs        UserAuditLog[]
+  complianceEvents ComplianceEvent[]
+
+  @@map("users")
+}
+
+model Organization {
+  id           String   @id @default(uuid())
+  name         String
+  domain       String?
+  adminUserId  String   @unique
+  maxSeats     Int      @default(10)
+  usedSeats    Int      @default(0)
+  settings     Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  admin         User           @relation("OrganizationAdmin", fields: [adminUserId], references: [id])
+  users         User[]
+  subscriptions Subscription[]
+  licenses      License[]
+
+  @@map("organizations")
+}
+
+model Subscription {
+  id                    String             @id @default(uuid())
+  userId                String
+  tier                  SubscriptionTier
+  status                SubscriptionStatus @default(INACTIVE)
+  stripeSubscriptionId  String?            @unique
+  stripeCustomerId      String?
+  stripePriceId         String?
+  seats                 Int                @default(1)
+  pricePerSeat          Float
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelledAt           DateTime?
+  cancelAtPeriodEnd     Boolean            @default(false)
+  trialStart            DateTime?
+  trialEnd              DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  // Relationships
+  user           User          @relation(fields: [userId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  licenses       License[]
+  payments       Payment[]
+
+  @@map("subscriptions")
+}
+
+model License {
+  id               String        @id @default(uuid())
+  key              String        @unique
+  userId           String
+  subscriptionId   String
+  status           LicenseStatus @default(PENDING)
+  tier             SubscriptionTier
+  activatedAt      DateTime?
+  expiresAt        DateTime?
+  deviceInfo       Json?
+  ipAddress        String?
+  activationCount  Int           @default(0)
+  maxActivations   Int           @default(1)
+  features         Json          @default("{}")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  // Relationships
+  user           User          @relation(fields: [userId], references: [id])
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  usageAnalytics UsageAnalytics[]
+  deliveryLogs   LicenseDeliveryLog[]
+
+  @@map("licenses")
+}
+
+model Payment {
+  id                     String        @id @default(uuid())
+  userId                 String
+  subscriptionId         String
+  stripePaymentIntentId  String?       @unique
+  stripeInvoiceId        String?
+  amount                 Float
+  currency               String        @default("usd")
+  status                 PaymentStatus @default(PENDING)
+  description            String?
+  receiptUrl             String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  // Compliance & Legal
+  paymentMethod          String?
+  billingAddressSnapshot Json
+  taxAmount              Float?        @default(0)
+  taxRate                Float?        @default(0)
+  taxJurisdiction        String?
+  complianceData         Json          @default("{}")
+  
+  // Audit Trail
+  ipAddress              String?
+  userAgent              String?
+  processingLocation     String?
+  
+  // Anti-Money Laundering
+  amlScreeningStatus     AMLStatus     @default(PENDING)
+  amlScreeningDate       DateTime?
+  amlRiskScore           Float?
+  
+  // PCI Compliance
+  pciCompliant           Boolean       @default(true)
+  tokenizationId         String?
+
+  // Relationships
+  user         User         @relation(fields: [userId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  auditLogs    PaymentAuditLog[]
+  complianceEvents ComplianceEvent[]
+
+  @@map("payments")
+}
+
+model UsageAnalytics {
+  id         String   @id @default(uuid())
+  userId     String
+  licenseId  String?
+  event      String
+  metadata   Json     @default("{}")
+  timestamp  DateTime @default(now())
+  ipAddress  String?
+  userAgent  String?
+
+  // Relationships
+  user    User     @relation(fields: [userId], references: [id])
+  license License? @relation(fields: [licenseId], references: [id])
+
+  @@map("usage_analytics")
+}
+
+model WebhookEvent {
+  id          String   @id @default(uuid())
+  type        String
+  stripeId    String   @unique
+  data        Json
+  processed   Boolean  @default(false)
+  error       String?
+  retryCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("webhook_events")
+}
+
+model EmailLog {
+  id          String          @id @default(uuid())
+  to          String
+  subject     String
+  template    String
+  data        Json            @default("{}")
+  status      EmailStatus     @default(PENDING)
+  sendgridId  String?
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@map("email_logs")
+}
+
+model ApiKey {
+  id          String      @id @default(uuid())
+  name        String
+  key         String      @unique
+  permissions Json        @default("[]")
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("api_keys")
+}
+
+model SDKVersion {
+  id          String   @id @default(uuid())
+  version     String   @unique
+  platform    String
+  downloadUrl String
+  size        String
+  checksum    String
+  isLatest    Boolean  @default(false)
+  releaseNotes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("sdk_versions")
+}
+
+// Enums
+enum UserRole {
+  SUPERADMIN
+  USER
+  ENTERPRISE_ADMIN
+}
+
+enum SubscriptionTier {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  PAST_DUE
+  TRIALING
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+}
+
+enum LicenseStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  REVOKED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PROCESSING
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  OPENED
+  CLICKED
+}
+
+// COMPLIANCE & LEGAL MODELS
+
+model UserComplianceProfile {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  firstName             String
+  lastName              String
+  dateOfBirth           DateTime?
+  nationality           String?
+  countryOfResidence    String
+  phoneNumber           String?
+  secondaryEmail        String?
+  
+  // Government ID Information
+  governmentIdType      String?
+  governmentIdNumber    String?
+  governmentIdCountry   String?
+  governmentIdExpiry    DateTime?
+  
+  // Sanctions Screening
+  sanctionsScreened     Boolean  @default(false)
+  sanctionsScreenDate   DateTime?
+  sanctionsStatus       SanctionsStatus @default(CLEAR)
+  
+  // PEP (Politically Exposed Person) Screening
+  pepScreened           Boolean  @default(false)
+  pepScreenDate         DateTime?
+  pepStatus             PEPStatus @default(NOT_PEP)
+  
+  // Enhanced Due Diligence
+  eddRequired           Boolean  @default(false)
+  eddCompleted          Boolean  @default(false)
+  eddCompletedDate      DateTime?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_compliance_profiles")
+}
+
+model BillingAddress {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  firstName        String
+  lastName         String
+  company          String?
+  addressLine1     String
+  addressLine2     String?
+  city             String
+  state            String?
+  postalCode       String
+  country          String
+  
+  // Validation
+  validated        Boolean  @default(false)
+  validatedAt      DateTime?
+  validationSource String?
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("billing_addresses")
+}
+
+model TaxInformation {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  taxId                String?
+  taxIdType            TaxIdType?
+  vatNumber            String?
+  taxResidency         String
+  
+  // Business Tax Info
+  businessTaxId        String?
+  businessTaxIdType    String?
+  
+  // Exemptions
+  taxExempt            Boolean  @default(false)
+  exemptionCertificate String?
+  exemptionReason      String?
+  
+  // W-9/W-8 Forms
+  w9FormSubmitted      Boolean  @default(false)
+  w8FormSubmitted      Boolean  @default(false)
+  formSubmissionDate   DateTime?
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("tax_information")
+}
+
+model BusinessProfile {
+  id                      String   @id @default(uuid())
+  userId                  String   @unique
+  companyName             String
+  companyType             BusinessType
+  incorporationCountry    String
+  incorporationDate       DateTime?
+  
+  // Business Registration
+  businessRegistrationNumber String?
+  taxIdNumber             String?
+  vatNumber               String?
+  
+  // Industry Classification
+  industryCode            String?
+  businessDescription     String?
+  
+  // Annual Revenue (for risk assessment)
+  annualRevenue           BusinessRevenueRange?
+  numberOfEmployees       EmployeeCountRange?
+  
+  // Beneficial Ownership
+  beneficialOwnership     Json     @default("[]")
+  
+  // Due Diligence
+  corporateStructure      String?
+  sourceOfFunds           String?
+  
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("business_profiles")
+}
+
+model PrivacyConsent {
+  id                String      @id @default(uuid())
+  userId            String
+  consentType       ConsentType
+  consentGranted    Boolean
+  consentDate       DateTime    @default(now())
+  consentWithdrawn  Boolean     @default(false)
+  withdrawalDate    DateTime?
+  ipAddress         String?
+  userAgent         String?
+  consentVersion    String
+  
+  // Legal Basis
+  legalBasis        LegalBasis
+  
+  // Consent Details
+  consentDetails    Json        @default("{}")
+  
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("privacy_consents")
+}
+
+model UserAuditLog {
+  id          String      @id @default(uuid())
+  userId      String
+  action      AuditAction
+  description String
+  metadata    Json        @default("{}")
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime    @default(now())
+  
+  // GDPR Article 30 Record of Processing
+  dataCategory String?
+  purpose      String?
+  legalBasis   String?
+  retention    String?
+  
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_audit_logs")
+}
+
+model PaymentAuditLog {
+  id          String   @id @default(uuid())
+  paymentId   String
+  action      String
+  description String
+  metadata    Json     @default("{}")
+  timestamp   DateTime @default(now())
+  performedBy String?
+  
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@map("payment_audit_logs")
+}
+
+model ComplianceEvent {
+  id               String           @id @default(uuid())
+  userId           String?
+  paymentId        String?
+  eventType        ComplianceEventType
+  severity         ComplianceSeverity
+  description      String
+  metadata         Json             @default("{}")
+  resolved         Boolean          @default(false)
+  resolvedAt       DateTime?
+  resolvedBy       String?
+  
+  // Regulatory Requirements
+  regulatoryReference String?
+  reportedToAuthorities Boolean @default(false)
+  reportingDate      DateTime?
+  
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user    User?    @relation(fields: [userId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@map("compliance_events")
+}
+
+model LicenseDeliveryLog {
+  id              String                @id @default(uuid())
+  licenseId       String
+  paymentId       String
+  deliveryMethod  LicenseDeliveryMethod
+  emailAddress    String
+  deliveryStatus  DeliveryStatus        @default(PENDING)
+  attemptCount    Int                   @default(0)
+  lastAttemptAt   DateTime?
+  deliveredAt     DateTime?
+  errorMessage    String?
+  
+  // Email Tracking
+  emailSent       Boolean               @default(false)
+  emailOpened     Boolean               @default(false)
+  linkClicked     Boolean               @default(false)
+  
+  // Compliance
+  ipAddress       String?
+  userAgent       String?
+  
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  license License @relation(fields: [licenseId], references: [id])
+
+  @@map("license_delivery_logs")
+}
+
+model RegulatoryReport {
+  id              String            @id @default(uuid())
+  reportType      RegulatoryReportType
+  reportPeriod    String
+  generatedAt     DateTime          @default(now())
+  generatedBy     String
+  data            Json
+  fileUrl         String?
+  submitted       Boolean           @default(false)
+  submittedAt     DateTime?
+  
+  // Authority Information
+  authority       String?
+  referenceNumber String?
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("regulatory_reports")
+}
+
+model DataRetentionPolicy {
+  id              String   @id @default(uuid())
+  dataType        String
+  retentionPeriod Int      // in days
+  legalBasis      String
+  description     String
+  active          Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("data_retention_policies")
+}
+
+model DataProcessingRecord {
+  id                  String   @id @default(uuid())
+  userId              String?
+  processingActivity  String
+  dataCategories      String[]
+  purposes            String[]
+  legalBasis          String
+  recipients          String[]
+  retentionPeriod     String
+  securityMeasures    String[]
+  
+  // GDPR Article 30
+  controllerDetails   Json
+  representativeDetails Json?
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("data_processing_records")
+}
+
+// COMPLIANCE ENUMS
+
+enum KYCStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+enum AMLStatus {
+  PENDING
+  PASSED
+  FAILED
+  REQUIRES_REVIEW
+}
+
+enum SanctionsStatus {
+  CLEAR
+  MATCH_FOUND
+  UNDER_REVIEW
+  BLOCKED
+}
+
+enum PEPStatus {
+  NOT_PEP
+  PEP_IDENTIFIED
+  UNDER_REVIEW
+  APPROVED
+  DENIED
+}
+
+enum TaxIdType {
+  SSN
+  EIN
+  VAT
+  GST
+  OTHER
+}
+
+enum BusinessType {
+  SOLE_PROPRIETORSHIP
+  PARTNERSHIP
+  LLC
+  CORPORATION
+  NON_PROFIT
+  GOVERNMENT
+  OTHER
+}
+
+enum BusinessRevenueRange {
+  UNDER_100K
+  RANGE_100K_1M
+  RANGE_1M_10M
+  RANGE_10M_100M
+  OVER_100M
+}
+
+enum EmployeeCountRange {
+  RANGE_1_10
+  RANGE_11_50
+  RANGE_51_200
+  RANGE_201_1000
+  OVER_1000
+}
+
+enum ConsentType {
+  TERMS_OF_SERVICE
+  PRIVACY_POLICY
+  MARKETING
+  DATA_PROCESSING
+  COOKIES
+  ANALYTICS
+}
+
+enum LegalBasis {
+  CONSENT
+  CONTRACT
+  LEGAL_OBLIGATION
+  VITAL_INTERESTS
+  PUBLIC_TASK
+  LEGITIMATE_INTERESTS
+}
+
+enum AuditAction {
+  REGISTER
+  LOGIN
+  LOGOUT
+  PROFILE_UPDATE
+  PASSWORD_CHANGE
+  EMAIL_CHANGE
+  SUBSCRIPTION_CREATE
+  SUBSCRIPTION_UPDATE
+  SUBSCRIPTION_CANCEL
+  PAYMENT_PROCESS
+  LICENSE_ACTIVATE
+  LICENSE_DEACTIVATE
+  DATA_EXPORT
+  DATA_DELETE
+  CONSENT_GRANT
+  CONSENT_WITHDRAW
+}
+
+enum ComplianceEventType {
+  KYC_FAILURE
+  AML_ALERT
+  SANCTIONS_MATCH
+  PEP_MATCH
+  SUSPICIOUS_TRANSACTION
+  DATA_BREACH
+  GDPR_VIOLATION
+  TAX_COMPLIANCE_ISSUE
+  REGULATORY_BREACH
+}
+
+enum ComplianceSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum LicenseDeliveryMethod {
+  EMAIL
+  SMS
+  PORTAL
+  API
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
+enum RegulatoryReportType {
+  AML_SUSPICIOUS_ACTIVITY
+  KYC_COMPLIANCE
+  TAX_REPORTING
+  GDPR_COMPLIANCE
+  PCI_COMPLIANCE
+  FINANCIAL_REPORTING
+}

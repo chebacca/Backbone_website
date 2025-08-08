@@ -1,0 +1,30 @@
+runConfig:
+  minInstances: 2
+  maxInstances: 100
+  concurrency: 100
+  cpu: 2
+  memoryMiB: 1024
+
+env:
+  # Storage bucket for this Firebase project
+  - variable: STORAGE_BUCKET
+    value: backbone-logic.firebasestorage.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Example secrets (create these in Secret Manager via `firebase secrets:set`)
+  - variable: API_KEY
+    secret: myApiKeySecret
+
+  # Same as API_KEY above but with a pinned version.
+  - variable: PINNED_API_KEY
+    secret: myApiKeySecret@5
+
+  # Long form secret reference as defined by Cloud Secret Manager.
+  - variable: VERBOSE_API_KEY
+    secret: projects/backbone-logic/secrets/secretID
+
+  # Long form secret reference with pinned version.
+  - variable: PINNED_VERBOSE_API_KEY
+    secret: projects/backbone-logic/secrets/secretID/versions/5

@@ -63,9 +63,47 @@ A comprehensive, enterprise-grade licensing and subscription management platform
 - **Download History** and re-download capabilities
 - **License Key Integration** for authenticated downloads
 
-## 🏗️ Architecture
+## 📦 Git Repository
 
-### **Frontend (React + TypeScript)**
+This project is now a standalone Git repository located at:
+```
+/Users/chebrooks/Documents/IDE_Project/dashboard-v14-licensing-website
+```
+
+### **Repository Setup**
+- ✅ **Initialized** as a new Git repository
+- ✅ **Comprehensive .gitignore** for Node.js, React, and development files
+- ✅ **Initial commit** with all project files (123 files, 36,939 lines)
+- ✅ **Git helper script** for common operations
+
+### **Quick Git Commands**
+```bash
+# Check repository status
+./scripts/git-setup.sh status
+
+# Commit changes with message
+./scripts/git-setup.sh commit
+
+# Push to remote (after setting up remote)
+./scripts/git-setup.sh push
+
+# Pull from remote
+./scripts/git-setup.sh pull
+
+# View recent commits
+./scripts/git-setup.sh log
+
+# Setup remote repository
+./scripts/git-setup.sh setup
+```
+
+### **Setting Up Remote Repository**
+1. Create a new repository on GitHub/GitLab/etc.
+2. Run: `./scripts/git-setup.sh setup`
+3. Enter your remote repository URL when prompted
+4. Push your code: `git push -u origin main`
+
+## 🏗️ Architecture
 ```
 client/
 ├── src/

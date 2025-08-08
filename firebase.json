@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "client/dist",
+    "public": "deploy",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -8,11 +8,6 @@
     ],
     "rewrites": [
       { "source": "**", "destination": "/index.html" }
-    ],
-    "predeploy": [
-      "corepack enable",
-      "pnpm -C client install --frozen-lockfile",
-      "pnpm -C client run build"
     ]
   }
 }

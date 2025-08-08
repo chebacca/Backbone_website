@@ -1,0 +1,50 @@
+# Ignore all package files to prevent npm installation
+package.json
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+pnpm-workspace.yaml
+node_modules/
+**/node_modules/
+**/package.json
+**/package-lock.json
+**/pnpm-lock.yaml
+**/yarn.lock
+**/pnpm-workspace.yaml
+
+# Ignore source files since we're deploying built assets
+src/
+**/src/
+*.ts
+*.tsx
+*.js
+*.jsx
+!client/dist/**
+
+# Ignore development files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Ignore git files
+.git/
+.gitignore
+
+# Ignore other config files
+tsconfig.json
+**/tsconfig.json
+vite.config.ts
+**/vite.config.ts
+
+# Ignore everything except deploy directory
+*
+!deploy/
+!deploy/**
+!firebase.json
+!.firebaserc

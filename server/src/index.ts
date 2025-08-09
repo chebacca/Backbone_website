@@ -16,6 +16,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { logger } from './utils/logger.js';
 import { firestoreService } from './services/firestoreService.js';
+import { PasswordUtil } from './utils/password.js';
 // Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
 const app: Application = express();
@@ -106,6 +107,51 @@ if (!isCloudFunctionsEnv) {
     logger.info(`🔗 CORS enabled for: ${config.corsOrigin}`);
   });
 }
+
+// Ensure a SUPERADMIN exists if ADMIN_EMAIL and ADMIN_PASSWORD are provided
+async function ensureSuperAdminSeed(): Promise<void> {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminEmail || !adminPassword) return;
+
+    const existing = await firestoreService.getUserByEmail(adminEmail);
+    if (existing) {
+      // Ensure role and verification
+      const updates: any = {};
+      if (existing.role !== 'SUPERADMIN') updates.role = 'SUPERADMIN';
+      if (existing.isEmailVerified !== true) updates.isEmailVerified = true;
+      if (Object.keys(updates).length > 0) {
+        await firestoreService.updateUser(existing.id, updates);
+        logger.info('Updated existing superadmin user settings', { email: adminEmail });
+      }
+      return;
+    }
+
+    const hashed = await PasswordUtil.hash(adminPassword);
+    await firestoreService.createUser({
+      email: adminEmail,
+      password: hashed,
+      name: 'Super Admin',
+      role: 'SUPERADMIN',
+      isEmailVerified: true,
+      twoFactorEnabled: false,
+      twoFactorBackupCodes: [],
+      privacyConsent: [],
+      marketingConsent: false,
+      dataProcessingConsent: false,
+      identityVerified: false,
+      kycStatus: 'COMPLETED',
+      registrationSource: 'seed',
+    } as any);
+    logger.info('Seeded SUPERADMIN user', { email: adminEmail });
+  } catch (err) {
+    logger.error('Failed to ensure SUPERADMIN seed', { error: (err as any)?.message });
+  }
+}
+
+// Invoke seeding at cold start (both local and Functions)
+await ensureSuperAdminSeed();
 
 // Export Firebase HTTPS function for production
 // Note: Uses Application Default Credentials for Firestore in Functions

@@ -17,9 +17,13 @@ import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { logger } from './utils/logger.js';
 import { firestoreService } from './services/firestoreService.js';
 import { PasswordUtil } from './utils/password.js';
+import { PasswordUtil } from './utils/password.js';
 // Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
 const app: Application = express();
+
+// Trust proxy (required when behind Firebase Hosting/Cloud Run for correct IPs)
+app.set('trust proxy', true);
 
 // Security middleware
 app.use(helmet({
@@ -107,6 +111,58 @@ if (!isCloudFunctionsEnv) {
     logger.info(`🔗 CORS enabled for: ${config.corsOrigin}`);
   });
 }
+
+// Ensure a SUPERADMIN exists if ADMIN_EMAIL and ADMIN_PASSWORD are provided
+async function ensureSuperAdminSeed(): Promise<void> {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminEmail || !adminPassword) return;
+
+    const existing = await firestoreService.getUserByEmail(adminEmail);
+    if (existing) {
+      const updates: any = {};
+      if (existing.role !== 'SUPERADMIN') updates.role = 'SUPERADMIN';
+      if (existing.isEmailVerified !== true) updates.isEmailVerified = true;
+      if (Object.keys(updates).length > 0) {
+        await firestoreService.updateUser(existing.id, updates);
+        logger.info('Updated existing superadmin user settings', { email: adminEmail });
+      }
+      return;
+    }
+
+    // If provided password doesn't meet policy, generate a compliant one and log a warning
+    const passCheck = PasswordUtil.validate(adminPassword);
+    let passwordToUse = adminPassword;
+    if (!passCheck.isValid) {
+      passwordToUse = PasswordUtil.generateSecurePassword(16);
+      logger.warn('Provided ADMIN_PASSWORD did not meet policy; generated a secure password instead. Please reset it after login.', { email: adminEmail });
+    }
+
+    const hashed = await PasswordUtil.hash(passwordToUse);
+    const admin = await firestoreService.createUser({
+      email: adminEmail,
+      password: hashed,
+      name: 'Super Admin',
+      role: 'SUPERADMIN',
+      isEmailVerified: true,
+      twoFactorEnabled: false,
+      twoFactorBackupCodes: [],
+      privacyConsent: [],
+      marketingConsent: false,
+      dataProcessingConsent: false,
+      identityVerified: false,
+      kycStatus: 'COMPLETED',
+      registrationSource: 'seed',
+    } as any);
+    logger.info('Seeded SUPERADMIN user', { email: adminEmail, userId: admin.id });
+  } catch (err) {
+    logger.error('Failed to ensure SUPERADMIN seed', { error: (err as any)?.message });
+  }
+}
+
+// Invoke seeding at cold start (both local and Functions)
+await ensureSuperAdminSeed();
 
 // Ensure a SUPERADMIN exists if ADMIN_EMAIL and ADMIN_PASSWORD are provided
 async function ensureSuperAdminSeed(): Promise<void> {

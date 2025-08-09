@@ -124,9 +124,19 @@ async function ensureSuperAdminSeed(): Promise<void> {
       const updates: any = {};
       if (existing.role !== 'SUPERADMIN') updates.role = 'SUPERADMIN';
       if (existing.isEmailVerified !== true) updates.isEmailVerified = true;
+      const shouldReset = (process.env.ADMIN_RESET || '').toLowerCase() === 'true';
+      if (shouldReset) {
+        const passCheck = PasswordUtil.validate(adminPassword);
+        if (passCheck.isValid) {
+          const hashed = await PasswordUtil.hash(adminPassword);
+          updates.password = hashed;
+        } else {
+          logger.warn('ADMIN_RESET requested but ADMIN_PASSWORD did not meet policy; skipping password update.', { email: adminEmail });
+        }
+      }
       if (Object.keys(updates).length > 0) {
         await firestoreService.updateUser(existing.id, updates);
-        logger.info('Updated existing superadmin user settings', { email: adminEmail });
+        logger.info('Updated existing superadmin user settings', { email: adminEmail, reset: shouldReset });
       }
       return;
     }

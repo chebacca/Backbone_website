@@ -59,3 +59,9 @@ vite.config.ts
 
 # Exclude legacy CommonJS entry to avoid duplicate function export
 server/index.js
+
+# Ensure env files are never loaded by Functions deploy (reserved FIREBASE_* keys)
+server/.env
+server/.env.*
+.env
+.env.*

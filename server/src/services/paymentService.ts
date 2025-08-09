@@ -1,11 +1,12 @@
 import Stripe from 'stripe';
-import { prisma } from '../utils/prisma.js';
+import { firestoreService } from './firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 import { ComplianceService } from './complianceService.js';
 import { EmailService } from './emailService.js';
 import { LicenseService } from './licenseService.js';
-import { SubscriptionTier, PaymentStatus } from '@prisma/client';
+export type SubscriptionTier = 'BASIC' | 'PRO' | 'ENTERPRISE';
+export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'PROCESSING';
 
 const stripe = new Stripe(config.stripe.secretKey, {
   apiVersion: '2023-10-16',
@@ -34,14 +35,7 @@ export class PaymentService {
       });
 
       // 1. Get user and validate
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          complianceProfile: true,
-          billingAddress: true,
-          taxInformation: true,
-        },
-      });
+      const user = await firestoreService.getUserById(userId);
 
       if (!user) {
         throw new Error('User not found');
@@ -57,22 +51,14 @@ export class PaymentService {
       }
 
       // 3. Save/update billing address
-      await prisma.billingAddress.upsert({
-        where: { userId },
-        create: {
-          userId,
+      await firestoreService.updateUser(userId, {
+        billingAddress: {
           ...subscriptionData.billingAddress,
           validated: true,
           validatedAt: new Date(),
           validationSource: 'payment_flow',
         },
-        update: {
-          ...subscriptionData.billingAddress,
-          validated: true,
-          validatedAt: new Date(),
-          validationSource: 'payment_flow',
-        },
-      });
+      } as any);
 
       // 4. Calculate pricing
       const pricing = this.calculateSubscriptionPricing(
@@ -128,51 +114,49 @@ export class PaymentService {
       });
 
       // 11. Create subscription record in database
-      const subscription = await prisma.subscription.create({
-        data: {
-          userId,
-          tier: subscriptionData.tier,
-          status: this.mapStripeStatusToOurStatus(stripeSubscription.status),
-          stripeSubscriptionId: stripeSubscription.id,
-          stripeCustomerId: stripeCustomer.id,
-          stripePriceId,
-          seats: subscriptionData.seats,
-          pricePerSeat: pricing.pricePerSeat,
-          currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-          currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-        },
+      const subscription = await firestoreService.createSubscription({
+        userId,
+        tier: subscriptionData.tier,
+        status: this.mapStripeStatusToOurStatus(stripeSubscription.status),
+        stripeSubscriptionId: stripeSubscription.id,
+        stripeCustomerId: stripeCustomer.id,
+        stripePriceId,
+        seats: subscriptionData.seats,
+        pricePerSeat: pricing.pricePerSeat,
+        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+        cancelAtPeriodEnd: false,
       });
 
       // 12. Create payment record
       const latestInvoice = stripeSubscription.latest_invoice as Stripe.Invoice;
       const paymentIntent = latestInvoice.payment_intent as Stripe.PaymentIntent;
 
-      const payment = await prisma.payment.create({
-        data: {
-          userId,
-          subscriptionId: subscription.id,
-          stripePaymentIntentId: paymentIntent.id,
-          stripeInvoiceId: latestInvoice.id,
-          amount: taxCalculation.totalAmount,
-          currency: latestInvoice.currency,
-          status: this.mapStripePaymentStatusToOurStatus(paymentIntent.status),
-          description: `${subscriptionData.tier} subscription - ${subscriptionData.seats} seats`,
-          receiptUrl: latestInvoice.hosted_invoice_url,
-          // Compliance data
-          paymentMethod: paymentIntent.payment_method_types[0],
-          billingAddressSnapshot: subscriptionData.billingAddress,
-          taxAmount: taxCalculation.taxAmount,
-          taxRate: taxCalculation.taxRate,
-          taxJurisdiction: taxCalculation.jurisdiction,
-          ipAddress: requestInfo.ip,
-          userAgent: requestInfo.userAgent,
-          complianceData: {
-            userType: subscriptionData.businessProfile ? 'business' : 'individual',
-            subscriptionTier: subscriptionData.tier,
-            seats: subscriptionData.seats,
-            timestamp: new Date().toISOString(),
-          },
+      const payment = await firestoreService.createPayment({
+        userId,
+        subscriptionId: subscription.id,
+        stripePaymentIntentId: paymentIntent.id,
+        stripeInvoiceId: latestInvoice.id,
+        amount: taxCalculation.totalAmount,
+        currency: latestInvoice.currency,
+        status: this.mapStripePaymentStatusToOurStatus(paymentIntent.status),
+        description: `${subscriptionData.tier} subscription - ${subscriptionData.seats} seats`,
+        receiptUrl: latestInvoice.hosted_invoice_url || undefined,
+        paymentMethod: paymentIntent.payment_method_types?.[0],
+        billingAddressSnapshot: subscriptionData.billingAddress,
+        taxAmount: taxCalculation.taxAmount,
+        taxRate: taxCalculation.taxRate,
+        taxJurisdiction: taxCalculation.jurisdiction,
+        ipAddress: requestInfo.ip,
+        userAgent: requestInfo.userAgent,
+        complianceData: {
+          userType: subscriptionData.businessProfile ? 'business' : 'individual',
+          subscriptionTier: subscriptionData.tier,
+          seats: subscriptionData.seats,
+          timestamp: new Date().toISOString(),
         },
+        amlScreeningStatus: 'PENDING',
+        pciCompliant: true,
       });
 
       // 13. Perform AML screening
@@ -239,20 +223,10 @@ export class PaymentService {
       logger.info(`Processing successful payment for subscription ${subscription.id}`);
 
       // 1. Update payment status
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'SUCCEEDED',
-        },
-      });
+      await firestoreService.updatePayment(payment.id, { status: 'SUCCEEDED' });
 
       // 2. Update subscription status
-      await prisma.subscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: 'ACTIVE',
-        },
-      });
+      await firestoreService.updateSubscription(subscription.id, { status: 'ACTIVE' });
 
       // 3. Generate licenses based on seats
       const licenses = await LicenseService.generateLicenses(
@@ -264,14 +238,12 @@ export class PaymentService {
 
       // 4. Create license delivery logs
       for (const license of licenses) {
-        await prisma.licenseDeliveryLog.create({
-          data: {
-            licenseId: license.id,
-            paymentId: payment.id,
-            deliveryMethod: 'EMAIL',
-            emailAddress: user.email,
-            deliveryStatus: 'PENDING',
-          },
+        await firestoreService.createLicenseDeliveryLog({
+          licenseId: license.id,
+          paymentId: payment.id,
+          deliveryMethod: 'EMAIL',
+          emailAddress: user.email,
+          deliveryStatus: 'PENDING',
         });
       }
 
@@ -304,14 +276,11 @@ export class PaymentService {
       );
 
       // 8. Update license delivery status
-      await prisma.licenseDeliveryLog.updateMany({
-        where: { paymentId: payment.id },
-        data: {
-          deliveryStatus: 'SENT',
-          emailSent: true,
-          lastAttemptAt: new Date(),
-        },
-      });
+      await firestoreService.updateLicenseDeliveryLogsForPayment(payment.id, {
+        deliveryStatus: 'SENT',
+        emailSent: true,
+        lastAttemptAt: new Date(),
+      } as any);
 
       logger.info(`Successfully processed payment for subscription ${subscription.id}`, {
         licenseCount: licenses.length,
@@ -345,12 +314,10 @@ export class PaymentService {
       const webhookSecret = config.stripe.webhookSecret;
       
       // Log webhook event
-      await prisma.webhookEvent.create({
-        data: {
-          type: event.type,
-          stripeId: event.id,
-          data: event.data as any,
-        },
+      await firestoreService.createWebhookEvent({
+        type: event.type,
+        stripeId: event.id,
+        data: event.data,
       });
 
       switch (event.type) {
@@ -379,24 +346,24 @@ export class PaymentService {
       }
 
       // Mark webhook as processed
-      await prisma.webhookEvent.update({
-        where: { stripeId: event.id },
-        data: { processed: true },
-      });
+      const existing = await firestoreService.getWebhookEventByStripeId(event.id);
+      if (existing) {
+        await firestoreService.updateWebhookEvent(existing.id, { processed: true });
+      }
 
       return { received: true, processed: true };
     } catch (error) {
       logger.error('Webhook processing failed', error);
       
       // Update webhook with error
-      await prisma.webhookEvent.update({
-        where: { stripeId: event.id },
-        data: {
+      const existing = await firestoreService.getWebhookEventByStripeId(event.id);
+      if (existing) {
+        await firestoreService.updateWebhookEvent(existing.id, {
           processed: false,
           error: (error as Error).message,
-          retryCount: { increment: 1 },
-        },
-      });
+          retryCount: 1,
+        });
+      }
 
       throw error;
     }
@@ -430,12 +397,10 @@ export class PaymentService {
 
   private static async getOrCreateStripeCustomer(user: any, billingAddress: any) {
     // Check if user already has a Stripe customer ID
-    const existingSubscription = await prisma.subscription.findFirst({
-      where: { userId: user.id, stripeCustomerId: { not: null } },
-    });
-
-    if (existingSubscription?.stripeCustomerId) {
-      return await stripe.customers.retrieve(existingSubscription.stripeCustomerId);
+    const existingSubscriptions = await firestoreService.getSubscriptionsByUserId(user.id);
+    const withCustomer = existingSubscriptions.find(s => s.stripeCustomerId);
+    if (withCustomer?.stripeCustomerId) {
+      return await stripe.customers.retrieve(withCustomer.stripeCustomerId);
     }
 
     // Create new Stripe customer
@@ -490,27 +455,22 @@ export class PaymentService {
 
   private static async handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     // Find and update payment record
-    const payment = await prisma.payment.findUnique({
-      where: { stripePaymentIntentId: paymentIntent.id },
-      include: { subscription: true, user: true },
-    });
-
+    const payment = await firestoreService.getPaymentByStripePaymentIntentId(paymentIntent.id);
     if (payment) {
-      await this.handleSuccessfulPayment(payment.subscription, payment, payment.user);
+      const subscription = await firestoreService.getSubscriptionById(payment.subscriptionId);
+      const user = await firestoreService.getUserById(payment.userId);
+      if (subscription && user) {
+        await this.handleSuccessfulPayment(subscription, payment, user);
+      }
     }
   }
 
   private static async handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
     // Update payment record and create compliance event
-    const payment = await prisma.payment.findUnique({
-      where: { stripePaymentIntentId: paymentIntent.id },
-    });
+    const payment = await firestoreService.getPaymentByStripePaymentIntentId(paymentIntent.id);
 
     if (payment) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'FAILED' },
-      });
+      await firestoreService.updatePayment(payment.id, { status: 'FAILED' });
 
       await ComplianceService.createComplianceEvent(
         'SUSPICIOUS_TRANSACTION',
@@ -530,42 +490,33 @@ export class PaymentService {
 
   private static async handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     // Update subscription record in database
-    const dbSubscription = await prisma.subscription.findUnique({
-      where: { stripeSubscriptionId: subscription.id },
-    });
+    const dbSubscription = await firestoreService.getSubscriptionByStripeId(subscription.id);
 
     if (dbSubscription) {
-      await prisma.subscription.update({
-        where: { id: dbSubscription.id },
-        data: {
-          status: this.mapStripeStatusToOurStatus(subscription.status),
-          currentPeriodStart: new Date(subscription.current_period_start * 1000),
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-        },
+      await firestoreService.updateSubscription(dbSubscription.id, {
+        status: this.mapStripeStatusToOurStatus(subscription.status),
+        currentPeriodStart: new Date(subscription.current_period_start * 1000),
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
       });
     }
   }
 
   private static async handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     // Cancel subscription and revoke licenses
-    const dbSubscription = await prisma.subscription.findUnique({
-      where: { stripeSubscriptionId: subscription.id },
-    });
+    const dbSubscription = await firestoreService.getSubscriptionByStripeId(subscription.id);
 
     if (dbSubscription) {
-      await prisma.subscription.update({
-        where: { id: dbSubscription.id },
-        data: {
-          status: 'CANCELLED',
-          cancelledAt: new Date(),
-        },
+      await firestoreService.updateSubscription(dbSubscription.id, {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
       });
 
       // Revoke associated licenses
-      await prisma.license.updateMany({
-        where: { subscriptionId: dbSubscription.id },
-        data: { status: 'REVOKED' },
-      });
+      const licenses = await firestoreService.getLicensesByUserId(dbSubscription.userId);
+      const affected = licenses.filter(l => l.subscriptionId === dbSubscription.id);
+      for (const lic of affected) {
+        await firestoreService.updateLicense(lic.id, { status: 'REVOKED' });
+      }
     }
   }
 
@@ -587,25 +538,10 @@ export class PaymentService {
    */
   static async getPaymentHistory(userId: string, options: { skip?: number; take?: number } = {}) {
     const { skip = 0, take = 10 } = options;
-
-    const [payments, total] = await Promise.all([
-      prisma.payment.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take,
-        include: {
-          subscription: {
-            select: {
-              tier: true,
-              seats: true,
-            },
-          },
-        },
-      }),
-      prisma.payment.count({ where: { userId } }),
-    ]);
-
+    const all = await firestoreService.getPaymentsByUserId(userId);
+    const sorted = all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const payments = sorted.slice(skip, skip + take);
+    const total = all.length;
     return { payments, total };
   }
 
@@ -613,25 +549,11 @@ export class PaymentService {
    * Get specific payment details
    */
   static async getPaymentDetails(userId: string, paymentId: string) {
-    return await prisma.payment.findFirst({
-      where: {
-        id: paymentId,
-        userId,
-      },
-      include: {
-        subscription: {
-          select: {
-            id: true,
-            tier: true,
-            seats: true,
-          },
-        },
-        auditLogs: {
-          orderBy: { timestamp: 'desc' },
-          take: 10,
-        },
-      },
-    });
+    const payment = await firestoreService.getPaymentById(paymentId);
+    if (!payment || payment.userId !== userId) return null;
+    const subscription = await firestoreService.getSubscriptionById(payment.subscriptionId);
+    const auditLogs = await firestoreService.getAuditLogsByUser(userId);
+    return { ...payment, subscription, auditLogs: auditLogs.slice(0, 10) } as any;
   }
 
   /**
@@ -647,9 +569,10 @@ export class PaymentService {
     },
     requestInfo: any
   ) {
-    const subscription = await prisma.subscription.findFirst({
-      where: { id: subscriptionId, userId },
-    });
+    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    if (!subscription || subscription.userId !== userId) {
+      throw new Error('Subscription not found');
+    }
 
     if (!subscription) {
       throw new Error('Subscription not found');
@@ -663,14 +586,12 @@ export class PaymentService {
     }
 
     // Update subscription in database
-    const updatedSubscription = await prisma.subscription.update({
-      where: { id: subscriptionId },
-      data: {
-        cancelAtPeriodEnd: options.cancelAtPeriodEnd,
-        cancelledAt: options.cancelAtPeriodEnd ? null : new Date(),
-        status: options.cancelAtPeriodEnd ? 'ACTIVE' : 'CANCELLED',
-      },
+    await firestoreService.updateSubscription(subscriptionId, {
+      cancelAtPeriodEnd: options.cancelAtPeriodEnd,
+      cancelledAt: options.cancelAtPeriodEnd ? null as any : new Date(),
+      status: options.cancelAtPeriodEnd ? 'ACTIVE' : 'CANCELLED',
     });
+    const updatedSubscription = await firestoreService.getSubscriptionById(subscriptionId);
 
     // Create audit log
     await ComplianceService.createAuditLog(
@@ -698,9 +619,10 @@ export class PaymentService {
     paymentMethodId: string,
     requestInfo: any
   ) {
-    const subscription = await prisma.subscription.findFirst({
-      where: { id: subscriptionId, userId },
-    });
+    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    if (!subscription || subscription.userId !== userId) {
+      throw new Error('Subscription not found');
+    }
 
     if (!subscription) {
       throw new Error('Subscription not found');
@@ -746,9 +668,10 @@ export class PaymentService {
     updates: { seats?: number; tier?: string },
     requestInfo: any
   ) {
-    const subscription = await prisma.subscription.findFirst({
-      where: { id: subscriptionId, userId },
-    });
+    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    if (!subscription || subscription.userId !== userId) {
+      throw new Error('Subscription not found');
+    }
 
     if (!subscription) {
       throw new Error('Subscription not found');
@@ -770,12 +693,10 @@ export class PaymentService {
     }
 
     // Update in database
-    updatedSubscription = await prisma.subscription.update({
-      where: { id: subscriptionId },
-      data: {
-        seats: updates.seats || subscription.seats,
-      },
+    await firestoreService.updateSubscription(subscriptionId, {
+      seats: updates.seats || subscription.seats,
     });
+    updatedSubscription = (await firestoreService.getSubscriptionById(subscriptionId))!;
 
     // Generate additional licenses if seats increased
     if (updates.seats && updates.seats > subscription.seats) {
@@ -808,9 +729,10 @@ export class PaymentService {
     subscriptionId: string,
     requestInfo: any
   ) {
-    const subscription = await prisma.subscription.findFirst({
-      where: { id: subscriptionId, userId },
-    });
+    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    if (!subscription || subscription.userId !== userId) {
+      throw new Error('Subscription not found');
+    }
 
     if (!subscription) {
       throw new Error('Subscription not found');
@@ -824,14 +746,12 @@ export class PaymentService {
     }
 
     // Update subscription in database
-    const updatedSubscription = await prisma.subscription.update({
-      where: { id: subscriptionId },
-      data: {
-        cancelAtPeriodEnd: false,
-        cancelledAt: null,
-        status: 'ACTIVE',
-      },
+    await firestoreService.updateSubscription(subscriptionId, {
+      cancelAtPeriodEnd: false,
+      cancelledAt: null as any,
+      status: 'ACTIVE',
     });
+    const updatedSubscription = await firestoreService.getSubscriptionById(subscriptionId);
 
     // Create audit log
     await ComplianceService.createAuditLog(

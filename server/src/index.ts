@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { config } from './config/index.js';
+import { onRequest } from 'firebase-functions/v2/https';
 import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
 import { subscriptionsRouter } from './routes/subscriptions.js';
@@ -14,7 +15,7 @@ import invoicesRouter from './routes/invoices.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { logger } from './utils/logger.js';
-import { prisma } from './utils/prisma.js';
+// Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
 const app: Application = express();
 
@@ -54,8 +55,8 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health check
-app.get('/health', (req, res) => {
+// Health check (support both /health and /api/health when behind Hosting rewrite)
+app.get(['/health', '/api/health'], (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
@@ -78,23 +79,35 @@ app.use('/api/webhooks', webhooksRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+// Start HTTP server only when NOT running in Cloud Functions environment or analyzer
+let server: import('http').Server | undefined;
+const isCloudFunctionsEnv = Boolean(
+  process.env.FUNCTION_TARGET || process.env.K_SERVICE || process.env.FIREBASE_CONFIG
+);
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+if (!isCloudFunctionsEnv) {
+  // Graceful shutdown (local/VM only)
+  process.on('SIGTERM', async () => {
+    logger.info('SIGTERM received, shutting down gracefully');
+    process.exit(0);
+  });
 
-const server = app.listen(config.port, () => {
-  logger.info(`🚀 Server running on port ${config.port}`);
-  logger.info(`📊 Environment: ${config.nodeEnv}`);
-  logger.info(`🔗 CORS enabled for: ${config.corsOrigin}`);
-});
+  process.on('SIGINT', async () => {
+    logger.info('SIGINT received, shutting down gracefully');
+    process.exit(0);
+  });
+
+  server = app.listen(config.port, () => {
+    logger.info(`🚀 Server running on port ${config.port}`);
+    logger.info(`📊 Environment: ${config.nodeEnv}`);
+    logger.info(`🔗 CORS enabled for: ${config.corsOrigin}`);
+  });
+}
+
+// Export Firebase HTTPS function for production
+export const api = onRequest({
+  region: 'us-central1',
+  cors: config.corsOrigin,
+}, app);
 
 export { app, server };

@@ -1,13 +1,35 @@
-import { prisma } from '../utils/prisma.js';
 import { logger } from '../utils/logger.js';
-import { 
-  User, 
-  AuditAction, 
-  ComplianceEventType, 
-  ComplianceSeverity,
-  KYCStatus,
-  AMLStatus 
-} from '@prisma/client';
+import { firestoreService } from './firestoreService.js';
+
+// Type aliases replacing Prisma enums
+export type AuditAction =
+  | 'REGISTER'
+  | 'LOGIN'
+  | 'LOGOUT'
+  | 'PROFILE_UPDATE'
+  | 'PASSWORD_CHANGE'
+  | 'EMAIL_CHANGE'
+  | 'SUBSCRIPTION_CREATE'
+  | 'SUBSCRIPTION_UPDATE'
+  | 'SUBSCRIPTION_CANCEL'
+  | 'PAYMENT_PROCESS'
+  | 'LICENSE_ACTIVATE'
+  | 'LICENSE_DEACTIVATE'
+  | 'DATA_EXPORT'
+  | 'DATA_DELETE'
+  | 'CONSENT_GRANT'
+  | 'CONSENT_WITHDRAW';
+
+export type ComplianceEventType =
+  | 'AML_ALERT'
+  | 'KYC_FAILURE'
+  | 'GDPR_VIOLATION'
+  | 'REGULATORY_BREACH'
+  | 'SUSPICIOUS_TRANSACTION';
+
+export type ComplianceSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type KYCStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
+export type AMLStatus = 'PENDING' | 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW';
 
 export class ComplianceService {
   /**
@@ -21,29 +43,21 @@ export class ComplianceService {
     request?: { ip?: string; userAgent?: string }
   ) {
     try {
-      const auditLog = await prisma.userAuditLog.create({
-        data: {
-          userId,
-          action,
-          description,
-          metadata,
-          ipAddress: request?.ip,
-          userAgent: request?.userAgent,
-          // GDPR Article 30 fields
-          dataCategory: this.getDataCategoryForAction(action),
-          purpose: this.getPurposeForAction(action),
-          legalBasis: this.getLegalBasisForAction(action),
-          retention: this.getRetentionForAction(action),
-        },
+      await firestoreService.createAuditLog({
+        userId,
+        action,
+        description,
+        metadata,
+        ipAddress: request?.ip,
+        userAgent: request?.userAgent,
       });
 
       logger.info(`Audit log created for user ${userId}`, {
-        auditLogId: auditLog.id,
         action,
         description,
       });
 
-      return auditLog;
+      return;
     } catch (error) {
       logger.error('Failed to create audit log', error);
       throw error;
@@ -62,30 +76,32 @@ export class ComplianceService {
     metadata: any = {}
   ) {
     try {
-      const event = await prisma.complianceEvent.create({
-        data: {
-          eventType,
-          severity,
-          description,
-          userId,
-          paymentId,
-          metadata,
-        },
+      await firestoreService.createComplianceEvent({
+        eventType,
+        severity,
+        description,
+        userId,
+        paymentId,
+        metadata,
       });
 
       // Alert if high or critical severity
       if (severity === 'HIGH' || severity === 'CRITICAL') {
-        await this.alertComplianceTeam(event);
+        await this.alertComplianceTeam({
+          id: 'n/a',
+          eventType,
+          severity,
+          description,
+        } as any);
       }
 
       logger.warn(`Compliance event created: ${eventType}`, {
-        eventId: event.id,
         severity,
         userId,
         paymentId,
       });
 
-      return event;
+      return;
     } catch (error) {
       logger.error('Failed to create compliance event', error);
       throw error;
@@ -97,44 +113,26 @@ export class ComplianceService {
    */
   static async performKYC(userId: string, kycData: any) {
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: { complianceProfile: true },
-      });
+      const user = await firestoreService.getUserById(userId);
 
       if (!user) {
         throw new Error('User not found');
       }
 
       // Create or update compliance profile
-      const complianceProfile = await prisma.userComplianceProfile.upsert({
-        where: { userId },
-        create: {
-          userId,
-          firstName: kycData.firstName,
-          lastName: kycData.lastName,
-          dateOfBirth: kycData.dateOfBirth ? new Date(kycData.dateOfBirth) : null,
-          nationality: kycData.nationality,
-          countryOfResidence: kycData.countryOfResidence,
-          phoneNumber: kycData.phoneNumber,
-          governmentIdType: kycData.governmentIdType,
-          governmentIdNumber: kycData.governmentIdNumber,
-          governmentIdCountry: kycData.governmentIdCountry,
-          governmentIdExpiry: kycData.governmentIdExpiry ? new Date(kycData.governmentIdExpiry) : null,
-        },
-        update: {
-          firstName: kycData.firstName,
-          lastName: kycData.lastName,
-          dateOfBirth: kycData.dateOfBirth ? new Date(kycData.dateOfBirth) : null,
-          nationality: kycData.nationality,
-          countryOfResidence: kycData.countryOfResidence,
-          phoneNumber: kycData.phoneNumber,
-          governmentIdType: kycData.governmentIdType,
-          governmentIdNumber: kycData.governmentIdNumber,
-          governmentIdCountry: kycData.governmentIdCountry,
-          governmentIdExpiry: kycData.governmentIdExpiry ? new Date(kycData.governmentIdExpiry) : null,
-        },
-      });
+      const complianceProfile = {
+        firstName: kycData.firstName,
+        lastName: kycData.lastName,
+        dateOfBirth: kycData.dateOfBirth ? new Date(kycData.dateOfBirth) : null,
+        nationality: kycData.nationality,
+        countryOfResidence: kycData.countryOfResidence,
+        phoneNumber: kycData.phoneNumber,
+        governmentIdType: kycData.governmentIdType,
+        governmentIdNumber: kycData.governmentIdNumber,
+        governmentIdCountry: kycData.governmentIdCountry,
+        governmentIdExpiry: kycData.governmentIdExpiry ? new Date(kycData.governmentIdExpiry) : null,
+      } as any;
+      await firestoreService.updateUser(userId, { complianceProfile });
 
       // Perform sanctions screening
       const sanctionsResult = await this.performSanctionsScreening(user, complianceProfile);
@@ -158,14 +156,11 @@ export class ComplianceService {
       }
 
       // Update user KYC status
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          kycStatus,
-          kycCompletedAt: new Date(),
-          identityVerified: kycStatus === 'COMPLETED',
-        },
-      });
+      await firestoreService.updateUser(userId, {
+        kycStatus,
+        kycCompletedAt: new Date(),
+        identityVerified: kycStatus === 'COMPLETED',
+      } as any);
 
       await this.createAuditLog(
         userId,
@@ -210,16 +205,10 @@ export class ComplianceService {
       }
 
       // Check payment pattern
-      const recentPayments = await prisma.payment.findMany({
-        where: {
-          userId: paymentData.userId,
-          createdAt: {
-            gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
-          },
-        },
-      });
+      const recentPayments = await firestoreService.getPaymentsByUserId(paymentData.userId);
+      const recentPaymentsLast24h = recentPayments.filter(p => new Date(p.createdAt).getTime() >= Date.now() - 24 * 60 * 60 * 1000);
 
-      if (recentPayments.length > 5) {
+      if (recentPaymentsLast24h.length > 5) {
         riskScore += 25;
         riskFactors.push('Multiple payments in short timeframe');
       }
@@ -232,13 +221,10 @@ export class ComplianceService {
       }
 
       // Update payment with AML results
-      await prisma.payment.update({
-        where: { id: paymentId },
-        data: {
-          amlScreeningStatus: amlStatus,
-          amlScreeningDate: new Date(),
-          amlRiskScore: riskScore,
-        },
+      await firestoreService.updatePayment(paymentId, {
+        amlScreeningStatus: amlStatus,
+        amlScreeningDate: new Date(),
+        amlRiskScore: riskScore,
       });
 
       // Create compliance event if high risk
@@ -282,16 +268,14 @@ export class ComplianceService {
     userAgent?: string
   ) {
     try {
-      const consent = await prisma.privacyConsent.create({
-        data: {
-          userId,
-          consentType: consentType as any,
-          consentGranted: granted,
-          consentVersion: version,
-          ipAddress,
-          userAgent,
-          legalBasis: 'CONSENT',
-        },
+      const consent = await firestoreService.createPrivacyConsent({
+        userId,
+        consentType,
+        consentGranted: granted,
+        consentVersion: version,
+        ipAddress,
+        userAgent,
+        legalBasis: 'CONSENT',
       });
 
       await this.createAuditLog(
@@ -396,32 +380,32 @@ export class ComplianceService {
 
   // Private helper methods
 
-  private static async performSanctionsScreening(user: User, profile: any) {
+  private static async performSanctionsScreening(user: any, profile: any) {
     // In production, integrate with sanctions screening service
     // For now, return clear status
-    await prisma.userComplianceProfile.update({
-      where: { userId: user.id },
-      data: {
+    await firestoreService.updateUser(user.id, {
+      complianceProfile: {
+        ...(user.complianceProfile || {}),
         sanctionsScreened: true,
         sanctionsScreenDate: new Date(),
         sanctionsStatus: 'CLEAR',
       },
-    });
+    } as any);
 
     return { status: 'CLEAR' };
   }
 
-  private static async performPEPScreening(user: User, profile: any) {
+  private static async performPEPScreening(user: any, profile: any) {
     // In production, integrate with PEP screening service
     // For now, return not PEP status
-    await prisma.userComplianceProfile.update({
-      where: { userId: user.id },
-      data: {
+    await firestoreService.updateUser(user.id, {
+      complianceProfile: {
+        ...(user.complianceProfile || {}),
         pepScreened: true,
         pepScreenDate: new Date(),
         pepStatus: 'NOT_PEP',
       },
-    });
+    } as any);
 
     return { status: 'NOT_PEP' };
   }

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { JwtUtil } from '../utils/jwt.js';
-import { prisma } from '../utils/prisma.js';
+import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
 
 // Extend Request interface to include user
@@ -46,17 +46,8 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       return;
     }
     
-    // Get user from database to ensure they still exist and are active
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isEmailVerified: true,
-      },
-    });
+    // Get user from Firestore to ensure they still exist and are active
+    const user = await firestoreService.getUserById(payload.userId);
 
     if (!user) {
       res.status(401).json({
@@ -97,10 +88,7 @@ export const requireEmailVerification = async (req: Request, res: Response, next
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: { isEmailVerified: true },
-    });
+  const user = await firestoreService.getUserById(req.user.id);
 
     if (!user?.isEmailVerified) {
       res.status(403).json({
@@ -185,15 +173,7 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
     if (token) {
       try {
         const payload = JwtUtil.verifyToken(token);
-        const user = await prisma.user.findUnique({
-          where: { id: payload.userId },
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            role: true,
-          },
-        });
+        const user = await firestoreService.getUserById(payload.userId);
 
         if (user) {
           req.user = {
@@ -262,13 +242,7 @@ export const validateSubscriptionOwnership = async (req: Request, res: Response,
       return;
     }
 
-    const subscription = await prisma.subscription.findUnique({
-      where: { id: subscriptionId },
-      select: {
-        userId: true,
-        organizationId: true,
-      },
-    });
+    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
 
     if (!subscription) {
       res.status(404).json({
@@ -326,20 +300,9 @@ export const validateLicenseOwnership = async (req: Request, res: Response, next
       return;
     }
 
-    const whereClause = licenseId ? { id: licenseId } : { key: licenseKey };
-    
-    const license = await prisma.license.findUnique({
-      where: whereClause,
-      select: {
-        userId: true,
-        subscription: {
-          select: {
-            userId: true,
-            organizationId: true,
-          },
-        },
-      },
-    });
+    const license = licenseId
+      ? await firestoreService.getLicenseById(licenseId)
+      : await firestoreService.getLicenseByKey(licenseKey);
 
     if (!license) {
       res.status(404).json({
@@ -352,7 +315,6 @@ export const validateLicenseOwnership = async (req: Request, res: Response, next
     // Check if user owns the license or subscription, or is an admin
     const hasAccess = 
       license.userId === req.user.id ||
-      license.subscription.userId === req.user.id ||
       req.user.role === 'SUPERADMIN' ||
       req.user.role === 'ENTERPRISE_ADMIN';
 

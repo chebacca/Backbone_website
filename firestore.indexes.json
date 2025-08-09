@@ -66,13 +66,6 @@
       ]
     },
     {
-      "collectionGroup": "email_logs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "sendgridId", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "license_delivery_logs",
       "queryScope": "COLLECTION",
       "fields": [

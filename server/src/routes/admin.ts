@@ -116,51 +116,13 @@ router.get('/users', asyncHandler(async (req: Request, res: Response) => {
   const status = req.query.status as string;
   const skip = (page - 1) * limit;
 
-  const whereClause: any = {};
-
-  if (search) {
-    whereClause.OR = [
-      { email: { contains: search, mode: 'insensitive' } },
-      { name: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-
-  if (role) {
-    whereClause.role = role;
-  }
-
-  if (status === 'verified') {
-    whereClause.isEmailVerified = true;
-  } else if (status === 'unverified') {
-    whereClause.isEmailVerified = false;
-  }
-
-  const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      where: whereClause,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isEmailVerified: true,
-        kycStatus: true,
-        lastLoginAt: true,
-        createdAt: true,
-        _count: {
-          select: {
-            subscriptions: true,
-            licenses: true,
-            payments: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    }),
-    prisma.user.count({ where: whereClause }),
-  ]);
+  let users = await firestoreService.getAllUsers();
+  if (search) users = users.filter(u => (u.email?.toLowerCase().includes(search.toLowerCase()) || u.name?.toLowerCase().includes(search.toLowerCase())));
+  if (role) users = users.filter(u => u.role === role);
+  if (status === 'verified') users = users.filter(u => u.isEmailVerified);
+  if (status === 'unverified') users = users.filter(u => !u.isEmailVerified);
+  const total = users.length;
+  users = users.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(skip, skip + limit);
 
   res.json({
     success: true,
@@ -182,31 +144,16 @@ router.get('/users', asyncHandler(async (req: Request, res: Response) => {
 router.get('/users/:userId', asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params;
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      subscriptions: {
-        include: {
-          licenses: true,
-          payments: {
-            orderBy: { createdAt: 'desc' },
-            take: 10,
-          },
-        },
-      },
-      complianceProfile: true,
-      billingAddress: true,
-      businessProfile: true,
-      auditLogs: {
-        orderBy: { timestamp: 'desc' },
-        take: 20,
-      },
-      complianceEvents: {
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      },
-    },
-  });
+  const user = await firestoreService.getUserById(userId);
+  if (!user) throw createApiError('User not found', 404);
+  const subs = await firestoreService.getSubscriptionsByUserId(userId);
+  const subsData = await Promise.all(subs.map(async s => ({
+    ...s,
+    licenses: await firestoreService.getLicensesBySubscriptionId(s.id),
+    payments: (await firestoreService.getPaymentsBySubscriptionId(s.id)).slice(0, 10),
+  })));
+  const auditLogs = (await firestoreService.getAuditLogsByUser(userId)).slice(0, 20);
+  const complianceEvents = (await firestoreService.getComplianceEvents({})).slice(0, 10);
 
   if (!user) {
     throw createApiError('User not found', 404);
@@ -244,10 +191,8 @@ router.put('/users/:userId', [
   if (isEmailVerified !== undefined) updateData.isEmailVerified = isEmailVerified;
   if (kycStatus !== undefined) updateData.kycStatus = kycStatus;
 
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: updateData,
-  });
+  await firestoreService.updateUser(userId, updateData);
+  const user = await firestoreService.getUserById(userId);
 
   // Create audit log
   await ComplianceService.createAuditLog(
@@ -282,30 +227,11 @@ router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) =>
   if (tier) whereClause.tier = tier;
   if (status) whereClause.status = status;
 
-  const [subscriptions, total] = await Promise.all([
-    prisma.subscription.findMany({
-      where: whereClause,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
-        _count: {
-          select: {
-            licenses: true,
-            payments: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    }),
-    prisma.subscription.count({ where: whereClause }),
-  ]);
+  let subscriptions = await firestoreService.getAllSubscriptions();
+  if (tier) subscriptions = subscriptions.filter(s => s.tier === tier);
+  if (status) subscriptions = subscriptions.filter(s => s.status === status);
+  const total = subscriptions.length;
+  subscriptions = subscriptions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(skip, skip + limit);
 
   res.json({
     success: true,
@@ -335,31 +261,11 @@ router.get('/licenses', asyncHandler(async (req: Request, res: Response) => {
   if (tier) whereClause.tier = tier;
   if (status) whereClause.status = status;
 
-  const [licenses, total] = await Promise.all([
-    prisma.license.findMany({
-      where: whereClause,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
-        subscription: {
-          select: {
-            id: true,
-            tier: true,
-            status: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    }),
-    prisma.license.count({ where: whereClause }),
-  ]);
+  let licenses = await firestoreService.getAllLicenses();
+  if (tier) licenses = licenses.filter(l => l.tier === tier);
+  if (status) licenses = licenses.filter(l => l.status === status);
+  const total = licenses.length;
+  licenses = licenses.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(skip, skip + limit);
 
   res.json({
     success: true,
@@ -386,23 +292,13 @@ router.post('/licenses/:licenseId/revoke', [
   const adminUserId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const license = await prisma.license.findUnique({
-    where: { id: licenseId },
-    include: {
-      user: { select: { id: true, email: true } },
-    },
-  });
+  const license = await firestoreService.getLicenseById(licenseId);
 
   if (!license) {
     throw createApiError('License not found', 404);
   }
 
-  await prisma.license.update({
-    where: { id: licenseId },
-    data: {
-      status: 'REVOKED',
-    },
-  });
+  await firestoreService.updateLicense(licenseId, { status: 'REVOKED' });
 
   // Create audit log
   await ComplianceService.createAuditLog(
@@ -450,31 +346,9 @@ router.get('/compliance-events', asyncHandler(async (req: Request, res: Response
   if (resolved === 'true') whereClause.resolved = true;
   if (resolved === 'false') whereClause.resolved = false;
 
-  const [events, total] = await Promise.all([
-    prisma.complianceEvent.findMany({
-      where: whereClause,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
-        payment: {
-          select: {
-            id: true,
-            amount: true,
-            currency: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    }),
-    prisma.complianceEvent.count({ where: whereClause }),
-  ]);
+  const eventsAll = await firestoreService.getComplianceEvents({ severity, eventType, resolved: resolved === 'true' ? true : resolved === 'false' ? false : undefined });
+  const total = eventsAll.length;
+  const events = eventsAll.slice(skip, skip + limit);
 
   res.json({
     success: true,
@@ -501,18 +375,16 @@ router.post('/compliance-events/:eventId/resolve', [
   const { resolution } = req.body;
   const adminUserId = req.user!.id;
 
-  const event = await prisma.complianceEvent.update({
-    where: { id: eventId },
-    data: {
-      resolved: true,
-      resolvedAt: new Date(),
+  await firestoreService.updateComplianceEvent(eventId, {
+    resolved: true,
+    resolvedAt: new Date(),
+    resolvedBy: adminUserId,
+    metadata: {
+      resolution,
       resolvedBy: adminUserId,
-      metadata: {
-        resolution,
-        resolvedBy: adminUserId,
-      },
     },
   });
+  const event = { id: eventId };
 
   res.json({
     success: true,
@@ -645,10 +517,8 @@ router.post('/licenses/create', [
   const requestInfo = (req as any).requestInfo;
 
   // Validate subscription belongs to user and is active
-  const subscription = await prisma.subscription.findFirst({
-    where: { id: subscriptionId, userId },
-    include: { user: true },
-  });
+  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+  const subUser = subscription ? await firestoreService.getUserById(subscription.userId) : null;
 
   if (!subscription) {
     throw createApiError('Subscription not found for user', 404);
@@ -663,22 +533,20 @@ router.post('/licenses/create', [
 
   // Create delivery logs tagged as manual issuance
   for (const license of licenses) {
-    await prisma.licenseDeliveryLog.create({
-      data: {
-        licenseId: license.id,
-        paymentId: 'manual_issue',
-        deliveryMethod: 'EMAIL',
-        emailAddress: subscription.user.email,
-        deliveryStatus: 'PENDING',
-        ipAddress: requestInfo?.ip,
-        userAgent: requestInfo?.userAgent,
-      },
+    await firestoreService.createLicenseDeliveryLog({
+      licenseId: license.id,
+      paymentId: 'manual_issue',
+      deliveryMethod: 'EMAIL',
+      emailAddress: subUser?.email,
+      deliveryStatus: 'PENDING',
+      ipAddress: requestInfo?.ip,
+      userAgent: requestInfo?.userAgent,
     });
   }
 
   // Send email with license keys (no invoice link)
   try {
-    await EmailService.sendLicenseDeliveryEmail(subscription.user, licenses, subscription, null as any);
+    await EmailService.sendLicenseDeliveryEmail(subUser, licenses, subscription, null as any);
   } catch (err) {
     // Non-blocking: log but continue
   }
@@ -769,13 +637,7 @@ class AdminService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const payments = await prisma.payment.findMany({
-      where: {
-        createdAt: { gte: startDate },
-        status: 'SUCCEEDED',
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const payments = (await firestoreService.getAllPayments()).filter(p => p.status === 'SUCCEEDED' && new Date(p.createdAt) >= startDate).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     // Group by day
     const dailyRevenue = payments.reduce((acc, payment) => {
@@ -799,18 +661,12 @@ class AdminService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const [totalLicenses, activeLicenses, newLicenses] = await Promise.all([
-      prisma.license.count(),
-      prisma.license.count({ where: { status: 'ACTIVE' } }),
-      prisma.license.count({
-        where: { createdAt: { gte: startDate } },
-      }),
-    ]);
-
-    const statusBreakdown = await prisma.license.groupBy({
-      by: ['status'],
-      _count: { status: true },
-    });
+    const licenses = await firestoreService.getAllLicenses();
+    const totalLicenses = licenses.length;
+    const activeLicenses = licenses.filter(l => l.status === 'ACTIVE').length;
+    const newLicenses = licenses.filter(l => new Date(l.createdAt) >= startDate).length;
+    const statusBreakdown = Object.entries(licenses.reduce((acc: Record<string, number>, l) => { acc[l.status] = (acc[l.status] || 0) + 1; return acc; }, {}))
+      .map(([status, count]) => ({ status, _count: { status: count } }));
 
     return {
       totalLicenses,
@@ -846,34 +702,18 @@ class AdminService {
         throw createApiError('Unsupported report type', 400);
     }
 
-    const report = await prisma.regulatoryReport.create({
-      data: {
-        reportType: reportType as any,
-        reportPeriod: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
-        generatedBy,
-        data,
-      },
-    });
-
-    return report;
+    return {
+      id: `report_${Date.now()}`,
+      reportType,
+      reportPeriod: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+      generatedBy,
+      data,
+      createdAt: new Date(),
+    };
   }
 
   static async getAMLReport(startDate: Date, endDate: Date) {
-    const payments = await prisma.payment.findMany({
-      where: {
-        createdAt: { gte: startDate, lte: endDate },
-        amlScreeningStatus: { in: ['FAILED', 'REQUIRES_REVIEW'] },
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            complianceProfile: true,
-          },
-        },
-      },
-    });
+    const payments = (await firestoreService.getAllPayments()).filter(p => new Date(p.createdAt) >= startDate && new Date(p.createdAt) <= endDate && ['FAILED', 'REQUIRES_REVIEW'].includes(p.amlScreeningStatus));
 
     return {
       totalSuspiciousTransactions: payments.length,
@@ -890,19 +730,8 @@ class AdminService {
   }
 
   static async getKYCReport(startDate: Date, endDate: Date) {
-    const users = await prisma.user.findMany({
-      where: {
-        kycCompletedAt: { gte: startDate, lte: endDate },
-      },
-      include: {
-        complianceProfile: true,
-      },
-    });
-
-    const kycStats = await prisma.user.groupBy({
-      by: ['kycStatus'],
-      _count: { kycStatus: true },
-    });
+    const users = (await firestoreService.getAllUsers()).filter(u => u.kycCompletedAt && new Date(u.kycCompletedAt) >= startDate && new Date(u.kycCompletedAt) <= endDate);
+    const kycStats = users.reduce((acc: Record<string, number>, u: any) => { acc[u.kycStatus] = (acc[u.kycStatus] || 0) + 1; return acc; }, {} as Record<string, number>);
 
     return {
       totalKYCCompleted: users.length,
@@ -912,20 +741,9 @@ class AdminService {
   }
 
   static async getGDPRReport(startDate: Date, endDate: Date) {
-    const [consentRecords, auditLogs, complianceEvents] = await Promise.all([
-      prisma.privacyConsent.findMany({
-        where: { consentDate: { gte: startDate, lte: endDate } },
-      }),
-      prisma.userAuditLog.findMany({
-        where: { timestamp: { gte: startDate, lte: endDate } },
-      }),
-      prisma.complianceEvent.findMany({
-        where: {
-          createdAt: { gte: startDate, lte: endDate },
-          eventType: 'GDPR_VIOLATION',
-        },
-      }),
-    ]);
+    const consentRecords = (await firestoreService.getPrivacyConsentsByUser('')).filter(c => new Date(c.consentDate) >= startDate && new Date(c.consentDate) <= endDate);
+    const auditLogs = (await firestoreService.getAuditLogsByUser('')).filter((a: any) => new Date(a.timestamp) >= startDate && new Date(a.timestamp) <= endDate);
+    const complianceEvents = (await firestoreService.getComplianceEvents({})).filter((e: any) => new Date(e.createdAt) >= startDate && new Date(e.createdAt) <= endDate && e.eventType === 'GDPR_VIOLATION');
 
     return {
       consentRecords: consentRecords.length,

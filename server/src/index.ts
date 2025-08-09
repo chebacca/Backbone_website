@@ -219,6 +219,18 @@ async function ensureSuperAdminSeed(): Promise<void> {
 // Invoke seeding at cold start (both local and Functions)
 await ensureSuperAdminSeed();
 
+// One-time setup endpoint to (re)seed SUPERADMIN on demand, guarded by a setup token
+app.post('/api/admin/seed-superadmin', async (req, res) => {
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
+  await ensureSuperAdminSeed();
+  res.json({ success: true });
+});
+
 // Export Firebase HTTPS function for production
 // Note: Uses Application Default Credentials for Firestore in Functions
 export const api = onRequest({

@@ -26,7 +26,7 @@ import {
   Check,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useLoading } from '@/context/LoadingContext';
@@ -138,7 +138,7 @@ const RegisterPage: React.FC = () => {
       }}
     >
       <Container maxWidth="sm">
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -601,7 +601,7 @@ const RegisterPage: React.FC = () => {
               </Typography>
             </Box>
           </Paper>
-        </motion.div>
+        </Box>
       </Container>
     </Box>
   );

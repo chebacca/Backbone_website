@@ -1,125 +1,170 @@
 #!/bin/bash
 
-# Quick Start Script for Dashboard v14 Licensing Website
-# Simple script that uses the existing pnpm dev command
+# Dashboard v14 Licensing Website - Quick Start Script
+# This script sets up the development environment or deploys to Firebase
 
 set -e
 
 # Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
 RED='\033[0;31m'
-NC='\033[0m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Starting Dashboard v14 Licensing Website...${NC}"
+echo -e "${BLUE}🚀 Dashboard v14 Licensing Website - Quick Start${NC}"
 echo
 
-# Function to check if a port is in use
-check_port() {
-    local port=$1
-    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-        return 0  # Port is in use
-    else
-        return 1  # Port is free
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if Firebase CLI is installed
+check_firebase_cli() {
+    if ! command -v firebase &> /dev/null; then
+        print_error "Firebase CLI is not installed."
+        echo "Please install it first:"
+        echo "npm install -g firebase-tools"
+        exit 1
     fi
 }
 
-# Function to kill processes on specified ports
-kill_processes_on_ports() {
-    local ports=("$@")
-    
-    for port in "${ports[@]}"; do
-        if check_port $port; then
-            echo -e "${YELLOW}⚠️  Port $port is in use. Killing existing process...${NC}"
-            lsof -ti:$port | xargs kill -9 2>/dev/null || true
-            sleep 1
-        fi
-    done
+# Check if user is logged into Firebase
+check_firebase_login() {
+    if ! firebase projects:list &> /dev/null; then
+        print_error "You are not logged into Firebase."
+        echo "Please run: firebase login"
+        exit 1
+    fi
 }
 
-# Check if pnpm is installed
-if ! command -v pnpm &> /dev/null; then
-    echo "❌ pnpm is not installed. Please install pnpm first:"
-    echo "npm install -g pnpm"
-    exit 1
-fi
-
-# Install dependencies if needed
-if [ ! -d "node_modules" ]; then
-    echo "📦 Installing dependencies..."
+# Function to start development environment
+start_development() {
+    print_status "Starting development environment..."
+    
+    # Install dependencies
+    print_status "Installing dependencies..."
     pnpm install
-fi
+    
+    # Check if environment files exist
+    if [ ! -f "server/.env" ]; then
+        print_warning "No .env file found in server directory."
+        if [ -f "server/env.example" ]; then
+            print_status "Creating .env file from example..."
+            cp server/env.example server/.env
+            print_success "Created .env file. Please update it with your configuration."
+        else
+            print_error "No env.example file found. Please create a .env file manually."
+            exit 1
+        fi
+    fi
+    
+    # Start development servers
+    print_status "Starting development servers..."
+    pnpm dev &
+    DEV_PID=$!
+    
+    # Wait for servers to start
+    sleep 8
+    
+    print_success "Development environment started!"
+    print_status "Frontend: http://localhost:3002"
+    print_status "Backend: http://localhost:3003"
+    print_status "Press Ctrl+C to stop"
+    
+    # Wait for user to stop
+    wait $DEV_PID
+}
 
-# Start Docker database container
-echo "🐳 Starting database container..."
-if ! docker ps | grep -q "dashboard-v14-licensing-website-db-1"; then
-    echo "Starting database container..."
-    docker-compose up -d db
-    echo "Waiting for database to be ready..."
-    sleep 10
-else
-    echo "Database container is already running"
-fi
+# Function to deploy to Firebase
+deploy_to_firebase() {
+    print_status "Deploying to Firebase..."
+    
+    check_firebase_cli
+    check_firebase_login
+    
+    # Check if firebase.json exists
+    if [ ! -f "firebase.json" ]; then
+        print_error "firebase.json not found. Please run 'firebase init' first."
+        exit 1
+    fi
+    
+    # Build the project
+    print_status "Building project..."
+    pnpm build
+    
+    # Deploy to Firebase
+    print_status "Deploying to Firebase..."
+    firebase deploy
+    
+    print_success "Deployment completed!"
+    print_status "Your app is now live on Firebase!"
+}
 
-# Setup database
-echo "🗄️  Setting up database..."
-cd server
-pnpm db:generate
-pnpm db:push
-cd ..
+# Function to initialize Firebase project
+init_firebase() {
+    print_status "Initializing Firebase project..."
+    
+    check_firebase_cli
+    check_firebase_login
+    
+    # Initialize Firebase
+    firebase init
+    
+    print_success "Firebase project initialized!"
+    print_status "You can now deploy with: $0 deploy"
+}
 
-# Kill any existing processes on our ports first
-echo -e "${YELLOW}🧹 Cleaning up any existing processes on ports 3002 and 3003...${NC}"
-kill_processes_on_ports 3002 3003
-echo
+# Function to show help
+show_help() {
+    echo "Dashboard v14 Licensing Website - Quick Start"
+    echo ""
+    echo "Usage: $0 [OPTION]"
+    echo ""
+    echo "Options:"
+    echo "  dev, development    Start development environment (default)"
+    echo "  deploy              Deploy to Firebase"
+    echo "  init                Initialize Firebase project"
+    echo "  help                Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                  # Start development environment"
+    echo "  $0 dev              # Start development environment"
+    echo "  $0 deploy           # Deploy to Firebase"
+    echo "  $0 init             # Initialize Firebase project"
+    echo ""
+}
 
-# Start both servers using the existing dev script
-echo -e "${GREEN}🎯 Starting backend and frontend servers...${NC}"
-echo "Frontend will be available at: http://localhost:3002"
-echo "Backend API will be available at: http://localhost:3003"
-echo
-echo "Press Ctrl+C to stop all servers"
-echo
-
-# Use npx to run the commands directly
-echo "Starting servers..."
-
-# Start backend
-echo "Starting backend server..."
-cd server
-npx tsx src/index.ts &
-BACKEND_PID=$!
-cd ..
-
-# Start frontend
-echo "Starting frontend server..."
-cd client
-npx vite --port 3002 --host &
-FRONTEND_PID=$!
-cd ..
-
-# Wait for both servers to start
-sleep 5
-
-# Check if servers are running
-echo "Checking server status..."
-if curl -s http://localhost:3003/health >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ Backend server started successfully${NC}"
-else
-    echo -e "${RED}❌ Backend server failed to start${NC}"
-fi
-
-if curl -s http://localhost:3002 >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ Frontend server started successfully${NC}"
-else
-    echo -e "${RED}❌ Frontend server failed to start${NC}"
-fi
-
-echo
-echo -e "${GREEN}🎉 Servers are running!${NC}"
-echo "Frontend: http://localhost:3002"
-echo "Backend: http://localhost:3003"
-
-# Keep script running and handle cleanup
-trap 'echo "Shutting down servers..."; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit' INT TERM
-wait
+# Main script logic
+case "${1:-dev}" in
+    "dev"|"development")
+        start_development
+        ;;
+    "deploy")
+        deploy_to_firebase
+        ;;
+    "init")
+        init_firebase
+        ;;
+    "help"|"-h"|"--help")
+        show_help
+        ;;
+    *)
+        print_error "Unknown option: $1"
+        show_help
+        exit 1
+        ;;
+esac

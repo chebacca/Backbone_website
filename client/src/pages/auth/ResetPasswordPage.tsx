@@ -20,7 +20,7 @@ import {
   Error,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate, useParams, Link as RouterLink } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import { authService } from '@/services/authService';
@@ -121,7 +121,7 @@ const ResetPasswordPage: React.FC = () => {
         }}
       >
         <Container maxWidth="sm">
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -167,7 +167,7 @@ const ResetPasswordPage: React.FC = () => {
                 </Button>
               </Box>
             </Paper>
-          </motion.div>
+          </Box>
         </Container>
       </Box>
     );
@@ -185,7 +185,7 @@ const ResetPasswordPage: React.FC = () => {
         }}
       >
         <Container maxWidth="sm">
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -226,7 +226,7 @@ const ResetPasswordPage: React.FC = () => {
                 Continue to Login
               </Button>
             </Paper>
-          </motion.div>
+          </Box>
         </Container>
       </Box>
     );
@@ -243,7 +243,7 @@ const ResetPasswordPage: React.FC = () => {
       }}
     >
       <Container maxWidth="sm">
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -480,7 +480,7 @@ const ResetPasswordPage: React.FC = () => {
               </Typography>
             </Box>
           </Paper>
-        </motion.div>
+        </Box>
       </Container>
     </Box>
   );

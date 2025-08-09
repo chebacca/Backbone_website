@@ -28,8 +28,8 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
-    sourcemap: true,
+    outDir: '../deploy',
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -39,5 +39,13 @@ export default defineConfig({
         },
       },
     },
+  },
+  preview: {
+    port: 3002,
+    host: true,
+  },
+  define: {
+    // Ensure environment variables are available at build time
+    __DEV__: JSON.stringify(process.env.NODE_ENV === 'development'),
   },
 });

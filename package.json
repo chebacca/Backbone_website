@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\"",
-    "dev:client": "cd client && vite --port 3002",
+    "dev:client": "cd client && vite",
     "dev:server": "cd server && nodemon --exec \"npx tsx src/index.ts\"",
     "build": "pnpm build:shared && pnpm build:client && pnpm build:server",
     "build:shared": "cd shared && tsc",
@@ -13,7 +13,15 @@
     "build:server": "cd server && tsc",
     "start": "cd server && node dist/index.js",
     "setup": "pnpm install",
-    "test": "echo \"Tests will be added\" && exit 0"
+    "test": "echo \"Tests will be added\" && exit 0",
+    "deploy": "pnpm build && firebase deploy",
+    "deploy:hosting": "pnpm build:client && firebase deploy --only hosting",
+    "deploy:functions": "pnpm build:server && firebase deploy --only functions",
+    "deploy:firestore": "firebase deploy --only firestore",
+    "firebase:init": "firebase init",
+    "firebase:login": "firebase login",
+    "firebase:use": "firebase use",
+    "firebase:emulators": "firebase emulators:start"
   },
   "keywords": [
     "licensing",
@@ -21,7 +29,9 @@
     "subscription",
     "enterprise",
     "dashboard",
-    "saas"
+    "saas",
+    "firebase",
+    "firestore"
   ],
   "workspaces": [
     "client",

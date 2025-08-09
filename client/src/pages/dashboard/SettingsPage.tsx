@@ -36,7 +36,7 @@ import {
   PhotoCamera,
   Warning,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { useAuth } from '@/context/AuthContext';
 import { authService } from '@/services/authService';
@@ -196,7 +196,7 @@ const SettingsPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -209,10 +209,10 @@ const SettingsPage: React.FC = () => {
             Manage your account preferences and security settings
           </Typography>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* Tab Navigation */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}
@@ -224,11 +224,11 @@ const SettingsPage: React.FC = () => {
           <TabButton id="privacy" label="Privacy" isActive={activeTab === 'privacy'} />
           <TabButton id="danger" label="Danger Zone" isActive={activeTab === 'danger'} />
         </Box>
-      </motion.div>
+      </Box>
 
       {/* Profile Tab */}
       {activeTab === 'profile' && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -391,12 +391,12 @@ const SettingsPage: React.FC = () => {
               </Paper>
             </Grid>
           </Grid>
-        </motion.div>
+        </Box>
       )}
 
       {/* Security Tab */}
       {activeTab === 'security' && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -522,12 +522,12 @@ const SettingsPage: React.FC = () => {
               </Paper>
             </Grid>
           </Grid>
-        </motion.div>
+        </Box>
       )}
 
       {/* Notifications Tab */}
       {activeTab === 'notifications' && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -565,12 +565,12 @@ const SettingsPage: React.FC = () => {
               ))}
             </List>
           </Paper>
-        </motion.div>
+        </Box>
       )}
 
       {/* Privacy Tab */}
       {activeTab === 'privacy' && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -625,12 +625,12 @@ const SettingsPage: React.FC = () => {
               Export My Data
             </Button>
           </Paper>
-        </motion.div>
+        </Box>
       )}
 
       {/* Danger Zone Tab */}
       {activeTab === 'danger' && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -670,7 +670,7 @@ const SettingsPage: React.FC = () => {
               </Button>
             </Box>
           </Paper>
-        </motion.div>
+        </Box>
       )}
 
       {/* Delete Account Dialog */}

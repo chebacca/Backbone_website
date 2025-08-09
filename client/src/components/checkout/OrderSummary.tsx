@@ -18,7 +18,7 @@ import {
   Person,
   Group,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { PricingTier } from '@/services/paymentService';
 
 interface OrderSummaryProps {
@@ -107,7 +107,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   };
 
   return (
-    <motion.div
+    <Box
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.6 }}
@@ -292,6 +292,6 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
           </Typography>
         </Box>
       </Paper>
-    </motion.div>
+    </Box>
   );
 };

@@ -41,7 +41,7 @@ import {
   ContentCopy,
   Link as LinkIcon,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 
 interface SDKVersion {
@@ -215,7 +215,7 @@ const DownloadsPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -228,10 +228,10 @@ const DownloadsPage: React.FC = () => {
             Access SDK packages, SDK documentation, and development resources
           </Typography>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* License Key Card */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}
@@ -273,10 +273,10 @@ const DownloadsPage: React.FC = () => {
             Use this key to authenticate SDK downloads and activate your licenses
           </Typography>
         </Alert>
-      </motion.div>
+      </Box>
 
       {/* Tabs */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -299,11 +299,11 @@ const DownloadsPage: React.FC = () => {
             <Tab label="Download History" icon={<History />} />
           </Tabs>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* SDK Downloads Tab */}
       {selectedTab === 0 && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -311,7 +311,7 @@ const DownloadsPage: React.FC = () => {
           <Grid container spacing={3}>
             {mockSDKVersions.map((sdk, index) => (
               <Grid item xs={12} key={sdk.id}>
-                <motion.div
+                <Box
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: index * 0.1 }}
@@ -387,16 +387,16 @@ const DownloadsPage: React.FC = () => {
                       </Grid>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </Box>
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </Box>
       )}
 
       {/* Documentation Tab */}
       {selectedTab === 1 && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -404,7 +404,7 @@ const DownloadsPage: React.FC = () => {
           <Grid container spacing={3}>
                           {mockSDKDocumentation.map((doc, index) => (
               <Grid item xs={12} md={6} lg={4} key={doc.id}>
-                <motion.div
+                <Box
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: index * 0.1 }}
@@ -459,16 +459,16 @@ const DownloadsPage: React.FC = () => {
                       </Button>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </Box>
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </Box>
       )}
 
       {/* Download History Tab */}
       {selectedTab === 2 && (
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -521,7 +521,7 @@ const DownloadsPage: React.FC = () => {
               ))}
             </List>
           </Paper>
-        </motion.div>
+        </Box>
       )}
 
       {/* Download Confirmation Dialog */}

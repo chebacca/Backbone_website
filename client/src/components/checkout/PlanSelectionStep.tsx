@@ -23,7 +23,7 @@ import {
   Group,
   Business,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { PricingTier } from '@/services/paymentService';
 
 interface PlanSelectionStepProps {
@@ -140,7 +140,7 @@ export const PlanSelectionStep: React.FC<PlanSelectionStepProps> = ({
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {pricingTiers.map((tier) => (
           <Grid item xs={12} md={4} key={tier.id}>
-            <motion.div
+            <Box
               whileHover={{ scale: 1.02 }}
               transition={{ duration: 0.2 }}
             >
@@ -255,7 +255,7 @@ export const PlanSelectionStep: React.FC<PlanSelectionStepProps> = ({
                   )}
                 </CardContent>
               </Card>
-            </motion.div>
+            </Box>
           </Grid>
         ))}
       </Grid>

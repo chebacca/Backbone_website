@@ -46,7 +46,7 @@ import {
   Clear as ClearIcon,
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -359,7 +359,7 @@ const AdminDashboard: React.FC = () => {
       <Navigation />
       <Box sx={{ pt: 8, pb: 4 }}>
         <Container maxWidth="xl">
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -380,7 +380,7 @@ const AdminDashboard: React.FC = () => {
         {/* Stats Cards */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} lg={3}>
-            <motion.div
+            <Box
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
@@ -403,11 +403,11 @@ const AdminDashboard: React.FC = () => {
                   </Typography>
                 </CardContent>
               </Card>
-            </motion.div>
+            </Box>
           </Grid>
 
           <Grid item xs={12} sm={6} lg={3}>
-            <motion.div
+            <Box
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
@@ -430,11 +430,11 @@ const AdminDashboard: React.FC = () => {
                   </Typography>
                 </CardContent>
               </Card>
-            </motion.div>
+            </Box>
           </Grid>
 
           <Grid item xs={12} sm={6} lg={3}>
-            <motion.div
+            <Box
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
@@ -457,11 +457,11 @@ const AdminDashboard: React.FC = () => {
                   </Typography>
                 </CardContent>
               </Card>
-            </motion.div>
+            </Box>
           </Grid>
 
           <Grid item xs={12} sm={6} lg={3}>
-            <motion.div
+            <Box
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.4 }}
@@ -484,7 +484,7 @@ const AdminDashboard: React.FC = () => {
                   </Typography>
                 </CardContent>
               </Card>
-            </motion.div>
+            </Box>
           </Grid>
         </Grid>
 
@@ -511,7 +511,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Users Tab */}
         {activeTab === 0 && (
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -630,12 +630,12 @@ const AdminDashboard: React.FC = () => {
                 </TableBody>
               </Table>
             </TableContainer>
-          </motion.div>
+          </Box>
         )}
 
         {/* Licenses Tab */}
         {activeTab === 1 && (
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -747,12 +747,12 @@ const AdminDashboard: React.FC = () => {
                 </TableBody>
               </Table>
             </TableContainer>
-          </motion.div>
+          </Box>
         )}
 
         {/* Invoices Tab */}
         {activeTab === 2 && (
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -898,12 +898,12 @@ const AdminDashboard: React.FC = () => {
               <Chip label={`Page ${paymentsPage} of ${paymentsTotalPages}`} />
               <Button disabled={paymentsPage >= paymentsTotalPages} onClick={() => setPaymentsPage((p) => Math.min(paymentsTotalPages, p + 1))}>Next</Button>
             </Box>
-          </motion.div>
+          </Box>
         )}
 
         {/* System Health Tab */}
         {activeTab === 3 && (
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -956,9 +956,9 @@ const AdminDashboard: React.FC = () => {
                 </Paper>
               </Grid>
             </Grid>
-          </motion.div>
+          </Box>
         )}
-      </motion.div>
+      </Box>
 
       {/* User Edit Dialog */}
       <Dialog

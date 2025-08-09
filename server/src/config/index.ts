@@ -3,12 +3,16 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const config = {
-  // Server
+  // Server (only used for local development)
   port: parseInt(process.env.PORT || '3003'),
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  // Database removed (Prisma -> Firestore). Keep placeholder for backward compat
-  databaseUrl: process.env.DATABASE_URL || '',
+  // Firebase (primary database)
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID || '',
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
+    privateKey: process.env.FIREBASE_PRIVATE_KEY || '',
+  },
 
   // JWT
   jwtSecret: process.env.JWT_SECRET || 'your-super-secure-jwt-secret',
@@ -32,8 +36,8 @@ export const config = {
     fromName: process.env.FROM_NAME || 'Dashboard v14 Licensing',
   },
 
-  // Frontend
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3002',
+  // Frontend (Firebase hosting URL)
+  frontendUrl: process.env.FRONTEND_URL || 'https://your-project-id.web.app',
 
   // Cloud Services
   aws: {
@@ -49,23 +53,30 @@ export const config = {
 
   // Security
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12'),
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3002',
+  corsOrigin: process.env.CORS_ORIGIN || 'https://your-project-id.web.app',
+
+  // Admin
+  admin: {
+    email: process.env.ADMIN_EMAIL || 'admin@example.com',
+    password: process.env.ADMIN_PASSWORD || 'admin123',
+    name: process.env.ADMIN_NAME || 'Admin User',
+  },
 
   // Features
   features: {
-    enableRegistration: process.env.ENABLE_REGISTRATION === 'true',
-    enableEmailVerification: process.env.ENABLE_EMAIL_VERIFICATION === 'true',
-    enablePasswordReset: process.env.ENABLE_PASSWORD_RESET === 'true',
-    enableUsageAnalytics: process.env.ENABLE_USAGE_ANALYTICS === 'true',
+    enableRegistration: process.env.ENABLE_REGISTRATION !== 'false',
+    enableEmailVerification: process.env.ENABLE_EMAIL_VERIFICATION !== 'false',
+    enablePasswordReset: process.env.ENABLE_PASSWORD_RESET !== 'false',
+    enableUsageAnalytics: process.env.ENABLE_USAGE_ANALYTICS !== 'false',
   },
 
-  // Pricing (in cents)
+  // Pricing
   pricing: {
-    basicPricePerSeat: parseInt(process.env.BASIC_PRICE_PER_SEAT || '2900'), // $29
-    proPricePerSeat: parseInt(process.env.PRO_PRICE_PER_SEAT || '9900'), // $99
+    basicPricePerSeat: parseInt(process.env.BASIC_PRICE_PER_SEAT || '2900'),
+    proPricePerSeat: parseInt(process.env.PRO_PRICE_PER_SEAT || '9900'),
   },
 
-  // Development
+  // Environment helpers
   isDevelopment: process.env.NODE_ENV === 'development',
   isProduction: process.env.NODE_ENV === 'production',
 };

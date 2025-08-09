@@ -11,7 +11,7 @@ import {
   ArrowBack,
   Search,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// // import { motion } from 'framer-motion'; // Removed for Firebase compatibility // Removed for Firebase compatibility
 import { useNavigate } from 'react-router-dom';
 
 const NotFoundPage: React.FC = () => {
@@ -45,14 +45,14 @@ const NotFoundPage: React.FC = () => {
       />
 
       <Container maxWidth="md" sx={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
         >
           {/* 404 Illustration */}
           <Box sx={{ mb: 4 }}>
-            <motion.div
+            <Box
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
               transition={{ duration: 0.6, delay: 0.2 }}
@@ -72,9 +72,9 @@ const NotFoundPage: React.FC = () => {
               >
                 404
               </Typography>
-            </motion.div>
+            </Box>
 
-            <motion.div
+            <Box
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.4 }}
@@ -94,11 +94,11 @@ const NotFoundPage: React.FC = () => {
               >
                 <Search sx={{ fontSize: 50, color: 'primary.main' }} />
               </Box>
-            </motion.div>
+            </Box>
           </Box>
 
           {/* Content */}
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.6 }}
@@ -236,8 +236,8 @@ const NotFoundPage: React.FC = () => {
                 </Button>
               </Stack>
             </Box>
-          </motion.div>
-        </motion.div>
+          </Box>
+        </Box>
       </Container>
     </Box>
   );

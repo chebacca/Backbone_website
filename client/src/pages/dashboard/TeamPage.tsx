@@ -47,7 +47,7 @@ import {
   Work,
   Star,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -273,7 +273,7 @@ const TeamPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -300,12 +300,12 @@ const TeamPage: React.FC = () => {
             Invite Member
           </Button>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* Team Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
@@ -330,11 +330,11 @@ const TeamPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -359,11 +359,11 @@ const TeamPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
@@ -388,11 +388,11 @@ const TeamPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.4 }}
@@ -433,12 +433,12 @@ const TeamPage: React.FC = () => {
                 />
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
       </Grid>
 
       {/* Team Members Table */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.5 }}
@@ -551,7 +551,7 @@ const TeamPage: React.FC = () => {
             </TableBody>
           </Table>
         </TableContainer>
-      </motion.div>
+      </Box>
 
       {/* Floating Action Button */}
       <Fab

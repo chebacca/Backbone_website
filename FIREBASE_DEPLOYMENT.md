@@ -1,136 +1,188 @@
 # Firebase Deployment Guide
 
-## Problem Solved
+This project is configured for Firebase hosting and Firestore database.
 
-The original Firebase deployment was failing with:
-```
-npm error code EUNSUPPORTEDPROTOCOL
-npm error Unsupported URL Type "workspace:": workspace:*
-```
+## Prerequisites
 
-This occurred because Firebase's build system was trying to run `npm install` on the root `package.json` which contains pnpm workspace references that npm doesn't understand.
-
-## Solution
-
-We've implemented a **local build + static deployment** strategy:
-
-1. **Local Build**: All building happens locally using pnpm
-2. **Static Assets**: Only the built assets are deployed to Firebase
-3. **No Remote npm**: Firebase never tries to install dependencies
-
-## Deployment Steps
-
-### Prerequisites
-
-1. Install Firebase CLI:
+1. **Firebase CLI**: Install the Firebase CLI
    ```bash
    npm install -g firebase-tools
    ```
 
-2. Login to Firebase:
+2. **Firebase Account**: Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+
+3. **Login to Firebase**:
    ```bash
    firebase login
    ```
 
-3. Update your project ID in `.firebaserc`:
-   ```json
-   {
-     "projects": {
-       "default": "your-actual-firebase-project-id"
-     }
-   }
+## Initial Setup
+
+1. **Initialize Firebase Project**:
+   ```bash
+   firebase init
+   ```
+   
+   Select the following options:
+   - Hosting: Configure files for Firebase Hosting
+   - Functions: Configure a Cloud Functions directory and its files
+   - Firestore: Configure security rules and indexes for Firestore
+   - Use an existing project
+   - Select your Firebase project
+
+2. **Configure Environment Variables**:
+   
+   Create a `.env` file in the `server/` directory:
+   ```env
+   # Firebase Configuration
+   FIREBASE_PROJECT_ID=your-project-id
+   FIREBASE_CLIENT_EMAIL=your-service-account@your-project-id.iam.gserviceaccount.com
+   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_KEY_CONTENTS\n-----END PRIVATE KEY-----"
+   
+   # JWT Configuration
+   JWT_SECRET=your-super-secure-jwt-secret
+   JWT_EXPIRES_IN=7d
+   JWT_REFRESH_EXPIRES_IN=30d
+   
+   # Stripe Configuration
+   STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
+   STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
+   STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+   
+   # Email Configuration
+   SENDGRID_API_KEY=SG.your_sendgrid_api_key
+   FROM_EMAIL=noreply@yourdomain.com
+   FROM_NAME=Dashboard v14 Licensing
+   
+   # Frontend URLs (use your Firebase hosting URL)
+   FRONTEND_URL=https://your-project-id.web.app
+   CORS_ORIGIN=https://your-project-id.web.app
    ```
 
-### Deploy
+3. **Set Firebase Functions Environment Variables**:
+   ```bash
+   firebase functions:config:set stripe.secret_key="sk_test_your_stripe_secret_key"
+   firebase functions:config:set stripe.publishable_key="pk_test_your_stripe_publishable_key"
+   firebase functions:config:set stripe.webhook_secret="whsec_your_webhook_secret"
+   firebase functions:config:set sendgrid.api_key="SG.your_sendgrid_api_key"
+   firebase functions:config:set jwt.secret="your-super-secure-jwt-secret"
+   firebase functions:config:set admin.email="admin@yourdomain.com"
+   firebase functions:config:set admin.password="admin123"
+   ```
 
-**Option 1: Use the deployment script (Recommended)**
-```bash
-./deploy.sh
-```
+## Development
 
-**Option 2: Manual deployment**
-```bash
-# Build the project
-pnpm build:client
+1. **Start Development Environment**:
+   ```bash
+   pnpm dev
+   ```
+   
+   This will start:
+   - Frontend: http://localhost:3002
+   - Backend: http://localhost:3003
 
-# Prepare deployment assets
-mkdir -p deploy
-cp -r client/dist/* deploy/
+2. **Build for Production**:
+   ```bash
+   pnpm build
+   ```
 
-# Deploy to Firebase
-firebase deploy --only hosting
-```
+## Deployment
 
-## Configuration Files
+1. **Deploy Everything**:
+   ```bash
+   pnpm deploy
+   ```
 
-### `firebase.json`
-- Points to `deploy/` directory (built assets only)
-- No predeploy hooks (building happens locally)
-- SPA routing configuration
+2. **Deploy Specific Services**:
+   ```bash
+   # Deploy only hosting
+   pnpm deploy:hosting
+   
+   # Deploy only functions
+   pnpm deploy:functions
+   
+   # Deploy only Firestore rules
+   pnpm deploy:firestore
+   ```
 
-### `.firebaseignore`
-- Excludes all source files and package files
-- Only allows `deploy/`, `firebase.json`, and `.firebaserc`
-- Prevents Firebase from seeing any npm/pnpm files
+## Production URLs
 
-### `deploy.sh`
-- Automated build and deployment script
-- Cleans previous builds
-- Builds client with pnpm
-- Copies assets to deploy directory
-- Deploys to Firebase
+After deployment, your app will be available at:
+- **Frontend**: https://your-project-id.web.app
+- **API**: https://your-project-id.web.app/api/* (routed to Cloud Functions)
 
-## Architecture
+## Environment Configuration
 
-```
-dashboard-v14-licensing-website/
-├── client/                    # React application
-│   ├── src/                  # Source code
-│   └── dist/                 # Built assets (generated)
-├── deploy/                   # Deployment assets (generated)
-│   ├── index.html
-│   └── assets/
-├── firebase.json             # Firebase configuration
-├── .firebaseignore          # Firebase ignore rules
-├── deploy.sh                # Deployment script
-└── .firebaserc              # Firebase project config
-```
+### Development
+- Frontend: http://localhost:3002
+- Backend: http://localhost:3003
+- Database: Local development
 
-## Benefits
-
-1. **No npm conflicts**: Firebase never sees pnpm workspace references
-2. **Fast deployment**: Only static assets are uploaded
-3. **Reliable builds**: All building happens in your controlled environment
-4. **Easy debugging**: Build issues are caught locally before deployment
+### Production
+- Frontend: Firebase Hosting
+- Backend: Firebase Cloud Functions
+- Database: Firestore
 
 ## Troubleshooting
 
-### Build fails locally
-- Ensure pnpm is installed: `npm install -g pnpm`
-- Check Node.js version: `node --version` (should be >=18)
-- Clear cache: `pnpm store prune`
+1. **Functions Not Deploying**:
+   ```bash
+   firebase functions:log
+   ```
 
-### Firebase deployment fails
-- Check Firebase CLI: `firebase --version`
-- Verify login: `firebase login`
-- Check project ID in `.firebaserc`
+2. **Hosting Issues**:
+   ```bash
+   firebase hosting:channel:list
+   ```
 
-### Assets not loading
-- Verify `deploy/` directory contains built files
-- Check Firebase hosting URL in console
-- Ensure SPA routing is configured in `firebase.json`
+3. **Firestore Rules**:
+   ```bash
+   firebase firestore:rules:get
+   ```
 
-## Production Considerations
+## Security
 
-1. **Environment Variables**: Set up Firebase environment variables for API endpoints
-2. **Custom Domain**: Configure custom domain in Firebase console
-3. **SSL**: Firebase provides automatic SSL certificates
-4. **CDN**: Firebase hosting includes global CDN
+1. **Firestore Rules**: Update `firestore.rules` for your security requirements
+2. **CORS**: Configure CORS in `firebase.json` for your domain
+3. **Environment Variables**: Never commit sensitive environment variables
 
-## Next Steps
+## Monitoring
 
-After successful deployment:
-1. Configure your backend API endpoints
-2. Set up Stripe webhook endpoints
-3. Configure email service (SendGrid)
-4. Set up monitoring and analytics
+1. **Firebase Console**: Monitor your app at [console.firebase.google.com](https://console.firebase.google.com)
+2. **Functions Logs**: View function logs in the Firebase console
+3. **Analytics**: Enable Firebase Analytics for user insights
+
+## Local Development with Firebase Emulators
+
+1. **Start Emulators**:
+   ```bash
+   firebase emulators:start
+   ```
+
+2. **Configure for Emulators**:
+   ```bash
+   firebase use --add your-project-id
+   firebase use your-project-id
+   ```
+
+## API Endpoints
+
+All API endpoints are available at `/api/*` and are routed to Firebase Cloud Functions:
+
+- Authentication: `/api/auth/*`
+- Payments: `/api/payments/*`
+- Subscriptions: `/api/subscriptions/*`
+- Licenses: `/api/licenses/*`
+- Users: `/api/users/*`
+- Admin: `/api/admin/*`
+- Webhooks: `/api/webhooks/*`
+
+## Database Schema
+
+The project uses Firestore with the following collections:
+- `users` - User accounts and profiles
+- `licenses` - License keys and metadata
+- `subscriptions` - Subscription data
+- `payments` - Payment records
+- `auditLogs` - System audit logs
+- `webhookEvents` - Webhook event logs

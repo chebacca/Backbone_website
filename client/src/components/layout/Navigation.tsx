@@ -32,7 +32,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 
 interface NavigationItem {
   label: string;
@@ -243,7 +243,7 @@ export const Navigation: React.FC = () => {
       >
         <Toolbar sx={{ justifyContent: 'space-between' }}>
           {/* Logo */}
-          <motion.div
+          <Box
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
@@ -289,7 +289,7 @@ export const Navigation: React.FC = () => {
                 BackboneLogic, Inc.
               </Typography>
             </Box>
-          </motion.div>
+          </Box>
 
           {/* Desktop Navigation */}
           {!isMobile && (

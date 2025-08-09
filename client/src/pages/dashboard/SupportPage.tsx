@@ -48,7 +48,7 @@ import {
   Support,
   Close,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
@@ -190,7 +190,7 @@ const SupportPage: React.FC = () => {
           }}
         >
           {/* Header */}
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -203,10 +203,10 @@ const SupportPage: React.FC = () => {
             Get help with your BackboneLogic, Inc. platform
           </Typography>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* Support Channels */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}
@@ -270,10 +270,10 @@ const SupportPage: React.FC = () => {
             </Grid>
           ))}
         </Grid>
-      </motion.div>
+      </Box>
 
       {/* Tabs */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -573,7 +573,7 @@ const SupportPage: React.FC = () => {
             </Box>
           </TabPanel>
         </Paper>
-      </motion.div>
+      </Box>
 
       {/* Live Chat Dialog */}
       <Dialog

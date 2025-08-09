@@ -48,7 +48,7 @@ import {
   Star,
   Security,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { paymentService } from '@/services/paymentService';
 
@@ -242,7 +242,7 @@ const BillingPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -269,10 +269,10 @@ const BillingPage: React.FC = () => {
             Upgrade Plan
           </Button>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* Subscription Overview */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}
@@ -330,12 +330,12 @@ const BillingPage: React.FC = () => {
             </Grid>
           </CardContent>
         </Card>
-      </motion.div>
+      </Box>
 
       <Grid container spacing={4}>
         {/* Payment Methods */}
         <Grid item xs={12} lg={6}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -405,12 +405,12 @@ const BillingPage: React.FC = () => {
                 ))}
               </List>
             </Paper>
-          </motion.div>
+          </Box>
         </Grid>
 
         {/* Quick Actions */}
         <Grid item xs={12} lg={6}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
@@ -472,12 +472,12 @@ const BillingPage: React.FC = () => {
                 </Grid>
               </Grid>
             </Paper>
-          </motion.div>
+          </Box>
         </Grid>
 
         {/* Billing History */}
         <Grid item xs={12}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.4 }}
@@ -553,7 +553,7 @@ const BillingPage: React.FC = () => {
                 </Table>
               </TableContainer>
             </Paper>
-          </motion.div>
+          </Box>
         </Grid>
       </Grid>
 

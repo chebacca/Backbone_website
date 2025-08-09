@@ -1,12 +1,12 @@
 # Cursor Project Rules — Dashboard v14 Licensing Website
 
-Project: Dashboard v14 Licensing Website (React + Vite frontend, Express + Prisma backend, Stripe payments, SendGrid emails)
+Project: Dashboard v14 Licensing Website (React + Vite frontend, Express + Firebase Functions backend, Stripe payments, SendGrid emails)
 Workspace: pnpm monorepo with `client`, `server`, `shared`
 
-Core Ports:
-- Frontend: http://localhost:3002
-- Backend API: http://localhost:3003
-- DB (Postgres): 5432 (via env/Docker)
+Core Configuration:
+- Frontend: Firebase Hosting (production) / localhost:3002 (development)
+- Backend API: Firebase Cloud Functions (production) / localhost:3003 (development)
+- Database: Firestore (production) / local development
 
 Package Manager & Node:
 - Use pnpm (>= 8). Do not use npm/yarn.
@@ -15,24 +15,24 @@ Package Manager & Node:
 Key Commands (run at repo root):
 - Dev: `pnpm dev` (concurrently runs server and client)
 - Build: `pnpm build`
-- Start (prod): `pnpm start` (starts compiled server on 3003)
-- DB (from root): `pnpm setup:db`, `pnpm db:reset`, `pnpm db:studio`
-- Alt scripts: `./quick-start.sh`, `./launch.sh`, `./status.sh`
+- Deploy: `pnpm deploy` (deploys to Firebase)
+- Start (prod): `pnpm start` (starts compiled server on 3003 for local testing)
+- Firebase: `pnpm firebase:init`, `pnpm firebase:login`, `pnpm firebase:use`
 
 Environment (server/.env):
-- PORT=3003, FRONTEND_URL=http://localhost:3002, CORS_ORIGIN=http://localhost:3002
-- DATABASE_URL=postgresql://.../licensing_db
+- Firebase: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
 - JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN
 - Stripe: STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_*_PRICE_ID
 - SendGrid: SENDGRID_API_KEY, FROM_EMAIL, FROM_NAME
+- Frontend: FRONTEND_URL (Firebase hosting URL), CORS_ORIGIN (Firebase hosting URL)
 
 Environment (client .env):
-- VITE_API_BASE_URL=http://localhost:3003
+- VITE_API_BASE_URL=/api (for Firebase hosting)
 - VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 
 Architecture:
 - `client/`: React 18 + TS + Vite + MUI + React Query + Stripe.js
-- `server/`: Express + Prisma + PostgreSQL + Stripe SDK + SendGrid + Zod + Helmet + CORS + Rate limiting
+- `server/`: Express + Firebase Functions + Firestore + Stripe SDK + SendGrid + Zod + Helmet + CORS + Rate limiting
 - `shared/`: shared TS types
 
 Authoritative Docs:
@@ -45,8 +45,8 @@ Coding Standards:
 - Never log secrets or raw tokens.
 - Use centralized error helpers and consistent JSON responses.
 - Validate inputs via `express-validator`/Zod; sanitize user inputs.
-- Prisma: favor explicit selects; no raw SQL unless unavoidable.
-- Don’t change ports or package manager in code.
+- Firestore: use firestoreService for all database operations.
+- Don't change Firebase configuration or package manager in code.
 
 Security & Compliance:
 - Enforce JSON-only responses on API routes; never return HTML from API.
@@ -67,7 +67,7 @@ API Surface (server/src/routes):
 
 Client API Usage:
 - Use `client/src/services/api.ts` `api` instance, `endpoints` map, and `apiUtils` helpers.
-- Set `VITE_API_BASE_URL` to backend origin (default http://localhost:3003).
+- Set `VITE_API_BASE_URL` to `/api` for Firebase hosting (default).
 - Auth token stored in `localStorage` key `auth_token`.
 
 Testing & Quality:
@@ -78,12 +78,12 @@ Pull Request Review Checklist:
 - API: typed inputs/outputs, validation, consistent error schema.
 - Security: authentication/authorization enforced; no leakage of PII/secrets.
 - Compliance: audit/consent/compliance events created where required.
-- Performance: N+1 avoided; indices implied by query patterns.
+- Performance: N+1 avoided; Firestore queries optimized.
 - DX: clear naming, small functions, docs updated in `mpc-library/`.
 
 Cursor Agent Guidance:
 - Always read relevant doc in `mpc-library/` before edits.
 - Prefer changes scoped to `client/`, `server/`, or `shared/` as needed.
-- After server edits: run `pnpm build` and (if needed) `pnpm setup:db`.
+- After server edits: run `pnpm build` and (if needed) `pnpm deploy`.
 - Do not introduce new frameworks or switch package manager.
-- Maintain port mapping (3002 web, 3003 API) and Stripe/SendGrid flows.
+- Maintain Firebase hosting and Firestore flows.

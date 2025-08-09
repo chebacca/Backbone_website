@@ -21,7 +21,7 @@ import {
   ArrowBack,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useLoading } from '@/context/LoadingContext';
@@ -99,7 +99,7 @@ const LoginPage: React.FC = () => {
       }}
     >
       <Container maxWidth="sm">
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -383,7 +383,7 @@ const LoginPage: React.FC = () => {
               </Typography>
             </Box>
           </Paper>
-        </motion.div>
+        </Box>
       </Container>
     </Box>
   );

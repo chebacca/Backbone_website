@@ -31,7 +31,7 @@ import {
   Cloud,
   Hub,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate } from 'react-router-dom';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
@@ -236,13 +236,13 @@ const PricingPage: React.FC = () => {
         }}
       >
         <Container maxWidth="lg">
-          <motion.div
+          <Box
             initial="initial"
             animate="animate"
             variants={staggerContainer}
           >
             <Box textAlign="center" sx={{ mb: 6 }}>
-              <motion.div variants={fadeInUp}>
+              <Box variants={fadeInUp}>
                 <Typography
                   variant="h1"
                   sx={{
@@ -257,9 +257,9 @@ const PricingPage: React.FC = () => {
                 >
                   Choose Your Plan
                 </Typography>
-              </motion.div>
+              </Box>
               
-              <motion.div variants={fadeInUp}>
+              <Box variants={fadeInUp}>
                 <Typography
                   variant="h5"
                   color="text.secondary"
@@ -268,9 +268,9 @@ const PricingPage: React.FC = () => {
                   Start with a 14-day free trial. No credit card required.
                   Upgrade or downgrade at any time.
                 </Typography>
-              </motion.div>
+              </Box>
 
-              <motion.div variants={fadeInUp}>
+              <Box variants={fadeInUp}>
                 <Paper
                   elevation={2}
                   sx={{
@@ -304,15 +304,15 @@ const PricingPage: React.FC = () => {
                     sx={{ m: 1 }}
                   />
                 </Paper>
-              </motion.div>
+              </Box>
             </Box>
-          </motion.div>
+          </Box>
         </Container>
       </Box>
 
       {/* Pricing Cards */}
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 }, mt: -4 }}>
-        <motion.div
+        <Box
           initial="initial"
           whileInView="animate"
           viewport={{ once: true }}
@@ -321,7 +321,7 @@ const PricingPage: React.FC = () => {
           <Grid container spacing={4} justifyContent="center">
             {pricingTiers.map((tier) => (
               <Grid item xs={12} md={4} key={tier.id}>
-                <motion.div variants={fadeInUp}>
+                <Box variants={fadeInUp}>
                   <Card
                     sx={{
                       height: '100%',
@@ -478,24 +478,24 @@ const PricingPage: React.FC = () => {
                       </Box>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </Box>
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </Box>
       </Container>
 
       {/* Feature Comparison */}
       <Box sx={{ backgroundColor: 'background.paper', py: { xs: 6, md: 8 } }}>
         <Container maxWidth="lg">
-          <motion.div
+          <Box
             initial="initial"
             whileInView="animate"
             viewport={{ once: true }}
             variants={staggerContainer}
           >
             <Box textAlign="center" sx={{ mb: 6 }}>
-              <motion.div variants={fadeInUp}>
+              <Box variants={fadeInUp}>
                 <Typography
                   variant="h2"
                   sx={{
@@ -506,9 +506,9 @@ const PricingPage: React.FC = () => {
                 >
                   Why Choose BackboneLogic, Inc.?
                 </Typography>
-              </motion.div>
+              </Box>
               
-              <motion.div variants={fadeInUp}>
+              <Box variants={fadeInUp}>
                 <Typography
                   variant="h6"
                   color="text.secondary"
@@ -516,7 +516,7 @@ const PricingPage: React.FC = () => {
                 >
                   Join thousands of professionals who trust BackboneLogic, Inc.
                 </Typography>
-              </motion.div>
+              </Box>
             </Box>
 
             <Grid container spacing={4}>
@@ -543,7 +543,7 @@ const PricingPage: React.FC = () => {
                 },
               ].map((item, index) => (
                 <Grid item xs={12} md={6} key={index}>
-                  <motion.div variants={fadeInUp}>
+                  <Box variants={fadeInUp}>
                     <Box sx={{ display: 'flex', gap: 3, p: 3 }}>
                       <Box
                         sx={{
@@ -570,33 +570,33 @@ const PricingPage: React.FC = () => {
                         </Typography>
                       </Box>
                     </Box>
-                  </motion.div>
+                  </Box>
                 </Grid>
               ))}
             </Grid>
-          </motion.div>
+          </Box>
         </Container>
       </Box>
 
       {/* FAQ Section */}
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
-        <motion.div
+        <Box
           initial="initial"
           whileInView="animate"
           viewport={{ once: true }}
           variants={staggerContainer}
         >
           <Box textAlign="center" sx={{ mb: 6 }}>
-            <motion.div variants={fadeInUp}>
+            <Box variants={fadeInUp}>
               <Typography variant="h3" sx={{ fontWeight: 600, mb: 2 }}>
                 Frequently Asked Questions
               </Typography>
-            </motion.div>
+            </Box>
           </Box>
 
           <Box sx={{ maxWidth: 800, mx: 'auto' }}>
             {faqs.map((faq, index) => (
-              <motion.div key={index} variants={fadeInUp}>
+              <Box key={index} variants={fadeInUp}>
                 <Accordion
                   sx={{
                     backgroundColor: 'background.paper',
@@ -616,16 +616,16 @@ const PricingPage: React.FC = () => {
                     </Typography>
                   </AccordionDetails>
                 </Accordion>
-              </motion.div>
+              </Box>
             ))}
           </Box>
-        </motion.div>
+        </Box>
       </Container>
 
       {/* Final CTA */}
       <Box sx={{ backgroundColor: 'background.paper', py: { xs: 6, md: 8 } }}>
         <Container maxWidth="md">
-          <motion.div
+          <Box
             initial="initial"
             whileInView="animate"
             viewport={{ once: true }}
@@ -659,7 +659,7 @@ const PricingPage: React.FC = () => {
                 No credit card required • 14-day free trial • Cancel anytime
               </Typography>
             </Box>
-          </motion.div>
+          </Box>
         </Container>
       </Box>
 

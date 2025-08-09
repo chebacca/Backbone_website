@@ -41,7 +41,7 @@ import {
 } from '@mui/icons-material';
 import { Link as RouterLink, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 
 const drawerWidth = 280;
 
@@ -161,7 +161,7 @@ export const DashboardLayout: React.FC = () => {
         {navigationItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
-            <motion.div
+            <Box
               key={item.text}
               whileHover={{ x: 4 }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
@@ -214,7 +214,7 @@ export const DashboardLayout: React.FC = () => {
                   )}
                 </ListItemButton>
               </ListItem>
-            </motion.div>
+            </Box>
           );
         })}
 
@@ -239,7 +239,7 @@ export const DashboardLayout: React.FC = () => {
             {enterpriseItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
-                <motion.div
+                <Box
                   key={item.text}
                   whileHover={{ x: 4 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 30 }}
@@ -274,7 +274,7 @@ export const DashboardLayout: React.FC = () => {
                       />
                     </ListItemButton>
                   </ListItem>
-                </motion.div>
+                </Box>
               );
             })}
           </>

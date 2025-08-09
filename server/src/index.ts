@@ -17,7 +17,6 @@ import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { logger } from './utils/logger.js';
 import { firestoreService } from './services/firestoreService.js';
 import { PasswordUtil } from './utils/password.js';
-import { PasswordUtil } from './utils/password.js';
 // Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
 const app: Application = express();
@@ -83,18 +82,30 @@ app.use('/api/invoices', invoicesRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/webhooks', webhooksRouter);
 
-// Error handling
+// Setup endpoint: place BEFORE error handlers so it's reachable
+app.post('/api/setup/seed-superadmin', async (req, res) => {
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
+  await ensureSuperAdminSeed();
+  res.json({ success: true });
+});
+
+// Error handling (keep last)
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-// Start HTTP server only when NOT running in Cloud Functions environment or analyzer
+// Start HTTP server only when NOT running in Cloud Functions environment
 let server: import('http').Server | undefined;
 const isCloudFunctionsEnv = Boolean(
   process.env.FUNCTION_TARGET || process.env.K_SERVICE || process.env.FIREBASE_CONFIG
 );
 
 if (!isCloudFunctionsEnv) {
-  // Graceful shutdown (local/VM only)
+  // Graceful shutdown (local development only)
   process.on('SIGTERM', async () => {
     logger.info('SIGTERM received, shutting down gracefully');
     process.exit(0);
@@ -106,10 +117,12 @@ if (!isCloudFunctionsEnv) {
   });
 
   server = app.listen(config.port, () => {
-    logger.info(`🚀 Server running on port ${config.port}`);
+    logger.info(`🚀 Server running on port ${config.port} (local development)`);
     logger.info(`📊 Environment: ${config.nodeEnv}`);
     logger.info(`🔗 CORS enabled for: ${config.corsOrigin}`);
   });
+} else {
+  logger.info('🚀 Running in Firebase Cloud Functions environment');
 }
 
 // Ensure a SUPERADMIN exists if ADMIN_EMAIL and ADMIN_PASSWORD are provided
@@ -166,51 +179,6 @@ async function ensureSuperAdminSeed(): Promise<void> {
       registrationSource: 'seed',
     } as any);
     logger.info('Seeded SUPERADMIN user', { email: adminEmail, userId: admin.id });
-  } catch (err) {
-    logger.error('Failed to ensure SUPERADMIN seed', { error: (err as any)?.message });
-  }
-}
-
-// Invoke seeding at cold start (both local and Functions)
-await ensureSuperAdminSeed();
-
-// Ensure a SUPERADMIN exists if ADMIN_EMAIL and ADMIN_PASSWORD are provided
-async function ensureSuperAdminSeed(): Promise<void> {
-  try {
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    if (!adminEmail || !adminPassword) return;
-
-    const existing = await firestoreService.getUserByEmail(adminEmail);
-    if (existing) {
-      // Ensure role and verification
-      const updates: any = {};
-      if (existing.role !== 'SUPERADMIN') updates.role = 'SUPERADMIN';
-      if (existing.isEmailVerified !== true) updates.isEmailVerified = true;
-      if (Object.keys(updates).length > 0) {
-        await firestoreService.updateUser(existing.id, updates);
-        logger.info('Updated existing superadmin user settings', { email: adminEmail });
-      }
-      return;
-    }
-
-    const hashed = await PasswordUtil.hash(adminPassword);
-    await firestoreService.createUser({
-      email: adminEmail,
-      password: hashed,
-      name: 'Super Admin',
-      role: 'SUPERADMIN',
-      isEmailVerified: true,
-      twoFactorEnabled: false,
-      twoFactorBackupCodes: [],
-      privacyConsent: [],
-      marketingConsent: false,
-      dataProcessingConsent: false,
-      identityVerified: false,
-      kycStatus: 'COMPLETED',
-      registrationSource: 'seed',
-    } as any);
-    logger.info('Seeded SUPERADMIN user', { email: adminEmail });
   } catch (err) {
     logger.error('Failed to ensure SUPERADMIN seed', { error: (err as any)?.message });
   }

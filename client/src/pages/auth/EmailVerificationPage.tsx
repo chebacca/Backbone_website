@@ -16,7 +16,7 @@ import {
   Refresh,
   ArrowForward,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useLoading } from '@/context/LoadingContext';
@@ -274,7 +274,7 @@ const EmailVerificationPage: React.FC = () => {
       }}
     >
       <Container maxWidth="sm">
-        <motion.div
+        <Box
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -346,7 +346,7 @@ const EmailVerificationPage: React.FC = () => {
               </Typography>
             </Box>
           </Paper>
-        </motion.div>
+        </Box>
       </Container>
     </Box>
   );

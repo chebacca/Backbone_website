@@ -12,29 +12,38 @@ declare global {
   }
 }
 
-// Prefer BASE_URL; fall back to legacy VITE_API_URL; finally default to relative /api (works with Firebase Hosting rewrites)
-let rawBase = (import.meta.env as any).VITE_API_BASE_URL || (import.meta.env as any).VITE_API_URL;
-if (!rawBase) {
-  // Use relative '/api' for both local dev (via Vite proxy) and production (via Hosting rewrites)
-  rawBase = '/api';
-}
+// Determine the base URL for API calls
+const getBaseURL = (): string => {
+  // Check if we're in production (Firebase hosting)
+  const isProduction = window.location.hostname !== 'localhost' && 
+                      window.location.hostname !== '127.0.0.1' &&
+                      !window.location.hostname.includes('localhost');
+  
+  if (isProduction) {
+    // In production (Firebase hosting), use the same domain with /api path
+    // This works with Firebase hosting rewrites that route /api/* to Cloud Functions
+    return '/api';
+  }
+  
+  // In development, use environment variable or default to relative /api
+  // This works with Vite's proxy configuration
+  const envBaseURL = (import.meta.env as any).VITE_API_BASE_URL || (import.meta.env as any).VITE_API_URL;
+  return envBaseURL || '/api';
+};
 
-// Normalize to avoid double slashes, and guard against env value '/'
-let baseURL = rawBase.replace(/\/$/, '');
-if (baseURL === '') {
-  baseURL = '/api';
-}
+const baseURL = getBaseURL();
+
 // Debug: surface which baseURL is being used (dev only)
 if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
   // eslint-disable-next-line no-console
-  console.info('[api] baseURL =', baseURL);
+  console.info('[api] baseURL =', baseURL, 'hostname =', window.location.hostname);
 }
 
 // Create axios instance with default config
 const createApiInstance = (): AxiosInstance => {
   const instance = axios.create({
     baseURL,
-    timeout: 10000,
+    timeout: 15000, // Increased timeout for Firebase Functions
     headers: {
       'Content-Type': 'application/json',
     },

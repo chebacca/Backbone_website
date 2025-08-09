@@ -24,7 +24,7 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 // import { paymentService } from '@/services/paymentService';
 
 interface PaymentMethodStepProps {
@@ -308,7 +308,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
 
         {/* Security & Trust Indicators */}
         <Grid item xs={12} lg={4}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
@@ -497,7 +497,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
                 </ListItem>
               </List>
             </Paper>
-          </motion.div>
+          </Box>
         </Grid>
       </Grid>
     </Box>

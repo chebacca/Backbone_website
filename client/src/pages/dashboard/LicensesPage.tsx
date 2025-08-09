@@ -45,7 +45,7 @@ import {
   FilterList,
   Search,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -272,7 +272,7 @@ const LicensesPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -302,12 +302,12 @@ const LicensesPage: React.FC = () => {
             Add License
           </Button>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
@@ -327,11 +327,11 @@ const LicensesPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -351,11 +351,11 @@ const LicensesPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
@@ -389,11 +389,11 @@ const LicensesPage: React.FC = () => {
                 />
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.4 }}
@@ -413,12 +413,12 @@ const LicensesPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
       </Grid>
 
       {/* Search and Filters */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.5 }}
@@ -452,10 +452,10 @@ const LicensesPage: React.FC = () => {
             </Button>
           </Box>
         </Paper>
-      </motion.div>
+      </Box>
 
       {/* Licenses Table */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.6 }}
@@ -591,7 +591,7 @@ const LicensesPage: React.FC = () => {
             </TableBody>
           </Table>
         </TableContainer>
-      </motion.div>
+      </Box>
 
       {/* Action Menu */}
       <Menu

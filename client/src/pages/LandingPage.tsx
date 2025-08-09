@@ -23,25 +23,9 @@ import {
   CheckCircle,
   Star,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
-
-// Animation variants
-const fadeInUp = {
-  initial: { opacity: 0, y: 60 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.6 }
-};
-
-const staggerContainer = {
-  animate: {
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -133,14 +117,10 @@ const LandingPage: React.FC = () => {
         />
         
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-          <motion.div
-            initial="initial"
-            animate="animate"
-            variants={staggerContainer}
-          >
+          <Box>
             <Grid container spacing={4} alignItems="center">
               <Grid item xs={12} md={6}>
-                <motion.div variants={fadeInUp}>
+                <Box>
                   <Chip
                     label="✨ New v14 Release Available"
                     sx={{
@@ -150,9 +130,9 @@ const LandingPage: React.FC = () => {
                       border: '1px solid rgba(0, 212, 255, 0.3)',
                     }}
                   />
-                </motion.div>
+                </Box>
                 
-                <motion.div variants={fadeInUp}>
+                <Box>
                   <Typography
                     variant="h1"
                     sx={{
@@ -170,9 +150,9 @@ const LandingPage: React.FC = () => {
                     <br />
                     Production Workflow
                   </Typography>
-                </motion.div>
+                </Box>
                 
-                <motion.div variants={fadeInUp}>
+                <Box>
                   <Typography
                     variant="h5"
                     sx={{
@@ -185,9 +165,9 @@ const LandingPage: React.FC = () => {
                     The complete professional platform for video production management,
                     collaboration, and delivery. Trusted by industry leaders worldwide.
                   </Typography>
-                </motion.div>
+                </Box>
                 
-                <motion.div variants={fadeInUp}>
+                <Box>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 4 }}>
                     <Button
                       variant="contained"
@@ -231,19 +211,23 @@ const LandingPage: React.FC = () => {
                       View Pricing
                     </Button>
                   </Stack>
-                </motion.div>
+                </Box>
                 
-                <motion.div variants={fadeInUp}>
+                <Box>
                   <Typography variant="body2" color="text.secondary">
                     🔒 SOC 2 Compliant • GDPR Ready • 99.9% Uptime SLA
                   </Typography>
-                </motion.div>
+                </Box>
               </Grid>
               
               <Grid item xs={12} md={6}>
-                <motion.div
-                  variants={fadeInUp}
-                  transition={{ delay: 0.3 }}
+                <Box
+                  sx={{
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'scale(1.02)',
+                    },
+                  }}
                 >
                   <Paper
                     elevation={20}
@@ -301,23 +285,18 @@ const LandingPage: React.FC = () => {
                       </Typography>
                     </Box>
                   </Paper>
-                </motion.div>
+                </Box>
               </Grid>
             </Grid>
-          </motion.div>
+          </Box>
         </Container>
       </Box>
 
       {/* Features Section */}
       <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
-        <motion.div
-          initial="initial"
-          whileInView="animate"
-          viewport={{ once: true }}
-          variants={staggerContainer}
-        >
+        <Box>
           <Box textAlign="center" sx={{ mb: 8 }}>
-            <motion.div variants={fadeInUp}>
+            <Box>
               <Typography
                 variant="h2"
                 sx={{
@@ -328,9 +307,9 @@ const LandingPage: React.FC = () => {
               >
                 Everything You Need to Succeed
               </Typography>
-            </motion.div>
+            </Box>
             
-            <motion.div variants={fadeInUp}>
+            <Box>
               <Typography
                 variant="h6"
                 color="text.secondary"
@@ -338,13 +317,20 @@ const LandingPage: React.FC = () => {
               >
                 Powerful features designed for modern production workflows
               </Typography>
-            </motion.div>
+            </Box>
           </Box>
 
           <Grid container spacing={4}>
             {features.map((feature, index) => (
               <Grid item xs={12} md={6} lg={4} key={index}>
-                <motion.div variants={fadeInUp}>
+                <Box
+                  sx={{
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-8px)',
+                    },
+                  }}
+                >
                   <Card
                     sx={{
                       height: '100%',
@@ -352,7 +338,6 @@ const LandingPage: React.FC = () => {
                       border: '1px solid rgba(255, 255, 255, 0.1)',
                       transition: 'all 0.3s ease',
                       '&:hover': {
-                        transform: 'translateY(-8px)',
                         boxShadow: '0 20px 40px rgba(0, 212, 255, 0.2)',
                         borderColor: 'rgba(0, 212, 255, 0.3)',
                       },
@@ -384,24 +369,19 @@ const LandingPage: React.FC = () => {
                       </Typography>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </Box>
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </Box>
       </Container>
 
       {/* Testimonials Section */}
       <Box sx={{ backgroundColor: 'background.paper', py: { xs: 8, md: 12 } }}>
         <Container maxWidth="lg">
-          <motion.div
-            initial="initial"
-            whileInView="animate"
-            viewport={{ once: true }}
-            variants={staggerContainer}
-          >
+          <Box>
             <Box textAlign="center" sx={{ mb: 8 }}>
-              <motion.div variants={fadeInUp}>
+              <Box>
                 <Typography
                   variant="h2"
                   sx={{
@@ -412,13 +392,20 @@ const LandingPage: React.FC = () => {
                 >
                   Trusted by Industry Leaders
                 </Typography>
-              </motion.div>
+              </Box>
             </Box>
 
             <Grid container spacing={4}>
               {testimonials.map((testimonial, index) => (
                 <Grid item xs={12} md={4} key={index}>
-                  <motion.div variants={fadeInUp}>
+                  <Box
+                    sx={{
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                      },
+                    }}
+                  >
                     <Card
                       sx={{
                         height: '100%',
@@ -453,21 +440,23 @@ const LandingPage: React.FC = () => {
                         </Box>
                       </CardContent>
                     </Card>
-                  </motion.div>
+                  </Box>
                 </Grid>
               ))}
             </Grid>
-          </motion.div>
+          </Box>
         </Container>
       </Box>
 
       {/* CTA Section */}
       <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
-        <motion.div
-          initial="initial"
-          whileInView="animate"
-          viewport={{ once: true }}
-          variants={fadeInUp}
+        <Box
+          sx={{
+            transition: 'all 0.3s ease',
+            '&:hover': {
+              transform: 'scale(1.01)',
+            },
+          }}
         >
           <Paper
             elevation={3}
@@ -542,7 +531,7 @@ const LandingPage: React.FC = () => {
               </Typography>
             </Box>
           </Paper>
-        </motion.div>
+        </Box>
       </Container>
 
       <Footer />

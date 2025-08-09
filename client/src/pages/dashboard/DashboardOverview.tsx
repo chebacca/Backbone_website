@@ -29,7 +29,7 @@ import {
   Update,
   Star,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useAuth } from '@/context/AuthContext';
 import { Link as RouterLink } from 'react-router-dom';
 import api, { endpoints } from '@/services/api';
@@ -52,7 +52,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
   trend, 
   color = 'primary' 
 }) => (
-  <motion.div
+  <Box
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.6 }}
@@ -91,7 +91,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
         </Typography>
       </CardContent>
     </Card>
-  </motion.div>
+  </Box>
 );
 
 interface ActivityItem {
@@ -232,7 +232,7 @@ const DashboardOverview: React.FC = () => {
   return (
     <Box>
       {/* Welcome Header */}
-      <motion.div
+      <Box
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -249,7 +249,7 @@ const DashboardOverview: React.FC = () => {
             Here's what's happening with your BackboneLogic, Inc. licenses
           </Typography>
         </Box>
-      </motion.div>
+      </Box>
 
       {/* Metrics Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -296,7 +296,7 @@ const DashboardOverview: React.FC = () => {
       <Grid container spacing={3}>
         {/* License Status */}
         <Grid item xs={12} lg={8}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -399,12 +399,12 @@ const DashboardOverview: React.FC = () => {
                 </Grid>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         {/* Recent Activity */}
         <Grid item xs={12} lg={4}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.4 }}
@@ -474,12 +474,12 @@ const DashboardOverview: React.FC = () => {
                 </Button>
               </CardContent>
             </Card>
-          </motion.div>
+          </Box>
         </Grid>
 
         {/* System Status */}
         <Grid item xs={12}>
-          <motion.div
+          <Box
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.6 }}
@@ -554,7 +554,7 @@ const DashboardOverview: React.FC = () => {
                 </Grid>
               </Grid>
             </Paper>
-          </motion.div>
+          </Box>
         </Grid>
       </Grid>
     </Box>

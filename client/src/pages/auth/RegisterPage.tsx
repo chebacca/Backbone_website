@@ -289,6 +289,7 @@ const RegisterPage: React.FC = () => {
                       fullWidth
                       label="Email Address"
                       type="email"
+                      autoComplete="email"
                       error={!!errors.email}
                       helperText={errors.email?.message}
                       InputProps={{
@@ -332,6 +333,7 @@ const RegisterPage: React.FC = () => {
                         fullWidth
                         label="Password"
                         type={showPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
                         error={!!errors.password}
                         helperText={errors.password?.message}
                         InputProps={{
@@ -403,6 +405,7 @@ const RegisterPage: React.FC = () => {
                       fullWidth
                       label="Confirm Password"
                       type={showConfirmPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
                       error={!!errors.confirmPassword}
                       helperText={errors.confirmPassword?.message}
                       InputProps={{

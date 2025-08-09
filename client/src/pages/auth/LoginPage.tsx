@@ -199,6 +199,7 @@ const LoginPage: React.FC = () => {
                       fullWidth
                       label="Email Address"
                       type="email"
+                      autoComplete="email"
                       error={!!errors.email}
                       helperText={errors.email?.message}
                       InputProps={{
@@ -233,6 +234,7 @@ const LoginPage: React.FC = () => {
                       fullWidth
                       label="Password"
                       type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
                       error={!!errors.password}
                       helperText={errors.password?.message}
                       InputProps={{

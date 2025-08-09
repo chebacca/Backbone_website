@@ -3,7 +3,7 @@ import { PaymentService } from '../services/paymentService.js';
 import { EmailService } from '../services/emailService.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { logger } from '../utils/logger.js';
-import { prisma } from '../utils/prisma.js';
+import { firestoreService } from '../services/firestoreService.js';
 import { 
   asyncHandler, 
   createApiError 

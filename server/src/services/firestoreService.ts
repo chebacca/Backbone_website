@@ -160,6 +160,18 @@ export interface FirestoreLicenseDeliveryLog {
   createdAt: Date;
 }
 
+// Optional email log modeling for SendGrid events
+export interface FirestoreEmailLog {
+  id: string;
+  sendgridId: string;
+  template?: string;
+  email?: string;
+  status?: string;
+  error?: string;
+  data?: any;
+  updatedAt?: Date;
+}
+
 export interface FirestorePrivacyConsent {
   id: string;
   userId: string;
@@ -429,6 +441,12 @@ export class FirestoreService {
     return snapshot.docs.map(doc => doc.data() as FirestorePayment);
   }
 
+  // Admin helpers (broad scans — consider adding indexed filters as needed)
+  async getAllPayments(): Promise<FirestorePayment[]> {
+    const snapshot = await db.collection('payments').get();
+    return snapshot.docs.map(doc => doc.data() as FirestorePayment);
+  }
+
   async updatePayment(id: string, updates: Partial<FirestorePayment>): Promise<void> {
     await db.collection('payments').doc(id).update({
       ...updates,
@@ -451,6 +469,46 @@ export class FirestoreService {
       ...auditData,
       timestamp: new Date(),
     });
+  }
+
+  async getAllUsers(): Promise<FirestoreUser[]> {
+    const snapshot = await db.collection('users').get();
+    return snapshot.docs.map(d => d.data() as FirestoreUser);
+  }
+
+  async getAllSubscriptions(): Promise<FirestoreSubscription[]> {
+    const snapshot = await db.collection('subscriptions').get();
+    return snapshot.docs.map(d => d.data() as FirestoreSubscription);
+  }
+
+  async getAllLicenses(): Promise<FirestoreLicense[]> {
+    const snapshot = await db.collection('licenses').get();
+    return snapshot.docs.map(d => d.data() as FirestoreLicense);
+  }
+
+  async getComplianceEvents(filter: { severity?: string; eventType?: string; resolved?: boolean } = {}): Promise<any[]> {
+    let query: FirebaseFirestore.Query = db.collection('compliance_events');
+    if (filter.severity) query = query.where('severity', '==', filter.severity);
+    if (filter.eventType) query = query.where('eventType', '==', filter.eventType);
+    if (typeof filter.resolved === 'boolean') query = query.where('resolved', '==', filter.resolved);
+    const snapshot = await query.orderBy('createdAt', 'desc').get();
+    return snapshot.docs.map(d => d.data());
+  }
+
+  async updateComplianceEvent(id: string, updates: Partial<any>): Promise<void> {
+    await db.collection('compliance_events').doc(id).update({ ...updates, updatedAt: new Date() });
+  }
+
+  // Email logs
+  async getEmailLogBySendgridId(sendgridId: string): Promise<FirestoreEmailLog | null> {
+    const snapshot = await db.collection('email_logs').where('sendgridId', '==', sendgridId).limit(1).get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...(doc.data() as any) } as FirestoreEmailLog;
+  }
+
+  async updateEmailLog(id: string, updates: Partial<FirestoreEmailLog>): Promise<void> {
+    await db.collection('email_logs').doc(id).update({ ...updates, updatedAt: new Date() });
   }
 
   async getAuditLogsByUser(userId: string): Promise<any[]> {
@@ -498,6 +556,22 @@ export class FirestoreService {
     if (snapshot.empty) return null;
     const doc = snapshot.docs[0];
     return { id: doc.id };
+  }
+
+  async countRecentWebhookEvents(sinceMs: number): Promise<number> {
+    const sinceDate = new Date(Date.now() - sinceMs);
+    const snapshot = await db.collection('webhook_events').where('createdAt', '>=', sinceDate).get();
+    return snapshot.size;
+  }
+
+  async countFailedWebhookEvents(): Promise<number> {
+    const snapshot = await db.collection('webhook_events').where('processed', '==', false).where('retryCount', '>', 0).get();
+    return snapshot.size;
+  }
+
+  async getFailedWebhookEvents(limit: number = 10): Promise<any[]> {
+    const snapshot = await db.collection('webhook_events').where('processed', '==', false).where('retryCount', '<', 3).limit(limit).get();
+    return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
   }
 
   async updateWebhookEvent(id: string, updates: Partial<{

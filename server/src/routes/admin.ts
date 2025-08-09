@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import { prisma } from '../utils/prisma.js';
+import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { LicenseService } from '../services/licenseService.js';
 import { EmailService } from '../services/emailService.js';

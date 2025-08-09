@@ -48,30 +48,23 @@ router.get('/payments', asyncHandler(async (req: Request, res: Response) => {
   const to = (req.query.to as string) || undefined;
   const skip = (page - 1) * limit;
 
-  const whereClause: any = {};
-  if (status) whereClause.status = status as any;
-  if (from || to) {
-    whereClause.createdAt = {} as any;
-    if (from) (whereClause.createdAt as any).gte = new Date(from);
-    if (to) (whereClause.createdAt as any).lte = new Date(to);
-  }
+  const all = await firestoreService.getAllPayments();
+  const users = email ? await firestoreService.getAllUsers() : [];
+  let filtered = all;
+  if (status) filtered = filtered.filter(p => p.status === status);
+  if (from) filtered = filtered.filter(p => new Date(p.createdAt) >= new Date(from));
+  if (to) filtered = filtered.filter(p => new Date(p.createdAt) <= new Date(to));
   if (email) {
-    whereClause.user = { email: { contains: email, mode: 'insensitive' } };
+    const userIds = users
+      .filter(u => (u.email || '').toLowerCase().includes(email.toLowerCase()))
+      .map(u => u.id);
+    filtered = filtered.filter(p => userIds.includes(p.userId));
   }
-
-  const [payments, total] = await Promise.all([
-    prisma.payment.findMany({
-      where: whereClause,
-      include: {
-        user: { select: { id: true, email: true, name: true } },
-        subscription: { select: { id: true, tier: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    }),
-    prisma.payment.count({ where: whereClause }),
-  ]);
+  const total = filtered.length;
+  const payments = filtered
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(skip, skip + limit)
+    .map(p => ({ ...p }));
 
   res.json({
     success: true,
@@ -93,30 +86,22 @@ router.get('/payments', asyncHandler(async (req: Request, res: Response) => {
 router.get('/payments/:paymentId', asyncHandler(async (req: Request, res: Response) => {
   const { paymentId } = req.params;
 
-  const payment = await prisma.payment.findUnique({
-    where: { id: paymentId },
-    include: {
-      user: { select: { id: true, email: true, name: true } },
-      subscription: { select: { id: true, tier: true, userId: true } },
-    },
-  });
+  const payment = await firestoreService.getPaymentById(paymentId);
+  const subscription = payment ? await firestoreService.getSubscriptionById(payment.subscriptionId) : null;
+  const user = payment ? await firestoreService.getUserById(payment.userId) : null;
 
   if (!payment) {
     throw createApiError('Payment not found', 404);
   }
 
   // Related licenses under the same subscription (if any)
-  const licenses = payment.subscriptionId
-    ? await prisma.license.findMany({
-        where: { subscriptionId: payment.subscriptionId },
-        select: { id: true, key: true, status: true, activatedAt: true, expiresAt: true },
-        orderBy: { createdAt: 'desc' },
-      })
+  const licenses = payment?.subscriptionId
+    ? await firestoreService.getLicensesBySubscriptionId(payment.subscriptionId)
     : [];
 
   res.json({
     success: true,
-    data: { payment, licenses },
+    data: { payment: payment ? { ...payment, user, subscription } : null, licenses },
   });
 }));
 

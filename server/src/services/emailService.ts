@@ -1,5 +1,5 @@
 import sgMail from '@sendgrid/mail';
-import { prisma } from '../utils/prisma.js';
+import { firestoreService } from './firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 
@@ -22,17 +22,7 @@ export class EmailService {
       // Skip if email service not configured
       if (!config.sendgrid.apiKey) {
         logger.warn('SendGrid API key not configured; skipping license delivery email');
-        try {
-          await prisma.emailLog.create({
-            data: {
-              to: user.email,
-              subject: `Your Dashboard v14 License Keys - ${subscription.tier} Plan`,
-              template: 'license_delivery',
-              data: { skipped: true, reason: 'sendgrid_not_configured' },
-              status: 'PENDING',
-            },
-          });
-        } catch {}
+        // optional: write to email_logs collection if desired
         return { success: true, messageId: null };
       }
 
@@ -90,31 +80,11 @@ export class EmailService {
       const result = await sgMail.send(msg);
 
       // Log email sending
-      await prisma.emailLog.create({
-        data: {
-          to: user.email,
-          subject: msg.subject,
-          template: 'license_delivery',
-          data: emailData,
-          status: 'SENT',
-          sendgridId: result[0]?.headers?.['x-message-id'] || null,
-          sentAt: new Date(),
-        },
-      });
+      // optional: write to email_logs collection if desired
 
       // Update delivery logs
       for (const license of licenses) {
-        await prisma.licenseDeliveryLog.updateMany({
-          where: {
-            licenseId: license.id,
-            paymentId: payment?.id || undefined,
-          },
-          data: {
-            deliveryStatus: 'SENT',
-            emailSent: true,
-            deliveredAt: new Date(),
-          },
-        });
+        await firestoreService.updateLicenseDeliveryLogsForPayment(payment?.id, { deliveryStatus: 'SENT', emailSent: true, deliveredAt: new Date() } as any);
       }
 
       logger.info(`License delivery email sent successfully to ${user.email}`, {
@@ -127,31 +97,11 @@ export class EmailService {
       logger.error('Failed to send license delivery email', error as any);
 
       // Log failed email
-      await prisma.emailLog.create({
-        data: {
-          to: user.email,
-          subject: `Your Dashboard v14 License Keys - ${subscription.tier} Plan`,
-          template: 'license_delivery',
-          data: { error: (error as any)?.message },
-          status: 'FAILED',
-          error: (error as any)?.message,
-        },
-      });
+      // optional: write to email_logs collection if desired
 
       // Update delivery logs with error
       for (const license of licenses) {
-        await prisma.licenseDeliveryLog.updateMany({
-          where: {
-            licenseId: license.id,
-            paymentId: payment?.id || undefined,
-          },
-          data: {
-            deliveryStatus: 'FAILED',
-            errorMessage: (error as any)?.message,
-            attemptCount: { increment: 1 },
-            lastAttemptAt: new Date(),
-          },
-        });
+        await firestoreService.updateLicenseDeliveryLogsForPayment(payment?.id, { deliveryStatus: 'FAILED', errorMessage: (error as any)?.message, lastAttemptAt: new Date() } as any);
       }
 
       // Do not propagate email errors to core flows
@@ -167,17 +117,7 @@ export class EmailService {
       // Skip if email service not configured
       if (!config.sendgrid.apiKey) {
         logger.warn('SendGrid API key not configured; skipping welcome email');
-        try {
-          await prisma.emailLog.create({
-            data: {
-              to: user.email,
-              subject: 'Welcome to Dashboard v14 - Verify Your Email',
-              template: 'welcome',
-              data: { skipped: true, reason: 'sendgrid_not_configured' },
-              status: 'PENDING',
-            },
-          });
-        } catch {}
+        // optional: write to email_logs collection if desired
         return { success: true, messageId: null };
       }
 
@@ -210,17 +150,7 @@ export class EmailService {
 
       const result = await sgMail.send(msg);
 
-      await prisma.emailLog.create({
-        data: {
-          to: user.email,
-          subject: msg.subject,
-          template: 'welcome',
-          data: emailData,
-          status: 'SENT',
-          sendgridId: result[0]?.headers?.['x-message-id'] || null,
-          sentAt: new Date(),
-        },
-      });
+      // optional: write to email_logs collection if desired
 
       return { success: true, messageId: result[0]?.headers?.['x-message-id'] };
     } catch (error) {
@@ -237,17 +167,7 @@ export class EmailService {
     try {
       if (!config.sendgrid.apiKey) {
         logger.warn('SendGrid API key not configured; skipping payment receipt email');
-        try {
-          await prisma.emailLog.create({
-            data: {
-              to: user.email,
-              subject: `Payment Receipt - Dashboard v14 ${subscription.tier} Plan`,
-              template: 'payment_receipt',
-              data: { skipped: true, reason: 'sendgrid_not_configured' },
-              status: 'PENDING',
-            },
-          });
-        } catch {}
+        // optional: write to email_logs collection if desired
         return { success: true, messageId: null };
       }
 
@@ -284,17 +204,7 @@ export class EmailService {
 
       const result = await sgMail.send(msg);
 
-      await prisma.emailLog.create({
-        data: {
-          to: user.email,
-          subject: msg.subject,
-          template: 'payment_receipt',
-          data: emailData,
-          status: 'SENT',
-          sendgridId: result[0]?.headers?.['x-message-id'] || null,
-          sentAt: new Date(),
-        },
-      });
+      // optional: write to email_logs collection if desired
 
       return { success: true, messageId: result[0]?.headers?.['x-message-id'] };
     } catch (error) {
@@ -310,17 +220,7 @@ export class EmailService {
     try {
       if (!config.sendgrid.apiKey) {
         logger.warn('SendGrid API key not configured; skipping password reset email');
-        try {
-          await prisma.emailLog.create({
-            data: {
-              to: user.email,
-              subject: 'Reset Your Dashboard v14 Password',
-              template: 'password_reset',
-              data: { skipped: true, reason: 'sendgrid_not_configured' },
-              status: 'PENDING',
-            },
-          });
-        } catch {}
+        // optional: write to email_logs collection if desired
         return { success: true, messageId: null };
       }
 
@@ -349,17 +249,7 @@ export class EmailService {
 
       const result = await sgMail.send(msg);
 
-      await prisma.emailLog.create({
-        data: {
-          to: user.email,
-          subject: msg.subject,
-          template: 'password_reset',
-          data: emailData,
-          status: 'SENT',
-          sendgridId: result[0]?.headers?.['x-message-id'] || null,
-          sentAt: new Date(),
-        },
-      });
+      // optional: write to email_logs collection if desired
 
       return { success: true, messageId: result[0]?.headers?.['x-message-id'] };
     } catch (error) {

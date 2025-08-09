@@ -17,6 +17,7 @@ import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { logger } from './utils/logger.js';
 import { firestoreService } from './services/firestoreService.js';
 import { PasswordUtil } from './utils/password.js';
+import { LicenseService } from './services/licenseService.js';
 // Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
 const app: Application = express();
@@ -92,6 +93,17 @@ app.post('/api/setup/seed-superadmin', async (req, res) => {
     return;
   }
   await ensureSuperAdminSeed();
+  res.json({ success: true });
+});
+
+app.post('/api/setup/seed-test-data', async (req, res) => {
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
+  await seedTestData();
   res.json({ success: true });
 });
 
@@ -182,6 +194,86 @@ async function ensureSuperAdminSeed(): Promise<void> {
     logger.info('Seeded SUPERADMIN user', { email: adminEmail, userId: admin.id });
   } catch (err) {
     logger.error('Failed to ensure SUPERADMIN seed', { error: (err as any)?.message });
+  }
+}
+
+// Seed test data including subscriptions and licenses
+async function seedTestData(): Promise<void> {
+  try {
+    logger.info('Seeding test data...');
+    
+    // Test users with their tiers and seat counts
+    const testUsers = [
+      { id: '1A86PkN4XmjclkWqzK9X', email: 'user1.basic@example.com', tier: 'BASIC', seats: 1 },
+      { id: '5yBOkbzU2eSVJDaBSNf0', email: 'user2.basic@example.com', tier: 'BASIC', seats: 1 },
+      { id: '57lVrwua5pMLx3HGyiCw', email: 'user1.pro@example.com', tier: 'PRO', seats: 5 },
+      { id: 'CBZZl8KEVEScjjAkzL0E', email: 'user2.pro@example.com', tier: 'PRO', seats: 10 },
+      { id: 'WGDiSdTiCXKHOSYiF1Ey', email: 'user1.enterprise@example.com', tier: 'ENTERPRISE', seats: 25 },
+      { id: '7dGkcacCa0cUcdqP7Ywn', email: 'user2.enterprise@example.com', tier: 'ENTERPRISE', seats: 50 },
+      { id: '1rX32QnDsUP49alkpmTC', email: 'chrismole@gmail.com', tier: 'ENTERPRISE', seats: 100 },
+    ];
+
+    const pricePerSeat = { BASIC: 2900, PRO: 9900, ENTERPRISE: 19900 };
+    
+    for (const user of testUsers) {
+      // Create subscription
+      const subscription = await firestoreService.createSubscription({
+        userId: user.id,
+        tier: user.tier as any,
+        status: 'ACTIVE',
+        seats: user.seats,
+        pricePerSeat: pricePerSeat[user.tier as keyof typeof pricePerSeat],
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        cancelAtPeriodEnd: false,
+      });
+
+      // Generate licenses
+      await LicenseService.generateLicenses(
+        user.id,
+        subscription.id,
+        user.tier as any,
+        user.seats
+      );
+
+      // Create mock payment record
+      await firestoreService.createPayment({
+        userId: user.id,
+        subscriptionId: subscription.id,
+        stripePaymentIntentId: `pi_mock_${subscription.id}`,
+        amount: pricePerSeat[user.tier as keyof typeof pricePerSeat] * user.seats,
+        currency: 'usd',
+        status: 'SUCCEEDED',
+        description: `${user.tier} subscription - ${user.seats} seats`,
+        receiptUrl: `https://dashboard.stripe.com/receipts/mock_${subscription.id}`,
+        billingAddressSnapshot: {
+          firstName: user.email.split('@')[0],
+          lastName: 'User',
+          addressLine1: '123 Main St',
+          city: 'Anytown',
+          postalCode: '12345',
+          country: 'US',
+        },
+        complianceData: {
+          userType: 'individual',
+          subscriptionTier: user.tier,
+          seats: user.seats,
+          timestamp: new Date().toISOString(),
+        },
+        amlScreeningStatus: 'PASSED',
+        pciCompliant: true,
+      });
+
+      logger.info(`Seeded test data for ${user.email}`, { 
+        tier: user.tier, 
+        seats: user.seats,
+        subscriptionId: subscription.id
+      });
+    }
+
+    logger.info('Test data seeding completed successfully');
+  } catch (err) {
+    logger.error('Failed to seed test data', { error: (err as any)?.message });
   }
 }
 

@@ -7,8 +7,8 @@ export const config = {
   port: parseInt(process.env.PORT || '3003'),
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  // Database
-  databaseUrl: process.env.DATABASE_URL || 'postgresql://localhost:5432/licensing_db',
+  // Database removed (Prisma -> Firestore). Keep placeholder for backward compat
+  databaseUrl: process.env.DATABASE_URL || '',
 
   // JWT
   jwtSecret: process.env.JWT_SECRET || 'your-super-secure-jwt-secret',

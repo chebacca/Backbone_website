@@ -7,13 +7,40 @@
       "**/node_modules/**"
     ],
     "rewrites": [
-      { "source": "/api/**", "function": { "functionId": "api", "region": "us-central1" } },
+      { "source": "/api/**", "function": "api" },
       { "source": "**", "destination": "/index.html" }
     ]
   },
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
   "functions": {
     "source": "server",
-    "runtime": "nodejs20"
+    "runtime": "nodejs20",
+    "ignore": [
+      "**/node_modules/**",
+      ".git/**"
+    ],
+    "endpoints": {
+      "api": {
+        "environmentVariables": {
+          "FIREBASE_PROJECT_ID": "${FIREBASE_PROJECT_ID}",
+          "FIREBASE_CLIENT_EMAIL": "${FIREBASE_CLIENT_EMAIL}",
+          "FIREBASE_PRIVATE_KEY": "${FIREBASE_PRIVATE_KEY}",
+          "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}",
+          "STRIPE_PUBLISHABLE_KEY": "${STRIPE_PUBLISHABLE_KEY}",
+          "STRIPE_WEBHOOK_SECRET": "${STRIPE_WEBHOOK_SECRET}",
+          "SENDGRID_API_KEY": "${SENDGRID_API_KEY}",
+          "FROM_EMAIL": "${FROM_EMAIL}",
+          "FROM_NAME": "${FROM_NAME}",
+          "JWT_SECRET": "${JWT_SECRET}",
+          "JWT_EXPIRES_IN": "${JWT_EXPIRES_IN}",
+          "JWT_REFRESH_EXPIRES_IN": "${JWT_REFRESH_EXPIRES_IN}",
+          "FRONTEND_URL": "${FRONTEND_URL}",
+          "CORS_ORIGIN": "${CORS_ORIGIN}"
+        }
+      }
+    }
   }
 }
 

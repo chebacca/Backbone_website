@@ -4,14 +4,22 @@ import { getAuth } from 'firebase-admin/auth';
 
 // Initialize Firebase Admin
 if (!getApps().length) {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const rawKey = process.env.FIREBASE_PRIVATE_KEY;
-  if (!projectId || !clientEmail || !rawKey) {
-    throw new Error('Missing FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, or FIREBASE_PRIVATE_KEY');
+  const isCloudFunctionsEnv = Boolean(
+    process.env.FUNCTION_TARGET || process.env.K_SERVICE || process.env.FIREBASE_CONFIG
+  );
+  if (isCloudFunctionsEnv) {
+    // In Cloud Functions/Run, use Application Default Credentials bound to the service account
+    initializeApp();
+  } else {
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const rawKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (!projectId || !clientEmail || !rawKey) {
+      throw new Error('Missing FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, or FIREBASE_PRIVATE_KEY');
+    }
+    const privateKey = rawKey.replace(/\\n/g, '\n');
+    initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
   }
-  const privateKey = rawKey.replace(/\\n/g, '\n');
-  initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 }
 
 const db = getFirestore();
@@ -185,6 +193,20 @@ export interface FirestorePrivacyConsent {
 }
 
 export class FirestoreService {
+  /**
+   * Health check that ensures the Firestore Admin SDK can perform a read.
+   * Creates a short-lived doc read on a lightweight collection.
+   */
+  async ping(): Promise<{ ok: boolean; error?: string }> {
+    try {
+      // Read a non-existent doc to validate read permission and connectivity
+      const testRef = db.collection('_health').doc('ping');
+      await testRef.get();
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Unknown Firestore error' };
+    }
+  }
   // User operations
   async createUser(userData: Omit<FirestoreUser, 'id' | 'createdAt' | 'updatedAt'>): Promise<FirestoreUser> {
     const userRef = db.collection('users').doc();

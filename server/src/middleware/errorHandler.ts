@@ -86,28 +86,7 @@ export const errorHandler = async (
     errorResponse.stack = error.stack;
   }
 
-  // Handle Prisma errors
-  if (error.name === 'PrismaClientKnownRequestError') {
-    const prismaError = error as any;
-    
-    switch (prismaError.code) {
-      case 'P2002':
-        statusCode = 409;
-        errorResponse.error = 'A record with this information already exists';
-        break;
-      case 'P2025':
-        statusCode = 404;
-        errorResponse.error = 'Record not found';
-        break;
-      case 'P2003':
-        statusCode = 400;
-        errorResponse.error = 'Invalid reference to related record';
-        break;
-      default:
-        statusCode = 500;
-        errorResponse.error = 'Database error';
-    }
-  }
+  // Handle database errors placeholder (Prisma removed; keep generic mapping if needed)
 
   // Handle Stripe errors
   if (error.name === 'StripeError') {

@@ -15,6 +15,7 @@ import invoicesRouter from './routes/invoices.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { logger } from './utils/logger.js';
+import { firestoreService } from './services/firestoreService.js';
 // Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
 const app: Application = express();
@@ -56,12 +57,14 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check (support both /health and /api/health when behind Hosting rewrite)
-app.get(['/health', '/api/health'], (req, res) => {
-  res.json({ 
-    status: 'ok', 
+app.get(['/health', '/api/health'], async (req, res) => {
+  const dbPing = await firestoreService.ping();
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     environment: config.nodeEnv,
-    version: '1.0.0'
+    version: '1.0.0',
+    database: dbPing.ok ? 'healthy' : 'degraded',
   });
 });
 
@@ -105,6 +108,7 @@ if (!isCloudFunctionsEnv) {
 }
 
 // Export Firebase HTTPS function for production
+// Note: Uses Application Default Credentials for Firestore in Functions
 export const api = onRequest({
   region: 'us-central1',
   cors: config.corsOrigin,

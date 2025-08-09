@@ -12,10 +12,7 @@
     "build:client": "cd client && vite build",
     "build:server": "cd server && tsc",
     "start": "cd server && node dist/index.js",
-    "setup": "pnpm install && pnpm setup:db",
-    "setup:db": "cd server && npx prisma generate && npx prisma db push",
-    "db:studio": "cd server && npx prisma studio",
-    "db:reset": "cd server && npx prisma db push --force-reset",
+    "setup": "pnpm install",
     "test": "echo \"Tests will be added\" && exit 0"
   },
   "keywords": [
@@ -28,7 +25,8 @@
   ],
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "shared"
   ],
   "devDependencies": {
     "concurrently": "^8.2.2",

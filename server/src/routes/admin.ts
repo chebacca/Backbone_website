@@ -502,8 +502,8 @@ router.get('/system/health', asyncHandler(async (req: Request, res: Response) =>
  * Allows admins to issue licenses for edge cases without payment
  */
 router.post('/licenses/create', [
-  body('userId').isUUID().withMessage('Valid userId required'),
-  body('subscriptionId').isUUID().withMessage('Valid subscriptionId required'),
+  body('userId').isString().withMessage('Valid userId required'),
+  body('subscriptionId').isString().withMessage('Valid subscriptionId required'),
   body('tier').isIn(['BASIC', 'PRO', 'ENTERPRISE']).withMessage('Valid tier required'),
   body('seats').isInt({ min: 1, max: 1000 }).withMessage('Seats between 1 and 1000'),
 ], asyncHandler(async (req: Request, res: Response) => {
@@ -570,62 +570,33 @@ router.post('/licenses/create', [
 // Admin Service Class
 class AdminService {
   static async getDashboardStats() {
-    const [
-      totalUsers,
-      activeSubscriptions,
-      totalRevenue,
-      activeLicenses,
-      recentSignups,
-      recentPayments,
-    ] = await Promise.all([
-      prisma.user.count(),
-      prisma.subscription.count({ where: { status: 'ACTIVE' } }),
-      prisma.payment.aggregate({
-        where: { status: 'SUCCEEDED' },
-        _sum: { amount: true },
-      }),
-      prisma.license.count({ where: { status: 'ACTIVE' } }),
-      prisma.user.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          createdAt: true,
-        },
-      }),
-      prisma.payment.findMany({
-        where: { status: 'SUCCEEDED' },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        include: {
-          user: {
-            select: {
-              name: true,
-              email: true,
-            },
-          },
-        },
-      }),
+    const [users, subs, payments, licenses] = await Promise.all([
+      firestoreService.getAllUsers(),
+      firestoreService.getAllSubscriptions(),
+      firestoreService.getAllPayments(),
+      firestoreService.getAllLicenses(),
     ]);
-
-    const tierBreakdown = await prisma.subscription.groupBy({
-      by: ['tier'],
-      where: { status: 'ACTIVE' },
-      _count: { tier: true },
-      _sum: { pricePerSeat: true },
-    });
+    const totalUsers = users.length;
+    const activeSubscriptions = subs.filter(s => s.status === 'ACTIVE').length;
+    const totalRevenue = payments.filter(p => p.status === 'SUCCEEDED').reduce((sum, p) => sum + (p.amount || 0), 0);
+    const activeLicenses = licenses.filter(l => l.status === 'ACTIVE').length;
+    const recentSignups = users.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10)
+      .map(u => ({ id: u.id, email: u.email, name: u.name, createdAt: u.createdAt }));
+    const recentPayments = payments.filter(p => p.status === 'SUCCEEDED').sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10)
+      .map(p => ({ ...p, user: users.find(u => u.id === p.userId) ? { name: users.find(u => u.id === p.userId)!.name, email: users.find(u => u.id === p.userId)!.email } : undefined }));
+    const tierCounts: Record<string, number> = {};
+    subs.filter(s => s.status === 'ACTIVE').forEach(s => { tierCounts[s.tier] = (tierCounts[s.tier] || 0) + 1; });
+    const tierBreakdown = Object.keys(tierCounts).map(tier => ({ tier, _count: { tier: tierCounts[tier] }, _sum: { pricePerSeat: 0 } }));
 
     return {
       totalUsers,
       activeSubscriptions,
-      totalRevenue: totalRevenue._sum.amount || 0,
+      totalRevenue,
       activeLicenses,
       tierBreakdown: tierBreakdown.map(tier => ({
         tier: tier.tier,
-        count: tier._count.tier,
-        revenue: tier._sum.pricePerSeat || 0,
+        count: (tier._count as any).tier,
+        revenue: (tier._sum as any).pricePerSeat || 0,
       })),
       recentSignups,
       recentPayments,
@@ -776,12 +747,8 @@ class AdminService {
   }
 
   static async checkDatabaseHealth() {
-    try {
-      await prisma.$queryRaw`SELECT 1`;
-      return { status: 'healthy', latency: Date.now() };
-    } catch (error) {
-      return { status: 'unhealthy', error: (error as Error).message };
-    }
+    const ping = await firestoreService.ping();
+    return ping.ok ? { status: 'healthy' } : { status: 'degraded', error: ping.error };
   }
 
   static async checkEmailHealth() {

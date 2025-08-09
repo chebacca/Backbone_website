@@ -111,7 +111,7 @@ router.post('/validate', [
   const result = await LicenseService.validateLicense(licenseKey);
 
   // Log validation attempt
-  if (result.valid && result.license) {
+  if (result.valid && result.license && result.license.user) {
     await ComplianceService.createAuditLog(
       result.license.user.id,
       'LICENSE_ACTIVATE',
@@ -194,7 +194,7 @@ router.get('/download-sdk/:sdkId/:licenseKey', [
 
   // Log download
   await ComplianceService.createAuditLog(
-    validation.license!.user.id,
+    validation.license && validation.license.user ? validation.license.user.id : req.user!.id,
     'LICENSE_ACTIVATE',
     `SDK downloaded: ${sdkVersion.platform} v${sdkVersion.version}`,
     {

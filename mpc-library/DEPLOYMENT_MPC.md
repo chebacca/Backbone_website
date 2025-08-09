@@ -14,7 +14,7 @@ Database
 - Generate client: `pnpm -C server prisma generate`
 
 Env Vars (prod)
-- DATABASE_URL, JWT_SECRET/EXPIRES, FRONTEND_URL, CORS_ORIGIN
+- FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, JWT_SECRET/EXPIRES, FRONTEND_URL, CORS_ORIGIN, STRIPE_*, SENDGRID_*
 - STRIPE_* keys and price IDs; SENDGRID API key; AWS (if used)
 
 Webhooks

@@ -92,9 +92,7 @@ async function handleSendGridEvent(event: any) {
   }
 
   // Find the email log entry
-  const emailLog = await prisma.emailLog.findFirst({
-    where: { sendgridId: sg_message_id },
-  });
+  const emailLog = await firestoreService.getEmailLogBySendgridId(sg_message_id);
 
   if (!emailLog) {
     logger.warn('Email log not found for SendGrid event', {
@@ -142,10 +140,7 @@ async function handleSendGridEvent(event: any) {
       break;
   }
 
-  await prisma.emailLog.update({
-    where: { id: emailLog.id },
-    data: updateData,
-  });
+  await firestoreService.updateEmailLog(emailLog.id, updateData);
 
   logger.info('SendGrid event processed', {
     messageId: sg_message_id,
@@ -160,19 +155,14 @@ async function handleSendGridEvent(event: any) {
  */
 async function updateLicenseDeliveryLog(messageId: string, updates: any) {
   try {
-    const emailLog = await prisma.emailLog.findFirst({
-      where: { sendgridId: messageId },
-    });
+    const emailLog = await firestoreService.getEmailLogBySendgridId(messageId);
 
     if (!emailLog) return;
 
     // Extract payment ID from email data to find license delivery logs
-    const emailData = emailLog.data as any;
-    if (emailData.paymentId) {
-      await prisma.licenseDeliveryLog.updateMany({
-        where: { paymentId: emailData.paymentId },
-        data: updates,
-      });
+    const emailData = (emailLog as any).data as any;
+    if (emailData?.paymentId) {
+      await firestoreService.updateLicenseDeliveryLogsForPayment(emailData.paymentId, updates);
     }
   } catch (error) {
     logger.error('Failed to update license delivery log', error);
@@ -184,9 +174,7 @@ async function updateLicenseDeliveryLog(messageId: string, updates: any) {
  */
 async function handleUnsubscribe(email: string, messageId: string) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await firestoreService.getUserByEmail(email);
 
     if (!user) {
       logger.warn('User not found for unsubscribe event', { email });
@@ -202,10 +190,7 @@ async function handleUnsubscribe(email: string, messageId: string) {
     );
 
     // Update user preferences
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { marketingConsent: false },
-    });
+    await firestoreService.updateUser(user.id, { marketingConsent: false });
 
     // Create audit log
     await ComplianceService.createAuditLog(
@@ -263,19 +248,8 @@ router.post('/test', asyncHandler(async (req: Request, res: Response) => {
  */
 router.get('/health', asyncHandler(async (req: Request, res: Response) => {
   const [recentWebhooks, failedWebhooks] = await Promise.all([
-    prisma.webhookEvent.count({
-      where: {
-        createdAt: {
-          gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
-        },
-      },
-    }),
-    prisma.webhookEvent.count({
-      where: {
-        processed: false,
-        retryCount: { gt: 0 },
-      },
-    }),
+    firestoreService.countRecentWebhookEvents(24 * 60 * 60 * 1000),
+    firestoreService.countFailedWebhookEvents(),
   ]);
 
   const health = {
@@ -298,37 +272,26 @@ router.post('/retry-failed', asyncHandler(async (req: Request, res: Response) =>
   // This would typically require admin authentication
   // For now, just a simple implementation
 
-  const failedWebhooks = await prisma.webhookEvent.findMany({
-    where: {
-      processed: false,
-      retryCount: { lt: 3 }, // Don't retry more than 3 times
-    },
-    take: 10,
-  });
+  const failedWebhooks = await firestoreService.getFailedWebhookEvents(10);
 
   let retried = 0;
   
   for (const webhook of failedWebhooks) {
     try {
       // Retry processing the webhook
-      await PaymentService.handleWebhook(webhook.data as any, '');
-      
-      await prisma.webhookEvent.update({
-        where: { id: webhook.id },
-        data: {
-          processed: true,
-          error: null,
-        },
+      await PaymentService.handleWebhook((webhook as any).data as any, '');
+
+      await firestoreService.updateWebhookEvent(webhook.id, {
+        processed: true,
+        error: undefined,
+        retryCount: (webhook as any).retryCount ?? 0,
       });
-      
+
       retried++;
     } catch (error) {
-      await prisma.webhookEvent.update({
-        where: { id: webhook.id },
-        data: {
-          retryCount: { increment: 1 },
-          error: (error as Error).message,
-        },
+      await firestoreService.updateWebhookEvent(webhook.id, {
+        retryCount: ((webhook as any).retryCount ?? 0) + 1,
+        error: (error as Error).message,
       });
     }
   }

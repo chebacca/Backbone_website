@@ -12,14 +12,11 @@ declare global {
   }
 }
 
-// Prefer BASE_URL; fall back to legacy VITE_API_URL; finally default to local API with /api prefix
+// Prefer BASE_URL; fall back to legacy VITE_API_URL; finally default to relative /api (works with Firebase Hosting rewrites)
 let rawBase = (import.meta.env as any).VITE_API_BASE_URL || (import.meta.env as any).VITE_API_URL;
 if (!rawBase) {
-  // Fallback to dev server proxy when running on localhost (any port)
-  const isDev = typeof window !== 'undefined' && (
-    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  );
-  rawBase = isDev ? '/api' : 'http://localhost:3003/api';
+  // Use relative '/api' for both local dev (via Vite proxy) and production (via Hosting rewrites)
+  rawBase = '/api';
 }
 
 // Normalize to avoid double slashes, and guard against env value '/'

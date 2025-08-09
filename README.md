@@ -204,7 +204,9 @@ pnpm run install:all
 **Server Environment (.env)**
 ```env
 # Database
-DATABASE_URL="postgresql://username:password@localhost:5432/licensing_db"
+FIREBASE_PROJECT_ID="your-project-id"
+FIREBASE_CLIENT_EMAIL="svc@your-project-id.iam.gserviceaccount.com"
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 
 # JWT
 JWT_SECRET="your-super-secret-jwt-key"

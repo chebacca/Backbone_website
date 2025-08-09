@@ -110,7 +110,8 @@ npx vite --port 3002 --host
 The backend requires a `.env` file in the `server/` directory. If it doesn't exist, the scripts will try to create one from `server/env.example`.
 
 Key environment variables:
-- `DATABASE_URL`: PostgreSQL connection string
+- Firebase Admin credentials are required in environment:
+  - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
 - `JWT_SECRET`: Secret for JWT tokens
 - `STRIPE_SECRET_KEY`: Stripe API key (for payments)
 - `SENDGRID_API_KEY`: SendGrid API key (for emails)

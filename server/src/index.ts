@@ -220,7 +220,7 @@ async function ensureSuperAdminSeed(): Promise<void> {
 await ensureSuperAdminSeed();
 
 // One-time setup endpoint to (re)seed SUPERADMIN on demand, guarded by a setup token
-app.post('/api/admin/seed-superadmin', async (req, res) => {
+app.post('/api/setup/seed-superadmin', async (req, res) => {
   const token = req.headers['x-setup-token'] as string;
   const expected = process.env.ADMIN_SETUP_TOKEN;
   if (!expected || token !== expected) {

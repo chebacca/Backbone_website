@@ -150,4 +150,9 @@ tmp/
 builds/
 
 # Test outputs
-test-output/
+ test-output/
+
+# Firebase Admin SDK service account keys (do not commit secrets)
+*firebase-adminsdk-*.json
+*serviceAccount*.json
+backbone-logic-firebase-adminsdk-fbsvc-a4ae068c8f.json

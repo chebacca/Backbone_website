@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import { prisma } from '../utils/prisma.js';
+import { firestoreService } from '../services/firestoreService.js';
 import { PaymentService } from '../services/paymentService.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { 
@@ -28,25 +28,7 @@ router.use(requireEmailVerification);
 router.get('/my-subscriptions', asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const subscriptions = await prisma.subscription.findMany({
-    where: { userId },
-    include: {
-      licenses: {
-        where: { status: { in: ['ACTIVE', 'PENDING'] } },
-      },
-      payments: {
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-      },
-      _count: {
-        select: {
-          licenses: true,
-          payments: true,
-        },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const subscriptions = await firestoreService.getSubscriptionsByUserId(userId);
 
   res.json({
     success: true,
@@ -62,25 +44,10 @@ router.get('/:subscriptionId', [
 ], asyncHandler(async (req: Request, res: Response) => {
   const { subscriptionId } = req.params;
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { id: subscriptionId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          name: true,
-        },
-      },
-      licenses: {
-        orderBy: { createdAt: 'desc' },
-      },
-      payments: {
-        orderBy: { createdAt: 'desc' },
-      },
-      organization: true,
-    },
-  });
+  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+  const user = subscription ? await firestoreService.getUserById(subscription.userId) : null;
+  const licenses = subscription ? await firestoreService.getLicensesBySubscriptionId(subscription.id) : [];
+  const payments = subscription ? await firestoreService.getPaymentsBySubscriptionId(subscription.id) : [];
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -88,7 +55,7 @@ router.get('/:subscriptionId', [
 
   res.json({
     success: true,
-    data: { subscription },
+    data: { subscription: subscription ? { ...subscription, user, licenses, payments } : null },
   });
 }));
 
@@ -110,9 +77,7 @@ router.put('/:subscriptionId', [
     throw validationErrorHandler(errors.array());
   }
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { id: subscriptionId },
-  });
+  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -193,9 +158,7 @@ router.post('/:subscriptionId/reactivate', [
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { id: subscriptionId },
-  });
+  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -205,7 +168,7 @@ router.post('/:subscriptionId/reactivate', [
     throw createApiError('Cannot reactivate this subscription', 400);
   }
 
-  if (new Date() > subscription.currentPeriodEnd!) {
+  if (subscription.currentPeriodEnd && new Date() > new Date(subscription.currentPeriodEnd)) {
     throw createApiError('Subscription period has already ended', 400);
   }
 
@@ -233,15 +196,7 @@ router.get('/:subscriptionId/invoices', [
   const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
   const skip = (page - 1) * limit;
 
-  const [payments, total] = await Promise.all([
-    prisma.payment.findMany({
-      where: { subscriptionId },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
-    }),
-    prisma.payment.count({ where: { subscriptionId } }),
-  ]);
+  const { payments, total } = await firestoreService.getPaymentsPageBySubscriptionId(subscriptionId, page, limit);
 
   res.json({
     success: true,
@@ -270,36 +225,21 @@ router.get('/:subscriptionId/usage', [
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  const [licenses, usageAnalytics] = await Promise.all([
-    prisma.license.findMany({
-      where: { subscriptionId },
-      include: {
-        usageAnalytics: {
-          where: { timestamp: { gte: startDate } },
-          orderBy: { timestamp: 'desc' },
-        },
-      },
-    }),
-    prisma.usageAnalytics.findMany({
-      where: {
-        license: { subscriptionId },
-        timestamp: { gte: startDate },
-      },
-      orderBy: { timestamp: 'desc' },
-    }),
-  ]);
+  const licenses = await firestoreService.getLicensesBySubscriptionId(subscriptionId);
+  const usageLists = await Promise.all(licenses.map((l: any) => firestoreService.getUsageAnalyticsByLicense(l.id, startDate)));
+  const usageAnalytics = usageLists.flat();
 
   // Aggregate usage data
   const usageStats = {
     totalLicenses: licenses.length,
     activeLicenses: licenses.filter(l => l.status === 'ACTIVE').length,
     totalUsageEvents: usageAnalytics.length,
-    eventTypes: usageAnalytics.reduce((acc, event) => {
+    eventTypes: usageAnalytics.reduce((acc: Record<string, number>, event: any) => {
       acc[event.event] = (acc[event.event] || 0) + 1;
       return acc;
     }, {} as Record<string, number>),
-    dailyUsage: usageAnalytics.reduce((acc, event) => {
-      const date = event.timestamp.toISOString().split('T')[0];
+    dailyUsage: usageAnalytics.reduce((acc: Record<string, number>, event: any) => {
+       const date = new Date(event.timestamp).toISOString().split('T')[0];
       acc[date] = (acc[date] || 0) + 1;
       return acc;
     }, {} as Record<string, number>),
@@ -309,12 +249,12 @@ router.get('/:subscriptionId/usage', [
     success: true,
     data: {
       usage: usageStats,
-      licenses: licenses.map(l => ({
+      licenses: licenses.map((l: any) => ({
         id: l.id,
         key: l.key.substring(0, 8) + '...',
         status: l.status,
         activatedAt: l.activatedAt,
-        usageCount: l.usageAnalytics.length,
+       usageCount: usageLists.find((u: any[]) => u[0]?.licenseId === l.id)?.length || 0,
       })),
     },
   });
@@ -354,20 +294,16 @@ router.get('/:subscriptionId/billing-history', [
 ], asyncHandler(async (req: Request, res: Response) => {
   const { subscriptionId } = req.params;
 
-  const billingHistory = await prisma.payment.findMany({
-    where: { subscriptionId },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      amount: true,
-      currency: true,
-      status: true,
-      description: true,
-      receiptUrl: true,
-      taxAmount: true,
-      createdAt: true,
-    },
-  });
+  const billingHistory = (await firestoreService.getPaymentsBySubscriptionId(subscriptionId)).map(p => ({
+    id: p.id,
+    amount: p.amount,
+    currency: p.currency,
+    status: p.status,
+    description: p.description,
+    receiptUrl: p.receiptUrl,
+    taxAmount: p.taxAmount,
+    createdAt: p.createdAt,
+  }));
 
   res.json({
     success: true,
@@ -386,16 +322,7 @@ router.post('/:subscriptionId/preview-changes', [
   const { subscriptionId } = req.params;
   const { seats, tier } = req.body;
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { id: subscriptionId },
-    include: {
-      user: {
-        include: {
-          billingAddress: true,
-        },
-      },
-    },
-  });
+  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -420,19 +347,7 @@ router.get('/:subscriptionId/renewal', [
 ], asyncHandler(async (req: Request, res: Response) => {
   const { subscriptionId } = req.params;
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { id: subscriptionId },
-    select: {
-      id: true,
-      tier: true,
-      seats: true,
-      pricePerSeat: true,
-      currentPeriodStart: true,
-      currentPeriodEnd: true,
-      cancelAtPeriodEnd: true,
-      status: true,
-    },
-  });
+  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -468,9 +383,7 @@ router.post('/:subscriptionId/add-seats', [
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { id: subscriptionId },
-  });
+  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);

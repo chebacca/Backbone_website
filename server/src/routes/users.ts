@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import { prisma } from '../utils/prisma.js';
+import { firestoreService } from '../services/firestoreService.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { 
   asyncHandler, 
@@ -49,22 +49,15 @@ router.put('/billing-address', [
     throw createApiError(`Invalid address: ${validation.errors.join(', ')}`, 400);
   }
 
-  const address = await prisma.billingAddress.upsert({
-    where: { userId },
-    create: {
-      userId,
+  await firestoreService.updateUser(userId, {
+    billingAddress: {
       ...addressData,
       validated: true,
       validatedAt: new Date(),
       validationSource: 'user_update',
     },
-    update: {
-      ...addressData,
-      validated: true,
-      validatedAt: new Date(),
-      validationSource: 'user_update',
-    },
-  });
+  } as any);
+  const address = (await firestoreService.getUserById(userId))?.billingAddress;
 
   // Create audit log
   await ComplianceService.createAuditLog(
@@ -101,14 +94,8 @@ router.put('/tax-information', [
   const requestInfo = (req as any).requestInfo;
   const taxData = req.body;
 
-  const taxInfo = await prisma.taxInformation.upsert({
-    where: { userId },
-    create: {
-      userId,
-      ...taxData,
-    },
-    update: taxData,
-  });
+  await firestoreService.updateUser(userId, { taxInformation: taxData } as any);
+  const taxInfo = (await firestoreService.getUserById(userId))?.taxInformation;
 
   // Create audit log
   await ComplianceService.createAuditLog(
@@ -145,14 +132,8 @@ router.put('/business-profile', [
   const requestInfo = (req as any).requestInfo;
   const businessData = req.body;
 
-  const businessProfile = await prisma.businessProfile.upsert({
-    where: { userId },
-    create: {
-      userId,
-      ...businessData,
-    },
-    update: businessData,
-  });
+  await firestoreService.updateUser(userId, { businessProfile: businessData } as any);
+  const businessProfile = (await firestoreService.getUserById(userId))?.businessProfile;
 
   // Create audit log
   await ComplianceService.createAuditLog(
@@ -239,10 +220,7 @@ router.post('/consent', [
 router.get('/consent-history', asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const consents = await prisma.privacyConsent.findMany({
-    where: { userId },
-    orderBy: { consentDate: 'desc' },
-  });
+  const consents = await firestoreService.getPrivacyConsentsByUser(userId);
 
   res.json({
     success: true,
@@ -259,15 +237,9 @@ router.get('/audit-log', asyncHandler(async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const skip = (page - 1) * limit;
 
-  const [auditLogs, total] = await Promise.all([
-    prisma.userAuditLog.findMany({
-      where: { userId },
-      orderBy: { timestamp: 'desc' },
-      skip,
-      take: limit,
-    }),
-    prisma.userAuditLog.count({ where: { userId } }),
-  ]);
+  const all = await firestoreService.getAuditLogsByUser(userId);
+  const total = all.length;
+  const auditLogs = all.slice(skip, skip + limit);
 
   res.json({
     success: true,
@@ -290,32 +262,25 @@ router.post('/export-data', asyncHandler(async (req: Request, res: Response) => 
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const userData = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      subscriptions: {
-        include: {
-          licenses: true,
-          payments: true,
-        },
-      },
-      complianceProfile: true,
-      billingAddress: true,
-      taxInformation: true,
-      businessProfile: true,
-      privacyConsent: true,
-      auditLogs: true,
-      usageAnalytics: true,
-    },
-  });
-
-  if (!userData) {
-    throw createApiError('User not found', 404);
-  }
+  const userDoc = await firestoreService.getUserById(userId);
+  if (!userDoc) throw createApiError('User not found', 404);
+  const subscriptions = await firestoreService.getSubscriptionsByUserId(userId);
+  const subsWithData = await Promise.all(subscriptions.map(async s => ({
+    ...s,
+    licenses: (await firestoreService.getLicensesByUserId(userId)).filter(l => l.subscriptionId === s.id),
+    payments: (await firestoreService.getPaymentsBySubscriptionId(s.id)),
+  })));
+  const privacyConsent = await firestoreService.getPrivacyConsentsByUser(userId);
+  const auditLogsAll = await firestoreService.getAuditLogsByUser(userId);
+  const usageAnalytics = await firestoreService.getUsageAnalyticsByUser(userId);
 
   // Remove sensitive data before export
   const exportData = {
-    ...userData,
+    ...userDoc,
+    subscriptions: subsWithData,
+    privacyConsent,
+    auditLogs: auditLogsAll,
+    usageAnalytics,
     password: undefined, // Never export password
     emailVerifyToken: undefined,
     passwordResetToken: undefined,
@@ -349,22 +314,15 @@ router.post('/request-deletion', [
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true },
-  });
+  const user = await firestoreService.getUserById(userId);
 
   if (!user || user.email !== confirmEmail) {
     throw createApiError('Email confirmation does not match', 400);
   }
 
   // Check for active subscriptions
-  const activeSubscriptions = await prisma.subscription.count({
-    where: {
-      userId,
-      status: 'ACTIVE',
-    },
-  });
+  const subs = await firestoreService.getSubscriptionsByUserId(userId);
+  const activeSubscriptions = subs.filter(s => s.status === 'ACTIVE').length;
 
   if (activeSubscriptions > 0) {
     throw createApiError('Cannot delete account with active subscriptions. Please cancel all subscriptions first.', 400);
@@ -405,39 +363,26 @@ router.post('/request-deletion', [
 router.get('/statistics', asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const [
-    subscriptionCount,
-    licenseCount,
-    paymentCount,
-    totalSpent,
-    lastLogin,
-    accountAge,
-  ] = await Promise.all([
-    prisma.subscription.count({ where: { userId } }),
-    prisma.license.count({ where: { userId } }),
-    prisma.payment.count({ where: { userId, status: 'SUCCEEDED' } }),
-    prisma.payment.aggregate({
-      where: { userId, status: 'SUCCEEDED' },
-      _sum: { amount: true },
-    }),
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { lastLoginAt: true, createdAt: true },
-    }),
-    prisma.userAuditLog.count({ where: { userId } }),
+  const [subs2, licenses, paymentsAll, userLatest, auditAll] = await Promise.all([
+    firestoreService.getSubscriptionsByUserId(userId),
+    firestoreService.getLicensesByUserId(userId),
+    firestoreService.getPaymentsByUserId(userId),
+    firestoreService.getUserById(userId),
+    firestoreService.getAuditLogsByUser(userId),
   ]);
+  const succeeded = paymentsAll.filter(p => p.status === 'SUCCEEDED');
 
   const stats = {
-    subscriptions: subscriptionCount,
-    licenses: licenseCount,
-    payments: paymentCount,
-    totalSpent: totalSpent._sum.amount || 0,
-    lastLogin: lastLogin?.lastLoginAt,
-    memberSince: lastLogin?.createdAt,
-    accountAge: lastLogin?.createdAt 
-      ? Math.floor((Date.now() - lastLogin.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+    subscriptions: subs2.length,
+    licenses: licenses.length,
+    payments: succeeded.length,
+    totalSpent: succeeded.reduce((sum, p) => sum + (p.amount || 0), 0),
+    lastLogin: (userLatest as any)?.lastLoginAt,
+    memberSince: (userLatest as any)?.createdAt,
+    accountAge: (userLatest as any)?.createdAt 
+      ? Math.floor((Date.now() - new Date((userLatest as any).createdAt).getTime()) / (1000 * 60 * 60 * 24))
       : 0,
-    activityLogs: accountAge,
+    activityLogs: auditAll.length,
   };
 
   res.json({
@@ -478,12 +423,7 @@ router.put('/notifications', [
 
   // In a full implementation, you'd store these preferences
   // For now, just update the marketing consent
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      marketingConsent: marketingEmails,
-    },
-  });
+  await firestoreService.updateUser(userId, { marketingConsent: marketingEmails } as any);
 
   // Create audit log
   await ComplianceService.createAuditLog(

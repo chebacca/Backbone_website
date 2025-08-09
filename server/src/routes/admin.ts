@@ -6,6 +6,7 @@ import { LicenseService } from '../services/licenseService.js';
 import { EmailService } from '../services/emailService.js';
 import { PaymentService } from '../services/paymentService.js';
 import { ComplianceService } from '../services/complianceService.js';
+import { PasswordUtil } from '../utils/password.js';
 import { 
   asyncHandler, 
   validationErrorHandler, 
@@ -174,6 +175,7 @@ router.put('/users/:userId', [
   body('isEmailVerified').optional().isBoolean().withMessage('Invalid email verification status'),
   body('kycStatus').optional().isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'EXPIRED'])
     .withMessage('Valid KYC status required'),
+  body('password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ], asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -181,7 +183,7 @@ router.put('/users/:userId', [
   }
 
   const { userId } = req.params;
-  const { name, role, isEmailVerified, kycStatus } = req.body;
+  const { name, role, isEmailVerified, kycStatus, password } = req.body;
   const adminUserId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
@@ -190,6 +192,16 @@ router.put('/users/:userId', [
   if (role !== undefined) updateData.role = role;
   if (isEmailVerified !== undefined) updateData.isEmailVerified = isEmailVerified;
   if (kycStatus !== undefined) updateData.kycStatus = kycStatus;
+  
+  // Handle password update
+  if (password !== undefined) {
+    const passCheck = PasswordUtil.validate(password);
+    if (!passCheck.isValid) {
+      throw createApiError('Password does not meet requirements', 400, 'WEAK_PASSWORD', { requirements: passCheck.errors });
+    }
+    const hashed = await PasswordUtil.hash(password);
+    updateData.password = hashed;
+  }
 
   await firestoreService.updateUser(userId, updateData);
   const user = await firestoreService.getUserById(userId);

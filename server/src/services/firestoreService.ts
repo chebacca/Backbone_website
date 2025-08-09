@@ -225,13 +225,14 @@ export class FirestoreService {
 
   async getUserById(id: string): Promise<FirestoreUser | null> {
     const doc = await db.collection('users').doc(id).get();
-    return doc.exists ? (doc.data() as FirestoreUser) : null;
+    return doc.exists ? ({ id: doc.id, ...doc.data() } as FirestoreUser) : null;
   }
 
   async getUserByEmail(email: string): Promise<FirestoreUser | null> {
     const snapshot = await db.collection('users').where('email', '==', email).limit(1).get();
     if (snapshot.empty) return null;
-    return snapshot.docs[0].data() as FirestoreUser;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() } as FirestoreUser;
   }
 
   async updateUser(id: string, updates: Partial<FirestoreUser>): Promise<void> {

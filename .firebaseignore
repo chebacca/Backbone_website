@@ -56,3 +56,6 @@ vite.config.ts
 !server/tsconfig.json
 !shared/
 !shared/**
+
+# Exclude legacy CommonJS entry to avoid duplicate function export
+server/index.js

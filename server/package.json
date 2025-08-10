@@ -7,7 +7,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "dev": "nodemon --exec \"npx tsx src/index.ts\"",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test:invoices": "echo 'invoice tests disabled (Firestore migration)' && exit 0",
@@ -17,6 +17,7 @@
     "seed:enterprise-admin": "npx tsx scripts/seed-enterprise-admin.ts",
     "seed:all": "npx tsx scripts/seed-all.ts",
     "seed:enterprise-multi": "npx tsx scripts/seed-enterprise-multi.ts",
+    "seed:chris-mole": "npx tsx scripts/seed-chris-mole.ts",
     "db:init": "npx tsx scripts/init-database.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -43,6 +44,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "qrcode": "^1.5.4",
+    "resend": "^6.0.1",
     "speakeasy": "^2.0.0",
     "stripe": "^14.14.0",
     "uuid": "^9.0.1",

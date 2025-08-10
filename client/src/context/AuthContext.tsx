@@ -155,6 +155,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Store auth data (user might need email verification)
       localStorage.setItem('auth_token', response.token);
+      if (response.refreshToken) {
+        localStorage.setItem('refresh_token', response.refreshToken);
+      }
       localStorage.setItem('auth_user', JSON.stringify(response.user));
 
       setAuthState({

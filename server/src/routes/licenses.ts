@@ -12,7 +12,8 @@ import {
   requireEmailVerification,
   addRequestInfo,
   validateLicenseOwnership,
-  optionalAuth 
+  optionalAuth,
+  requireEnterpriseAdminStrict 
 } from '../middleware/auth.js';
 import { db } from '../services/db.js';
 
@@ -284,6 +285,7 @@ router.post('/transfer', [
   authenticateToken,
   requireEmailVerification,
   validateLicenseOwnership,
+  requireEnterpriseAdminStrict,
   body('licenseKey').trim().notEmpty().withMessage('License key required'),
   body('newOwnerEmail').isEmail().normalizeEmail().withMessage('Valid email required'),
   body('reason').optional().trim().isLength({ max: 500 }).withMessage('Reason too long'),
@@ -313,6 +315,7 @@ router.post('/transfer', [
 router.post('/bulk/create', [
   authenticateToken,
   requireEmailVerification,
+  requireEnterpriseAdminStrict,
   body('subscriptionId').isUUID().withMessage('Valid subscription ID required'),
   body('seatCount').isInt({ min: 1, max: 1000 }).withMessage('Seats must be between 1 and 1000'),
   body('userEmails').optional().isArray().withMessage('User emails must be an array'),

@@ -198,6 +198,63 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
 };
 
 /**
+ * Middleware to require Enterprise Admin role and validate ENTERPRISE context
+ * - If a subscriptionId is provided (params/body/query), verifies it is ENTERPRISE tier
+ * - If a licenseKey/licenseId is provided, resolves its subscription and verifies ENTERPRISE tier
+ * - Otherwise, only role is enforced (use on endpoints that are ENTERPRISE by definition)
+ */
+export const requireEnterpriseAdminStrict = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Authentication required' });
+      return;
+    }
+
+    if (req.user.role !== 'ENTERPRISE_ADMIN') {
+      res.status(403).json({ success: false, error: 'Enterprise admin role required' });
+      return;
+    }
+
+    // Determine enterprise context from request
+    const subscriptionId = (req.params as any).subscriptionId || (req.body as any).subscriptionId || (req.query as any).subscriptionId;
+    const licenseKey = (req.params as any).licenseKey || (req.body as any).licenseKey;
+    const licenseId = (req.params as any).licenseId || (req.body as any).licenseId;
+
+    if (subscriptionId) {
+      const sub = await firestoreService.getSubscriptionById(subscriptionId);
+      if (!sub) {
+        res.status(404).json({ success: false, error: 'Subscription not found' });
+        return;
+      }
+      if (String(sub.tier).toUpperCase() !== 'ENTERPRISE') {
+        res.status(403).json({ success: false, error: 'Enterprise subscription required' });
+        return;
+      }
+    } else if (licenseKey || licenseId) {
+      const license = licenseId
+        ? await firestoreService.getLicenseById(licenseId)
+        : await firestoreService.getLicenseByKey(licenseKey);
+      if (!license) {
+        res.status(404).json({ success: false, error: 'License not found' });
+        return;
+      }
+      if (license.subscriptionId) {
+        const sub = await firestoreService.getSubscriptionById(license.subscriptionId);
+        if (!sub || String(sub.tier).toUpperCase() !== 'ENTERPRISE') {
+          res.status(403).json({ success: false, error: 'Enterprise subscription required' });
+          return;
+        }
+      }
+    }
+
+    next();
+  } catch (error) {
+    logger.error('Enterprise admin strict check failed', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
+
+/**
  * Middleware to validate request origin and add IP/User-Agent to request
  */
 export const addRequestInfo = (req: Request, res: Response, next: NextFunction) => {

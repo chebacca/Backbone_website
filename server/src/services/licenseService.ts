@@ -1,8 +1,7 @@
 import { logger } from '../utils/logger.js';
 import { LicenseKeyUtil } from '../utils/licenseKey.js';
 import { ComplianceService } from './complianceService.js';
-import { firestoreService, FirestoreLicense } from './firestoreService.js';
-import { db } from './db.js';
+import { firestoreService } from './firestoreService.js';
 
 export type SubscriptionTier = 'BASIC' | 'PRO' | 'ENTERPRISE';
 
@@ -35,7 +34,7 @@ export class LicenseService {
         expiresAt.setMonth(expiresAt.getMonth() + expiryMonths);
 
         // Create license record
-        const license = await db.createLicense({
+        const license = await firestoreService.createLicense({
           key: licenseKey,
           userId,
           subscriptionId,
@@ -87,7 +86,7 @@ export class LicenseService {
       }
 
       // Find license
-      const license = await db.getLicenseByKey(licenseKey);
+      const license = await firestoreService.getLicenseByKey(licenseKey);
 
       if (!license) {
         throw new Error('License not found');
@@ -100,7 +99,7 @@ export class LicenseService {
 
       // Check expiry
       if (license.expiresAt && new Date() > new Date(license.expiresAt)) {
-        await db.updateLicense(license.id, { status: 'EXPIRED' });
+        await firestoreService.updateLicense(license.id, { status: 'EXPIRED' } as any);
         throw new Error('License has expired');
       }
 
@@ -124,8 +123,8 @@ export class LicenseService {
         },
         ipAddress: requestInfo.ip,
       };
-      await db.updateLicense(license.id, updatedLicenseData);
-      const updatedLicense = await db.getLicenseById(license.id);
+      await firestoreService.updateLicense(license.id, updatedLicenseData as any);
+      const updatedLicense = await firestoreService.getLicenseById(license.id);
       if (!updatedLicense) {
         throw new Error('Failed to load updated license');
       }
@@ -147,7 +146,7 @@ export class LicenseService {
       );
 
       // Track usage analytics
-      await db.createUsageAnalytics({
+      await firestoreService.createUsageAnalytics({
         userId: license.userId,
         licenseId: license.id,
         event: 'LICENSE_ACTIVATION',
@@ -209,7 +208,7 @@ export class LicenseService {
     try {
       logger.info(`Deactivating license: ${licenseKey}`);
 
-      const license = await db.getLicenseByKey(licenseKey);
+      const license = await firestoreService.getLicenseByKey(licenseKey);
 
       if (!license) {
         throw new Error('License not found');
@@ -220,10 +219,10 @@ export class LicenseService {
       }
 
       // Update license status
-      await db.updateLicense(license.id, {
+      await firestoreService.updateLicense(license.id, {
         status: 'SUSPENDED',
         activationCount: Math.max(0, (license.activationCount || 0) - 1),
-      });
+      } as any);
 
       // Create audit log
       await ComplianceService.createAuditLog(
@@ -237,7 +236,7 @@ export class LicenseService {
       );
 
       // Track usage analytics
-      await db.createUsageAnalytics({
+      await firestoreService.createUsageAnalytics({
         userId,
         licenseId: license.id,
         event: 'LICENSE_DEACTIVATION',
@@ -257,7 +256,10 @@ export class LicenseService {
    */
   static async getUserLicenses(userId: string) {
     try {
-      const licenses = await db.getLicensesByUserId(userId);
+      const [licenses, user] = await Promise.all([
+        firestoreService.getLicensesByUserId(userId),
+        firestoreService.getUserById(userId),
+      ]);
 
       return licenses.map((license: any) => ({
         id: license.id,
@@ -271,6 +273,7 @@ export class LicenseService {
         maxActivations: license.maxActivations,
         subscriptionId: license.subscriptionId,
         createdAt: license.createdAt,
+        user: user ? { id: user.id, email: user.email, name: user.name } : undefined,
       }));
     } catch (error) {
       logger.error('Failed to get user licenses', error as any);
@@ -287,7 +290,7 @@ export class LicenseService {
         return { valid: false, error: 'Invalid license key format' };
       }
 
-      const license = await db.getLicenseByKey(licenseKey);
+      const license = await firestoreService.getLicenseByKey(licenseKey);
 
       if (!license) {
         return { valid: false, error: 'License not found' };
@@ -299,7 +302,7 @@ export class LicenseService {
 
       if (license.expiresAt && new Date() > new Date(license.expiresAt)) {
         // Auto-expire the license
-        await db.updateLicense(license.id, { status: 'EXPIRED' });
+        await firestoreService.updateLicense(license.id, { status: 'EXPIRED' } as any);
         return { valid: false, error: 'License has expired' };
       }
 
@@ -312,8 +315,8 @@ export class LicenseService {
           status: license.status,
           features: license.features,
           expiresAt: license.expiresAt,
-          user: await db.getUserById(license.userId),
-          subscription: await db.getSubscriptionById(license.subscriptionId),
+          user: await firestoreService.getUserById(license.userId),
+          subscription: await firestoreService.getSubscriptionById(license.subscriptionId),
         },
       };
     } catch (error) {
@@ -336,7 +339,7 @@ export class LicenseService {
       const license = validation.license!;
 
       // Get available SDK versions
-      const sdkVersions = await db.getLatestSDKVersions();
+      const sdkVersions = await firestoreService.getLatestSDKVersions();
 
       const downloads = sdkVersions.map((sdk: any) => ({
         platform: sdk.platform,
@@ -350,7 +353,7 @@ export class LicenseService {
       // Track download request
       const user = license.user;
       if (!user) throw new Error('User for license not found');
-      await db.createUsageAnalytics({
+      await firestoreService.createUsageAnalytics({
         userId: user.id,
         licenseId: license.id,
         event: 'SDK_DOWNLOAD_REQUEST',
@@ -378,7 +381,7 @@ export class LicenseService {
     try {
       logger.info(`Creating bulk licenses for subscription ${subscriptionId}`);
 
-      const subscription = await db.getSubscriptionById(subscriptionId);
+      const subscription = await firestoreService.getSubscriptionById(subscriptionId);
 
       if (!subscription) {
         throw new Error('Subscription not found');
@@ -451,7 +454,7 @@ export class LicenseService {
         whereClause.licenseId = licenseId;
       }
 
-      const analytics = await db.getUsageAnalyticsByUser(userId);
+      const analytics = await firestoreService.getUsageAnalyticsByUser(userId);
 
       const summary = {
         totalEvents: analytics.length,
@@ -475,12 +478,12 @@ export class LicenseService {
    */
   static async getLicenseDetails(licenseId: string) {
     try {
-      const license = await db.getLicenseById(licenseId);
+      const license = await firestoreService.getLicenseById(licenseId);
       if (!license) return null;
       const [user, subscription, usageAnalytics] = await Promise.all([
-        db.getUserById(license.userId),
-        db.getSubscriptionById(license.subscriptionId),
-        db.getUsageAnalyticsByLicense(licenseId),
+        firestoreService.getUserById(license.userId),
+        firestoreService.getSubscriptionById(license.subscriptionId),
+        firestoreService.getUsageAnalyticsByLicense(licenseId),
       ]);
       return { ...license, user, subscription, usageAnalytics } as any;
     } catch (error) {
@@ -494,7 +497,7 @@ export class LicenseService {
    */
   static async getSDKVersion(sdkId: string) {
     try {
-      return await db.getSDKVersionById(sdkId);
+      return await firestoreService.getSDKVersionById(sdkId);
     } catch (error) {
       logger.error('Failed to get SDK version', error);
       throw error;
@@ -506,7 +509,7 @@ export class LicenseService {
    */
   static async getAvailableSDKVersions(platform?: string) {
     try {
-      return await db.getLatestSDKVersions(platform);
+      return await firestoreService.getLatestSDKVersions(platform);
     } catch (error) {
       logger.error('Failed to get SDK versions', error);
       throw error;
@@ -524,7 +527,7 @@ export class LicenseService {
     requestInfo?: any
   ) {
     try {
-      const license = await db.getLicenseByKey(licenseKey);
+      const license = await firestoreService.getLicenseByKey(licenseKey);
 
       if (!license) {
         throw new Error('License not found');
@@ -534,7 +537,7 @@ export class LicenseService {
         throw new Error('Unauthorized: License does not belong to user');
       }
 
-      const subscription = await db.getSubscriptionById(license.subscriptionId);
+      const subscription = await firestoreService.getSubscriptionById(license.subscriptionId);
       if (!subscription) {
         throw new Error('Subscription not found');
       }
@@ -543,7 +546,7 @@ export class LicenseService {
       }
 
       // Find or create new owner
-      let newOwner = await db.getUserByEmail(newOwnerEmail);
+      let newOwner = await firestoreService.getUserByEmail(newOwnerEmail);
 
       if (!newOwner) {
         throw new Error('New owner email not found. User must register first.');
@@ -553,7 +556,7 @@ export class LicenseService {
       const transferId = `transfer_${Date.now()}`;
 
       // For now, directly transfer the license
-      await db.updateLicense(license.id, {
+      await firestoreService.updateLicense(license.id, {
         userId: newOwner.id,
         status: 'PENDING', // Require re-activation
         activationCount: 0,
@@ -604,7 +607,7 @@ export class LicenseService {
     requestInfo?: any
   ) {
     try {
-      const license = await db.getLicenseByKey(licenseKey);
+      const license = await firestoreService.getLicenseByKey(licenseKey);
 
       if (!license) {
         throw new Error('License not found');
@@ -664,7 +667,7 @@ export class LicenseService {
    */
   static async getLicenseUsage(licenseKey: string, userId: string) {
     try {
-      const license = await db.getLicenseByKey(licenseKey);
+      const license = await firestoreService.getLicenseByKey(licenseKey);
 
       if (!license) {
         throw new Error('License not found');
@@ -674,7 +677,7 @@ export class LicenseService {
         throw new Error('Unauthorized: License does not belong to user');
       }
 
-      const analytics = await db.getUsageAnalyticsByLicense(license.id);
+      const analytics = await firestoreService.getUsageAnalyticsByLicense(license.id);
       const usage = {
         licenseKey: licenseKey.substring(0, 8) + '...',
         status: license.status,

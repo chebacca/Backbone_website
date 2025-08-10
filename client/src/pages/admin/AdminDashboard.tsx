@@ -8,6 +8,7 @@ import {
   Paper,
   Button,
   Chip,
+  ChipProps,
   Table,
   TableBody,
   TableCell,
@@ -62,6 +63,60 @@ interface AdminStats {
   systemHealth: 'healthy' | 'warning' | 'error';
 }
 
+type HealthStatus = 'healthy' | 'degraded' | 'unhealthy' | 'disabled';
+interface SubsystemHealth {
+  status: HealthStatus;
+  responseTimeMs?: number;
+  error?: string;
+  message?: string;
+  metrics?: Record<string, number>;
+}
+interface SystemHealth {
+  overall: HealthStatus;
+  checkedAt?: string;
+  database: SubsystemHealth;
+  email: SubsystemHealth;
+  payment: SubsystemHealth;
+  webhooks?: SubsystemHealth;
+}
+
+const SubsystemCard: React.FC<{ title: string; data?: SubsystemHealth | null }> = ({ title, data }) => {
+  const color: ChipProps['color'] = data?.status === 'healthy'
+    ? 'success'
+    : data?.status === 'degraded'
+    ? 'warning'
+    : data?.status === 'unhealthy'
+    ? 'error'
+    : 'default';
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="subtitle1">{title}</Typography>
+          <Chip size="small" label={(data?.status || 'unknown').toUpperCase()} color={color} />
+        </Box>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6}>
+            <Typography variant="body2" color="text.secondary">
+              Response time: {data?.responseTimeMs != null ? `${data.responseTimeMs} ms` : '—'}
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <Typography variant="body2" color="text.secondary">
+              {data?.message || ''}
+            </Typography>
+          </Grid>
+          {data?.error && (
+            <Grid item xs={12}>
+              <Alert severity="warning">{data.error}</Alert>
+            </Grid>
+          )}
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+};
+
 interface User {
   id: string;
   email: string;
@@ -113,6 +168,8 @@ const AdminDashboard: React.FC = () => {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addForm, setAddForm] = useState({ userId: '', subscriptionId: '', tier: 'PRO', seats: 1 });
   const [userSubscriptions, setUserSubscriptions] = useState<any[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState<boolean>(false);
 
   // Search state variables
   const [usersSearch, setUsersSearch] = useState('');
@@ -216,7 +273,8 @@ const AdminDashboard: React.FC = () => {
         // Use dashboard-stats as the source of truth for revenue/subscriptions
         const dashboardStats = statsRes.data?.data?.stats ?? { totalRevenue: 0, activeSubscriptions: 0 };
         const recent = dashboardStats?.recentPayments ?? [];
-        const health = systemHealthRes.data?.data?.health?.overall || systemHealthRes.data?.data?.overall || systemHealthRes.data?.data?.status || 'healthy';
+        const healthObj = systemHealthRes.data?.data?.health || systemHealthRes.data?.data;
+        const health = healthObj?.overall || healthObj?.status || 'healthy';
 
         if (!isMounted) return;
         setUsers(usersData.map((u: any) => ({
@@ -251,6 +309,7 @@ const AdminDashboard: React.FC = () => {
           pendingApprovals: 0,
           systemHealth: health === 'healthy' ? 'healthy' : health === 'degraded' ? 'warning' : 'error',
         });
+        setSystemHealth(healthObj || null);
         setRecentPayments(recent);
       } catch (error) {
         if (!isMounted) return;
@@ -258,10 +317,27 @@ const AdminDashboard: React.FC = () => {
         setLicenses([]);
         setStats((s) => ({ ...s, systemHealth: 'error' }));
         setRecentPayments([]);
+        setSystemHealth(null);
       }
     })();
     return () => { isMounted = false; };
   }, [user?.role]);
+
+  const refreshHealth = async () => {
+    try {
+      setHealthLoading(true);
+      const res = await api.get(endpoints.admin.systemHealth());
+      const healthObj = res.data?.data?.health || res.data?.data;
+      setSystemHealth(healthObj || null);
+      const overall = healthObj?.overall || 'healthy';
+      setStats((s) => ({ ...s, systemHealth: overall === 'healthy' ? 'healthy' : overall === 'degraded' ? 'warning' : 'error' }));
+    } catch {
+      setSystemHealth(null);
+      setStats((s) => ({ ...s, systemHealth: 'error' }));
+    } finally {
+      setHealthLoading(false);
+    }
+  };
 
   const fetchPayments = async (page = 1) => {
     const params = new URLSearchParams();
@@ -361,6 +437,36 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  type ChipColor = ChipProps['color'];
+
+  const getRoleColor = (role: string): ChipColor => {
+    switch (String(role || '').toUpperCase()) {
+      case 'SUPERADMIN':
+        return 'secondary';
+      case 'ADMIN':
+        return 'primary';
+      default:
+        return 'default';
+    }
+  };
+
+  const getTierColor = (tier?: string): ChipColor => {
+    switch (String(tier || '').toUpperCase()) {
+      case 'ENTERPRISE':
+        return 'secondary';
+      case 'PRO':
+        return 'success';
+      case 'BASIC':
+        return 'default';
+      default:
+        return 'default';
+    }
+  };
+
+  const getTierVariant = (tier?: string): 'filled' | 'outlined' => {
+    return String(tier || '').toUpperCase() === 'BASIC' ? 'outlined' : 'filled';
+  };
+
   const getHealthColor = (health: AdminStats['systemHealth']) => {
     switch (health) {
       case 'healthy': return 'success';
@@ -385,9 +491,21 @@ const AdminDashboard: React.FC = () => {
       <Box sx={{ pt: 8, pb: 4 }}>
         <Container maxWidth="xl">
           <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            sx={{
+              opacity: 0,
+              transform: 'translateY(20px)',
+              animation: 'fadeInUp 0.6s ease-out forwards',
+              '@keyframes fadeInUp': {
+                '0%': {
+                  opacity: 0,
+                  transform: 'translateY(20px)',
+                },
+                '100%': {
+                  opacity: 1,
+                  transform: 'translateY(0)',
+                },
+              },
+            }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
               <DashboardIcon sx={{ fontSize: 32, color: 'primary.main' }} />
@@ -406,9 +524,11 @@ const AdminDashboard: React.FC = () => {
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} lg={3}>
             <Box
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
+              sx={{
+                opacity: 0,
+                transform: 'translateY(20px)',
+                animation: 'fadeInUp 0.6s ease-out 0.1s forwards',
+              }}
             >
               <Card
                 sx={{
@@ -433,9 +553,11 @@ const AdminDashboard: React.FC = () => {
 
           <Grid item xs={12} sm={6} lg={3}>
             <Box
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
+              sx={{
+                opacity: 0,
+                transform: 'translateY(20px)',
+                animation: 'fadeInUp 0.6s ease-out 0.2s forwards',
+              }}
             >
               <Card
                 sx={{
@@ -460,9 +582,11 @@ const AdminDashboard: React.FC = () => {
 
           <Grid item xs={12} sm={6} lg={3}>
             <Box
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
+              sx={{
+                opacity: 0,
+                transform: 'translateY(20px)',
+                animation: 'fadeInUp 0.6s ease-out 0.3s forwards',
+              }}
             >
               <Card
                 sx={{
@@ -487,9 +611,11 @@ const AdminDashboard: React.FC = () => {
 
           <Grid item xs={12} sm={6} lg={3}>
             <Box
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
+              sx={{
+                opacity: 0,
+                transform: 'translateY(20px)',
+                animation: 'fadeInUp 0.6s ease-out 0.4s forwards',
+              }}
             >
               <Card
                 sx={{
@@ -537,9 +663,11 @@ const AdminDashboard: React.FC = () => {
         {/* Users Tab */}
         {activeTab === 0 && (
           <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            sx={{
+              opacity: 0,
+              transform: 'translateY(20px)',
+              animation: 'fadeInUp 0.6s ease-out forwards',
+            }}
           >
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <TextField
@@ -604,7 +732,7 @@ const AdminDashboard: React.FC = () => {
                           <Chip
                             label={user.role}
                             size="small"
-                            color={user.role === 'ADMIN' ? 'primary' : 'default'}
+                            color={getRoleColor(user.role)}
                           />
                         </TableCell>
                         <TableCell>
@@ -619,7 +747,8 @@ const AdminDashboard: React.FC = () => {
                             <Chip
                               label={user.subscription}
                               size="small"
-                              variant="outlined"
+                              color={getTierColor(user.subscription)}
+                              variant={getTierVariant(user.subscription)}
                             />
                           )}
                         </TableCell>
@@ -661,9 +790,11 @@ const AdminDashboard: React.FC = () => {
         {/* Licenses Tab */}
         {activeTab === 1 && (
           <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            sx={{
+              opacity: 0,
+              transform: 'translateY(20px)',
+              animation: 'fadeInUp 0.6s ease-out forwards',
+            }}
           >
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <TextField
@@ -727,7 +858,8 @@ const AdminDashboard: React.FC = () => {
                           <Chip
                             label={license.tier}
                             size="small"
-                            variant="outlined"
+                            color={getTierColor(license.tier)}
+                            variant={getTierVariant(license.tier)}
                           />
                         </TableCell>
                         <TableCell>
@@ -778,9 +910,11 @@ const AdminDashboard: React.FC = () => {
         {/* Invoices Tab */}
         {activeTab === 2 && (
           <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            sx={{
+              opacity: 0,
+              transform: 'translateY(20px)',
+              animation: 'fadeInUp 0.6s ease-out forwards',
+            }}
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
               {/* Global Search */}
@@ -881,7 +1015,12 @@ const AdminDashboard: React.FC = () => {
                           <Typography variant="body2">{p.user?.email || '—'}</Typography>
                         </TableCell>
                         <TableCell>
-                          <Chip size="small" variant="outlined" label={p.subscription?.tier || '—'} />
+                          <Chip 
+                            size="small" 
+                            label={p.subscription?.tier || '—'} 
+                            color={getTierColor(p.subscription?.tier)} 
+                            variant={getTierVariant(p.subscription?.tier)}
+                          />
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">{formatCurrency(p.amount)}</Typography>
@@ -935,9 +1074,11 @@ const AdminDashboard: React.FC = () => {
         {/* System Health Tab */}
         {activeTab === 3 && (
           <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            sx={{
+              opacity: 0,
+              transform: 'translateY(20px)',
+              animation: 'fadeInUp 0.6s ease-out forwards',
+            }}
           >
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
@@ -945,18 +1086,29 @@ const AdminDashboard: React.FC = () => {
                   <Typography variant="h6" sx={{ mb: 2 }}>
                     System Status
                   </Typography>
-                  <Alert severity="success" sx={{ mb: 2 }}>
-                    All systems operational
-                  </Alert>
-                  <Alert severity="info" sx={{ mb: 2 }}>
-                    Database connection: Healthy
-                  </Alert>
-                  <Alert severity="info" sx={{ mb: 2 }}>
-                    API response time: 45ms
-                  </Alert>
-                  <Alert severity="warning">
-                    Storage usage: 78% (Consider cleanup)
-                  </Alert>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <Chip
+                      label={`Overall: ${(systemHealth?.overall || 'unknown').toUpperCase()}`}
+                      color={(systemHealth?.overall === 'healthy' ? 'success' : systemHealth?.overall === 'degraded' ? 'warning' : systemHealth?.overall === 'unhealthy' ? 'error' : 'default') as any}
+                    />
+                    <Button size="small" onClick={refreshHealth} disabled={healthLoading}>
+                      {healthLoading ? 'Refreshing…' : 'Refresh'}
+                    </Button>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <SubsystemCard title="Database" data={systemHealth?.database} />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <SubsystemCard title="Email (SendGrid)" data={systemHealth?.email} />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <SubsystemCard title="Payments (Stripe)" data={systemHealth?.payment} />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <SubsystemCard title="Webhooks" data={systemHealth?.webhooks} />
+                    </Grid>
+                  </Grid>
                 </Paper>
               </Grid>
               <Grid item xs={12} md={6}>
@@ -964,25 +1116,18 @@ const AdminDashboard: React.FC = () => {
                   <Typography variant="h6" sx={{ mb: 2 }}>
                     Recent Activity
                   </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <CheckCircleIcon color="success" />
-                      <Typography variant="body2">
-                        New user registration: john.doe@company.com
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <CheckCircleIcon color="success" />
-                      <Typography variant="body2">
-                        License activated: LIC-XXXX-YYYY-ZZZZ-0001
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <WarningIcon color="warning" />
-                      <Typography variant="body2">
-                        Payment failed: jane.smith@startup.io
-                      </Typography>
-                    </Box>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Checked at: {systemHealth?.checkedAt ? new Date(systemHealth.checkedAt).toLocaleString() : '—'}
+                    </Typography>
+                    {systemHealth?.webhooks?.metrics ? (
+                      <>
+                        <Typography variant="body2">Recent webhooks (24h): {systemHealth.webhooks.metrics.recentWebhooks}</Typography>
+                        <Typography variant="body2">Failed webhooks: {systemHealth.webhooks.metrics.failedWebhooks}</Typography>
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">No metrics available</Typography>
+                    )}
                   </Box>
                 </Paper>
               </Grid>

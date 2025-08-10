@@ -47,6 +47,7 @@ export interface RegisterRequest {
 export interface RegisterResponse {
   user: User;
   token: string;
+  refreshToken?: string;
   message: string;
 }
 
@@ -127,7 +128,13 @@ export const authService = {
     const response = await api.post(endpoints.auth.register(), userData);
 
     if (response.data.success) {
-      return response.data.data;
+      const data = response.data.data;
+      return {
+        user: data.user,
+        token: data.tokens?.accessToken || data.token,
+        refreshToken: data.tokens?.refreshToken,
+        message: response.data.message,
+      } as RegisterResponse;
     } else {
       throw new Error(response.data.message || 'Registration failed');
     }
@@ -180,6 +187,7 @@ export const authService = {
    * Verify email with token
    */
   async verifyEmail(token: string): Promise<{ message: string }> {
+    // Server supports GET /auth/verify-email/:token
     const response = await api.get(endpoints.auth.verifyEmail(token));
 
     if (response.data.success) {

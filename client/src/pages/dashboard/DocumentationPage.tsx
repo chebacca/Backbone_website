@@ -57,7 +57,7 @@ import {
   CodeSharp,
   CodeTwoTone,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
+import { motion } from 'framer-motion';
 import { useSnackbar } from 'notistack';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
@@ -788,7 +788,7 @@ const DocumentationPage: React.FC = () => {
           }}
         >
           {/* Header */}
-          <Box
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -801,10 +801,10 @@ const DocumentationPage: React.FC = () => {
             Comprehensive guides and resources for Dashboard v14
           </Typography>
         </Box>
-      </Box>
+      </motion.div>
 
       {/* Quick Start Alert */}
-      <Box
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.1 }}
@@ -829,10 +829,10 @@ const DocumentationPage: React.FC = () => {
             specialized workflows and integrations. <strong>Click here to jump to Session Management!</strong>
           </Typography>
         </Alert>
-      </Box>
+      </motion.div>
 
       {/* Tab Navigation */}
-      <Box
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -856,11 +856,11 @@ const DocumentationPage: React.FC = () => {
             <Tab label="Development" icon={<Code />} />
           </Tabs>
         </Paper>
-      </Box>
+      </motion.div>
 
       {/* Core Features Tab */}
       <TabPanel value={selectedTab} index={0}>
-        <Box
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -914,12 +914,12 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </Box>
+        </motion.div>
       </TabPanel>
 
       {/* Advanced Features Tab */}
       <TabPanel value={selectedTab} index={1}>
-        <Box
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -964,12 +964,12 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </Box>
+        </motion.div>
       </TabPanel>
 
       {/* Integration Tab */}
       <TabPanel value={selectedTab} index={2}>
-        <Box
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -1014,12 +1014,12 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </Box>
+        </motion.div>
       </TabPanel>
 
       {/* Development Tab */}
       <TabPanel value={selectedTab} index={3}>
-        <Box
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -1064,11 +1064,11 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </Box>
+        </motion.div>
       </TabPanel>
 
       {/* Quick Actions */}
-      <Box
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.3 }}
@@ -1128,7 +1128,7 @@ const DocumentationPage: React.FC = () => {
             </Grid>
           </Grid>
         </Paper>
-      </Box>
+      </motion.div>
         </Box>
       </Container>
       

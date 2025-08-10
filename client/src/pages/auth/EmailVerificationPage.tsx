@@ -38,8 +38,11 @@ const EmailVerificationPage: React.FC = () => {
   const selectedTier = location.state?.selectedTier;
 
   useEffect(() => {
-    if (token) {
-      verifyEmailToken(token);
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenFromQuery = urlParams.get('token');
+    const effectiveToken = token || tokenFromQuery || '';
+    if (effectiveToken) {
+      verifyEmailToken(effectiveToken);
     }
   }, [token]);
 

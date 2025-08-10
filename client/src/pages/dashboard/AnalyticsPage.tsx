@@ -32,7 +32,7 @@ import {
   Code,
   Security,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
+import { motion } from 'framer-motion';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 
@@ -91,7 +91,7 @@ const SimpleChart: React.FC<{ data: ChartData[] }> = ({ data }) => {
     <Box sx={{ height: 200, display: 'flex', alignItems: 'end', gap: 1, px: 2 }}>
       {data.map((item) => (
         <Box key={item.label} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <Box
+          <motion.div
             initial={{ height: 0 }}
             animate={{ height: `${(item.value / maxValue) * 160}px` }}
             transition={{ duration: 0.8, delay: data.indexOf(item) * 0.1 }}
@@ -115,7 +115,7 @@ const MetricCard: React.FC<{ metric: UsageMetric }> = ({ metric }) => {
   const percentage = (metric.value / metric.limit) * 100;
   
   return (
-    <Box
+    <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.6 }}
@@ -170,7 +170,7 @@ const MetricCard: React.FC<{ metric: UsageMetric }> = ({ metric }) => {
           </Box>
         </CardContent>
       </Card>
-    </Box>
+    </motion.div>
   );
 };
 
@@ -232,7 +232,7 @@ const AnalyticsPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box
+      <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -292,12 +292,12 @@ const AnalyticsPage: React.FC = () => {
             </ButtonGroup>
           </Box>
         </Box>
-      </Box>
+      </motion.div>
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} lg={3}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
@@ -326,11 +326,11 @@ const AnalyticsPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </Box>
+          </motion.div>
         </Grid>
 
         <Grid item xs={12} sm={6} lg={3}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -359,11 +359,11 @@ const AnalyticsPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </Box>
+          </motion.div>
         </Grid>
 
         <Grid item xs={12} sm={6} lg={3}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
@@ -392,11 +392,11 @@ const AnalyticsPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </Box>
+          </motion.div>
         </Grid>
 
         <Grid item xs={12} sm={6} lg={3}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.4 }}
@@ -425,14 +425,14 @@ const AnalyticsPage: React.FC = () => {
                 </Typography>
               </CardContent>
             </Card>
-          </Box>
+          </motion.div>
         </Grid>
       </Grid>
 
       <Grid container spacing={3}>
         {/* Usage Trends Chart */}
         <Grid item xs={12} lg={8}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.5 }}
@@ -451,12 +451,12 @@ const AnalyticsPage: React.FC = () => {
               </Typography>
               <SimpleChart data={chartData} />
             </Paper>
-          </Box>
+          </motion.div>
         </Grid>
 
         {/* Real-time Metrics */}
         <Grid item xs={12} lg={4}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.6 }}
@@ -483,12 +483,12 @@ const AnalyticsPage: React.FC = () => {
                 ))}
               </Grid>
             </Paper>
-          </Box>
+          </motion.div>
         </Grid>
 
         {/* Top Endpoints */}
         <Grid item xs={12} md={6}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.7 }}
@@ -556,15 +556,15 @@ const AnalyticsPage: React.FC = () => {
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                     )}
                   </React.Fragment>
-                ))}
+                                    ))}
               </List>
             </Paper>
-          </Box>
+          </motion.div>
         </Grid>
 
         {/* Geographic Distribution */}
         <Grid item xs={12} md={6}>
-          <Box
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.8 }}
@@ -621,10 +621,10 @@ const AnalyticsPage: React.FC = () => {
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
                     )}
                   </React.Fragment>
-                ))}
+                                    ))}
               </List>
             </Paper>
-          </Box>
+          </motion.div>
         </Grid>
       </Grid>
     </Box>

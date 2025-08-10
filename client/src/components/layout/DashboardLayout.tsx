@@ -99,6 +99,8 @@ export const DashboardLayout: React.FC = () => {
   };
 
   const isEnterprise = String(user?.subscription?.plan || '').toUpperCase() === 'ENTERPRISE';
+  const roleUpper = String(user?.role || '').toUpperCase();
+  const isEnterpriseAdminRole = roleUpper === 'ENTERPRISE_ADMIN';
 
   // Compute navigation, hiding Billing for SUPERADMIN only
   const navigationItems: NavigationItem[] = React.useMemo(() => {
@@ -236,8 +238,8 @@ export const DashboardLayout: React.FC = () => {
           );
         })}
 
-        {/* Enterprise Section */}
-        {isEnterprise && (
+        {/* Enterprise Section (only for Enterprise plan + Enterprise Admin role) */}
+        {isEnterprise && isEnterpriseAdminRole && (
           <>
             <Divider sx={{ my: 2, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
             <Typography 

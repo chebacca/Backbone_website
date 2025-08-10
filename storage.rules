@@ -22,8 +22,9 @@ service firebase.storage {
 
     // Admin-only bucket prefix
     match /admin/{allPaths=**} {
-      allow read, write: if request.auth != null && exists(/databases/(default)/documents/users/$(request.auth.uid))
-        && get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'SUPERADMIN';
+      // Cross-service Firestore checks are not supported in Storage rules.
+      // Deny all access to admin path unless/until custom auth claims are in place.
+      allow read, write: if false;
     }
   }
 }

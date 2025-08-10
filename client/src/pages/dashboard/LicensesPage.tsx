@@ -7,6 +7,7 @@ import {
   CardContent,
   Button,
   Chip,
+  ChipProps,
   IconButton,
   Menu,
   MenuItem,
@@ -152,13 +153,19 @@ const getStatusIcon = (status: License['status']) => {
   }
 };
 
-const getTierColor = (tier: License['tier']) => {
+type ChipColor = ChipProps['color'];
+
+const getTierColor = (tier: License['tier']): ChipColor => {
   switch (tier) {
     case 'BASIC': return 'default';
-    case 'PRO': return 'primary';
+    case 'PRO': return 'success';
     case 'ENTERPRISE': return 'secondary';
     default: return 'default';
   }
+};
+
+const getTierVariant = (tier: License['tier']): 'filled' | 'outlined' => {
+  return tier === 'BASIC' ? 'outlined' : 'filled';
 };
 
 const LicensesPage: React.FC = () => {
@@ -201,7 +208,7 @@ const LicensesPage: React.FC = () => {
           name: l.user?.name ? `${l.user.name}'s License` : `License ${idx + 1}`,
           tier: String(l.tier || '').toUpperCase() as License['tier'],
           status: String(l.status || '').toUpperCase() as License['status'],
-          assignedTo: l.user ? { name: l.user.name || 'User', email: l.user.email || '' } : undefined,
+          assignedTo: l.user?.name ? { name: l.user.name, email: l.user.email || '' } : undefined,
           activatedAt: l.activatedAt || l.createdAt || undefined,
           expiresAt: l.expiresAt || l.currentPeriodEnd || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
           lastUsed: l.updatedAt || l.activatedAt || l.createdAt || undefined,
@@ -542,7 +549,7 @@ const LicensesPage: React.FC = () => {
                       label={license.tier}
                       color={getTierColor(license.tier)}
                       size="small"
-                      variant="outlined"
+                      variant={getTierVariant(license.tier)}
                     />
                   </TableCell>
 

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\"",
     "dev:client": "cd client && vite",
-    "dev:server": "cd server && nodemon --exec \"npx tsx src/index.ts\"",
+    "dev:server": "cd server && pnpm dev",
     "build": "pnpm build:shared && pnpm build:client && pnpm build:server",
     "build:shared": "cd shared && tsc",
     "build:client": "cd client && vite build",
@@ -14,7 +14,8 @@
     "start": "cd server && node dist/index.js",
     "setup": "pnpm install",
     "test": "echo \"Tests will be added\" && exit 0",
-    "deploy": "pnpm build && firebase deploy",
+    "deploy": "pnpm build && firebase deploy --only hosting,functions,firestore,storage",
+    "deploy:all": "pnpm build && firebase deploy",
     "deploy:hosting": "pnpm build:client && firebase deploy --only hosting",
     "deploy:functions": "pnpm build:server && firebase deploy --only functions",
     "deploy:firestore": "firebase deploy --only firestore",
@@ -24,7 +25,8 @@
     "firebase:emulators": "firebase emulators:start",
     "seed": "cd server && pnpm seed",
     "seed:clear": "cd server && pnpm seed:clear",
-    "seed:reset": "cd server && pnpm seed:reset"
+    "seed:reset": "cd server && pnpm seed:reset",
+    "seed:chris-mole": "cd server && pnpm seed:chris-mole"
   },
   "keywords": [
     "licensing",

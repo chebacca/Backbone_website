@@ -83,18 +83,24 @@ export const Navigation: React.FC = () => {
       items.push({ label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> });
     }
 
-    // Add Admin Dashboard to main navigation for SUPERADMIN users
-    if (isAuthenticated && String(user?.role || '').toUpperCase() === 'SUPERADMIN') {
-      items.push({ label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> });
-    }
-
     return items;
   }, [isAuthenticated, user]);
 
   const authenticatedNavItems = useMemo(() => {
     const roleUpper = String(user?.role || '').toUpperCase();
     const isSuperAdmin = roleUpper === 'SUPERADMIN';
-    const items: NavigationItem[] = [
+    if (isSuperAdmin) {
+      // SUPERADMIN: only Admin + general links (no /dashboard/*)
+      return [
+        { label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> },
+        { label: 'Documentation', path: '/documentation', icon: <Article /> },
+        { label: 'Support', path: '/support', icon: <Support /> },
+        { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
+      ];
+    }
+
+    // Regular users: full dashboard nav
+    return [
       { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
       { label: 'Licenses', path: '/dashboard/licenses', icon: <VpnKey /> },
       { label: 'Analytics', path: '/dashboard/analytics', icon: <Receipt /> },
@@ -104,12 +110,6 @@ export const Navigation: React.FC = () => {
       { label: 'Support', path: '/support', icon: <Support /> },
       { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
     ];
-
-    // Hide Dashboard and Billing for SUPERADMIN (they use Admin dashboard instead)
-    if (isSuperAdmin) {
-      return items.filter((item) => item.path !== '/dashboard' && item.path !== '/dashboard/billing');
-    }
-    return items;
   }, [user?.role]);
 
   const renderMobileDrawer = () => (
@@ -135,8 +135,27 @@ export const Navigation: React.FC = () => {
       <Divider />
       
       <List>
+        {/* For SUPERADMIN, show Admin Dashboard entry prominently in mobile */}
+        {isAuthenticated && String(user?.role || '').toUpperCase() === 'SUPERADMIN' && !inDashboardMode && (
+          <ListItem 
+            onClick={() => {
+              navigate('/admin');
+              handleDrawerToggle();
+            }}
+            sx={{ cursor: 'pointer' }}
+          >
+            <ListItemIcon sx={{ color: 'warning.main' }}>
+              <AdminPanelSettings />
+            </ListItemIcon>
+            <ListItemText primary="Admin Dashboard" sx={{ color: 'warning.main' }} />
+          </ListItem>
+        )}
         {/* Hide top-level page buttons when inside dashboard/admin */}
-        {(!inDashboardMode ? (isAuthenticated ? authenticatedNavItems : navigationItems) : []).map((item) => (
+        {(!inDashboardMode
+          ? (isAuthenticated
+              ? (String(user?.role || '').toUpperCase() === 'SUPERADMIN' ? navigationItems : authenticatedNavItems)
+              : navigationItems)
+          : []).map((item) => (
           <ListItem 
             key={item.label}
             onClick={() => {
@@ -291,8 +310,10 @@ export const Navigation: React.FC = () => {
             <>
               {!inDashboardMode && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {/* Show authenticated nav items when logged in, otherwise show public nav items */}
-                  {(isAuthenticated ? authenticatedNavItems : navigationItems).map((item) => (
+                  {/* SUPERADMIN shows only public items here; Admin button is shown near avatar */}
+                  {(isAuthenticated && String(user?.role || '').toUpperCase() === 'SUPERADMIN'
+                    ? navigationItems
+                    : (isAuthenticated ? authenticatedNavItems : navigationItems)).map((item) => (
                     <Button
                       key={item.label}
                       color="inherit"
@@ -333,6 +354,26 @@ export const Navigation: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 {isAuthenticated ? (
                   <>
+                    {/* SUPERADMIN quick access button next to avatar */}
+                    {String(user?.role || '').toUpperCase() === 'SUPERADMIN' && !inDashboardMode && (
+                      <Button
+                        color="inherit"
+                        startIcon={<AdminPanelSettings />}
+                        onClick={() => navigate('/admin')}
+                        sx={{
+                          textTransform: 'none',
+                          fontWeight: 600,
+                          color: 'warning.main',
+                          borderColor: 'rgba(255, 152, 0, 0.4)',
+                          '&:hover': {
+                            color: 'warning.light',
+                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                          },
+                        }}
+                      >
+                        Admin Dashboard
+                      </Button>
+                    )}
                     <IconButton
                       size="large"
                       onClick={handleMenuOpen}

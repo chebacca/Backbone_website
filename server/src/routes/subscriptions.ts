@@ -12,7 +12,8 @@ import {
   authenticateToken, 
   requireEmailVerification,
   addRequestInfo,
-  validateSubscriptionOwnership 
+  validateSubscriptionOwnership,
+  requireEnterpriseAdminStrict 
 } from '../middleware/auth.js';
 
 const router: Router = Router();
@@ -384,6 +385,8 @@ router.get('/:subscriptionId/renewal', [
  */
 router.post('/:subscriptionId/add-seats', [
   validateSubscriptionOwnership,
+  // If the subscription is ENTERPRISE, require ENTERPRISE_ADMIN role as well
+  requireEnterpriseAdminStrict,
   body('additionalSeats').isInt({ min: 1, max: 100 }).withMessage('Additional seats must be between 1 and 100'),
 ], asyncHandler(async (req: Request, res: Response) => {
   const { subscriptionId } = req.params;

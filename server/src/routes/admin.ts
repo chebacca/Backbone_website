@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import Stripe from 'stripe';
+import sgMail from '@sendgrid/mail';
 import { body, validationResult } from 'express-validator';
 import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
@@ -17,6 +19,7 @@ import {
   requireSuperAdmin,
   addRequestInfo 
 } from '../middleware/auth.js';
+import { config } from '../config/index.js';
 
 const router: Router = Router();
 
@@ -135,11 +138,18 @@ router.get('/users', asyncHandler(async (req: Request, res: Response) => {
   if (status === 'unverified') users = users.filter((u: any) => !u.isEmailVerified);
   const total = users.length;
   users = users.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(skip, skip + limit);
+  
+  // Enrich each user with their subscriptions so the client can display subscription tier
+  const allSubs = await firestoreService.getAllSubscriptions();
+  const usersWithSubscriptions = users.map((u: any) => ({
+    ...u,
+    subscriptions: allSubs.filter((s: any) => s.userId === u.id),
+  }));
 
   res.json({
     success: true,
     data: {
-      users,
+      users: usersWithSubscriptions,
       pagination: {
         page,
         limit,
@@ -285,10 +295,20 @@ router.get('/licenses', asyncHandler(async (req: Request, res: Response) => {
   if (status) whereClause.status = status;
 
   let licenses = await firestoreService.getAllLicenses();
+  const users = await firestoreService.getAllUsers();
   if (tier) licenses = licenses.filter((l: any) => l.tier === tier);
   if (status) licenses = licenses.filter((l: any) => l.status === status);
   const total = licenses.length;
-  licenses = licenses.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(skip, skip + limit);
+  licenses = licenses
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(skip, skip + limit)
+    .map((l: any) => ({
+      ...l,
+      user: (() => {
+        const u = users.find((u: any) => u.id === l.userId);
+        return u ? { id: u.id, name: u.name, email: u.email } : undefined;
+      })(),
+    }));
 
   res.json({
     success: true,
@@ -753,34 +773,105 @@ class AdminService {
   }
 
   static async getSystemHealth() {
-    const [dbHealth, emailHealth, paymentHealth] = await Promise.all([
+    const [dbHealth, emailHealth, paymentHealth, webhooksHealth] = await Promise.all([
       this.checkDatabaseHealth(),
       this.checkEmailHealth(),
       this.checkPaymentHealth(),
+      this.checkWebhooksHealth(),
     ]);
+
+    const statuses = [dbHealth.status, emailHealth.status, paymentHealth.status, webhooksHealth.status];
+    const overall = statuses.every((s) => s === 'healthy')
+      ? 'healthy'
+      : statuses.some((s) => s === 'unhealthy')
+        ? 'unhealthy'
+        : 'degraded';
 
     return {
       database: dbHealth,
       email: emailHealth,
       payment: paymentHealth,
-      overall: dbHealth.status === 'healthy' && emailHealth.status === 'healthy' && paymentHealth.status === 'healthy' 
-        ? 'healthy' : 'degraded',
-    };
+      webhooks: webhooksHealth,
+      overall,
+      checkedAt: new Date().toISOString(),
+    } as const;
   }
 
   static async checkDatabaseHealth() {
+    const start = Date.now();
     const ping = await firestoreService.ping();
-    return ping.ok ? { status: 'healthy' } : { status: 'degraded', error: ping.error };
+    const durationMs = Date.now() - start;
+    return ping.ok 
+      ? { status: 'healthy', responseTimeMs: durationMs }
+      : { status: 'unhealthy', error: ping.error, responseTimeMs: durationMs };
   }
 
   static async checkEmailHealth() {
-    // Check email service health
-    return { status: 'healthy' };
+    const start = Date.now();
+    try {
+      if (!config.sendgrid.apiKey) {
+        return { status: 'disabled', message: 'SENDGRID_API_KEY not configured' } as const;
+      }
+      // Ensure client has API key
+      sgMail.setApiKey(config.sendgrid.apiKey);
+      // Lightweight auth scope check without sending any email
+      // @ts-expect-error sgMail.client is available on @sendgrid/mail
+      const res = await sgMail.client.request({ method: 'GET', url: '/v3/scopes' });
+      const durationMs = Date.now() - start;
+      const ok = Array.isArray(res?.[1]?.scopes) || Array.isArray(res?.[0]?.body?.scopes);
+      return ok
+        ? { status: 'healthy', responseTimeMs: durationMs }
+        : { status: 'degraded', responseTimeMs: durationMs, error: 'Unexpected SendGrid response' };
+    } catch (err: any) {
+      const durationMs = Date.now() - start;
+      return { status: 'unhealthy', responseTimeMs: durationMs, error: err?.message || 'SendGrid check failed' } as const;
+    }
   }
 
   static async checkPaymentHealth() {
-    // Check Stripe connectivity
-    return { status: 'healthy' };
+    const start = Date.now();
+    try {
+      if (!config.stripe.secretKey) {
+        return { status: 'disabled', message: 'STRIPE_SECRET_KEY not configured' } as const;
+      }
+      const stripe = new Stripe(config.stripe.secretKey, { apiVersion: '2023-10-16' });
+      // Prefer checking a configured price if available
+      const priceId = config.stripe.proPriceId || config.stripe.basicPriceId || config.stripe.enterprisePriceId;
+      if (priceId) {
+        await stripe.prices.retrieve(priceId);
+      } else {
+        // Fallback to a safe, read-only endpoint
+        await stripe.balance.retrieve();
+      }
+      const durationMs = Date.now() - start;
+      return { status: 'healthy', responseTimeMs: durationMs } as const;
+    } catch (err: any) {
+      const durationMs = Date.now() - start;
+      return { status: 'unhealthy', responseTimeMs: durationMs, error: err?.message || 'Stripe check failed' } as const;
+    }
+  }
+
+  static async checkWebhooksHealth() {
+    const start = Date.now();
+    try {
+      const [recentWebhooks, failedWebhooks] = await Promise.all([
+        firestoreService.countRecentWebhookEvents(24 * 60 * 60 * 1000),
+        firestoreService.countFailedWebhookEvents(),
+      ]);
+      const durationMs = Date.now() - start;
+      const status = failedWebhooks > 10 ? 'unhealthy' : 'healthy';
+      return {
+        status,
+        responseTimeMs: durationMs,
+        metrics: {
+          recentWebhooks,
+          failedWebhooks,
+        },
+      } as const;
+    } catch (err: any) {
+      const durationMs = Date.now() - start;
+      return { status: 'unhealthy', responseTimeMs: durationMs, error: err?.message || 'Webhook health check failed' } as const;
+    }
   }
 }
 

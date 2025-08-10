@@ -17,6 +17,7 @@ import {
   addRequestInfo,
   requireEmailVerification 
 } from '../middleware/auth.js';
+import { config } from '../config/index.js';
 
 const router: Router = Router();
 
@@ -75,7 +76,16 @@ router.post('/register', [
   await ComplianceService.createAuditLog(user.id, 'REGISTER', 'User registered successfully', { email, name }, requestInfo);
   logger.info(`User registered successfully: ${email}`, { userId: user.id });
 
-  res.status(201).json({ success: true, message: 'Registration successful. Please check your email to verify your account.', data: { user: { id: user.id, email: user.email, name: user.name, isEmailVerified: user.isEmailVerified } } });
+  // Return tokens so the client can pre-authenticate (server still enforces email verification where required)
+  const tokens = JwtUtil.generateTokens({ userId: user.id, email: user.email, role: user.role });
+  res.status(201).json({
+    success: true,
+    message: 'Registration successful. Please check your email to verify your account.',
+    data: {
+      user: { id: user.id, email: user.email, name: user.name, isEmailVerified: user.isEmailVerified },
+      tokens,
+    }
+  });
   return;
 }));
 
@@ -194,6 +204,65 @@ router.post('/verify-email', [body('token').notEmpty()], asyncHandler(async (req
   } catch {
     throw createApiError('Invalid or expired verification token', 400);
   }
+}));
+
+// Support GET verification via token in path for frontend convenience
+router.get('/verify-email/:token', asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const token = req.params.token;
+  const requestInfo = (req as any).requestInfo;
+  try {
+    const { userId } = JwtUtil.verifyActivationToken(token);
+    const user = await firestoreService.getUserById(userId);
+    if (!user || user.isEmailVerified !== false || user.emailVerifyToken !== token) {
+      throw new Error('Invalid token');
+    }
+    await firestoreService.updateUser(user.id, { isEmailVerified: true, emailVerifyToken: null as any });
+    await ComplianceService.createAuditLog(user.id, 'PROFILE_UPDATE', 'Email verified successfully', { email: user.email }, requestInfo);
+    logger.info(`Email verified successfully (GET): ${user.email}`, { userId: user.id });
+    res.json({ success: true, message: 'Email verified successfully' });
+    return;
+  } catch {
+    throw createApiError('Invalid or expired verification token', 400);
+  }
+}));
+
+// Resend verification email for currently authenticated (but unverified) user
+router.post('/resend-verification', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const requestInfo = (req as any).requestInfo;
+  const user = await firestoreService.getUserById(req.user!.id);
+  if (!user) throw createApiError('User not found', 404);
+  if (user.isEmailVerified) {
+    res.json({ success: true, message: 'Email already verified' });
+    return;
+  }
+
+  const verificationToken = JwtUtil.generateActivationToken(user.id);
+  await firestoreService.updateUser(user.id, { emailVerifyToken: verificationToken });
+  try { await EmailService.sendWelcomeEmail(user, verificationToken); } catch {}
+  await ComplianceService.createAuditLog(user.id, 'PROFILE_UPDATE', 'Verification email resent', { email: user.email }, requestInfo);
+  logger.info(`Resent verification email to: ${user.email}`, { userId: user.id });
+  res.json({ success: true, message: 'Verification email sent' });
+  return;
+}));
+
+// Development helper: fetch latest email verification token for a user (disabled in production)
+router.get('/dev/email-token', asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  if (!config.isDevelopment) {
+    res.status(404).json({ success: false, message: 'Not found' });
+    return;
+  }
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) {
+    res.status(400).json({ success: false, message: 'Email is required' });
+    return;
+  }
+  const user = await firestoreService.getUserByEmail(email);
+  if (!user) {
+    res.status(404).json({ success: false, message: 'User not found' });
+    return;
+  }
+  res.json({ success: true, data: { token: user.emailVerifyToken || null, isEmailVerified: user.isEmailVerified } });
+  return;
 }));
 
 router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], asyncHandler(async (req: Request, res: Response): Promise<void> => {

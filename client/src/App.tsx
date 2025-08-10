@@ -79,13 +79,12 @@ const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   }
 
   if (isAuthenticated) {
-    // Redirect based on user role
+    // Redirect based on user role and plan
     const roleUpper = String(user?.role || '').toUpperCase();
     if (roleUpper === 'SUPERADMIN') {
       return <Navigate to="/admin" replace />;
-    } else {
-      return <Navigate to="/dashboard" replace />;
     }
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

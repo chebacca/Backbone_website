@@ -171,30 +171,11 @@ const LandingPage: React.FC = () => {
                   </Typography>
                 </Box>
                 
-                <Box>
-                  {isSuperAdmin ? (
-                    <Button
-                      variant="contained"
-                      size="large"
-                      startIcon={<AdminPanelSettings />}
-                      onClick={() => navigate('/admin')}
-                      sx={{
-                        px: 4,
-                        py: 1.5,
-                        fontSize: '1.1rem',
-                        borderRadius: 2,
-                        background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
-                        color: '#000',
-                        '&:hover': {
-                          background: 'linear-gradient(135deg, #33ddff 0%, #7b8eed 100%)',
-                          transform: 'translateY(-2px)',
-                          boxShadow: '0 8px 25px rgba(0, 212, 255, 0.4)',
-                        },
-                      }}
-                    >
-                      Admin Dashboard
-                    </Button>
-                  ) : (
+                 <Box>
+                   {isSuperAdmin ? (
+                     // SUPERADMIN: no CTA buttons here; access Admin from toolbar menu
+                     <></>
+                   ) : (
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 4 }}>
                       <Button
                         variant="contained"
@@ -516,21 +497,8 @@ const LandingPage: React.FC = () => {
             </Typography>
             
             {isSuperAdmin ? (
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<AdminPanelSettings />}
-                onClick={() => navigate('/admin')}
-                sx={{
-                  px: 4,
-                  py: 1.5,
-                  fontSize: '1.1rem',
-                  background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
-                  color: '#000',
-                }}
-              >
-                Go to Admin Dashboard
-              </Button>
+              // SUPERADMIN: no CTA button here
+              <></>
             ) : (
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}

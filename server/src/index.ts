@@ -950,13 +950,16 @@ app.post('/api/setup/normalize-roles', async (req, res) => {
 
 // Export Firebase HTTPS function for production
 // Note: Uses Application Default Credentials for Firestore in Functions
-// Load ADMIN_SETUP_TOKEN from Firebase Functions secrets, if configured
+// Load secrets from Firebase Functions (v2 params)
 const ADMIN_SETUP_TOKEN = defineSecret('ADMIN_SETUP_TOKEN');
+const SENDGRID_API_KEY = defineSecret('SENDGRID_API_KEY');
+// Optional: Stripe key via secrets as well
+const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 
 export const api = onRequest({
   region: 'us-central1',
   cors: config.corsOrigin,
-  secrets: [ADMIN_SETUP_TOKEN],
+  secrets: [ADMIN_SETUP_TOKEN, SENDGRID_API_KEY, STRIPE_SECRET_KEY],
 }, app);
 
 export { app, server };

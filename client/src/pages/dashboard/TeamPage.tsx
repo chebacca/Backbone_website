@@ -8,6 +8,7 @@ import {
   Button,
   Avatar,
   Chip,
+  ChipProps,
   IconButton,
   Menu,
   MenuItem,
@@ -131,10 +132,12 @@ const mockStats: TeamStats = {
   totalSeats: 16,
 };
 
-const getRoleColor = (role: TeamMember['role']) => {
+type ChipColor = ChipProps['color'];
+
+const getRoleColor = (role: TeamMember['role']): ChipColor => {
   switch (role) {
-    case 'admin': return 'error';
-    case 'member': return 'primary';
+    case 'admin': return 'secondary';
+    case 'member': return 'success';
     case 'viewer': return 'default';
     default: return 'default';
   }

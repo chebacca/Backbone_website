@@ -37,18 +37,15 @@ import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
 import { useAuth } from '@/context/AuthContext';
 
-const fadeInUp = {
-  initial: { opacity: 0, y: 60 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.6 }
+// CSS animations for Firebase compatibility
+const fadeInUpAnimation = {
+  opacity: 0,
+  transform: 'translateY(60px)',
+  animation: 'fadeInUp 0.6s ease-out forwards',
 };
 
-const staggerContainer = {
-  animate: {
-    transition: {
-      staggerChildren: 0.15
-    }
-  }
+const staggerAnimation = {
+  animation: 'staggerFadeIn 0.6s ease-out forwards',
 };
 
 interface PricingTier {
@@ -237,12 +234,30 @@ const PricingPage: React.FC = () => {
       >
         <Container maxWidth="lg">
           <Box
-            initial="initial"
-            animate="animate"
-            variants={staggerContainer}
+            sx={{
+              ...staggerAnimation,
+              '@keyframes fadeInUp': {
+                '0%': {
+                  opacity: 0,
+                  transform: 'translateY(60px)',
+                },
+                '100%': {
+                  opacity: 1,
+                  transform: 'translateY(0)',
+                },
+              },
+              '@keyframes staggerFadeIn': {
+                '0%': {
+                  opacity: 0,
+                },
+                '100%': {
+                  opacity: 1,
+                },
+              },
+            }}
           >
             <Box textAlign="center" sx={{ mb: 6 }}>
-              <Box variants={fadeInUp}>
+              <Box sx={fadeInUpAnimation}>
                 <Typography
                   variant="h1"
                   sx={{
@@ -259,7 +274,7 @@ const PricingPage: React.FC = () => {
                 </Typography>
               </Box>
               
-              <Box variants={fadeInUp}>
+              <Box sx={fadeInUpAnimation}>
                 <Typography
                   variant="h5"
                   color="text.secondary"
@@ -270,7 +285,7 @@ const PricingPage: React.FC = () => {
                 </Typography>
               </Box>
 
-              <Box variants={fadeInUp}>
+              <Box sx={fadeInUpAnimation}>
                 <Paper
                   elevation={2}
                   sx={{
@@ -313,15 +328,15 @@ const PricingPage: React.FC = () => {
       {/* Pricing Cards */}
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 }, mt: -4 }}>
         <Box
-          initial="initial"
-          whileInView="animate"
-          viewport={{ once: true }}
-          variants={staggerContainer}
+          sx={{
+            ...staggerAnimation,
+            animationDelay: '0.1s',
+          }}
         >
           <Grid container spacing={4} justifyContent="center">
             {pricingTiers.map((tier) => (
               <Grid item xs={12} md={4} key={tier.id}>
-                <Box variants={fadeInUp}>
+                <Box sx={fadeInUpAnimation}>
                   <Card
                     sx={{
                       height: '100%',
@@ -489,13 +504,13 @@ const PricingPage: React.FC = () => {
       <Box sx={{ backgroundColor: 'background.paper', py: { xs: 6, md: 8 } }}>
         <Container maxWidth="lg">
           <Box
-            initial="initial"
-            whileInView="animate"
-            viewport={{ once: true }}
-            variants={staggerContainer}
+            sx={{
+              ...staggerAnimation,
+              animationDelay: '0.2s',
+            }}
           >
             <Box textAlign="center" sx={{ mb: 6 }}>
-              <Box variants={fadeInUp}>
+              <Box sx={fadeInUpAnimation}>
                 <Typography
                   variant="h2"
                   sx={{
@@ -508,7 +523,7 @@ const PricingPage: React.FC = () => {
                 </Typography>
               </Box>
               
-              <Box variants={fadeInUp}>
+              <Box sx={fadeInUpAnimation}>
                 <Typography
                   variant="h6"
                   color="text.secondary"
@@ -543,7 +558,7 @@ const PricingPage: React.FC = () => {
                 },
               ].map((item, index) => (
                 <Grid item xs={12} md={6} key={index}>
-                  <Box variants={fadeInUp}>
+                  <Box sx={fadeInUpAnimation}>
                     <Box sx={{ display: 'flex', gap: 3, p: 3 }}>
                       <Box
                         sx={{
@@ -581,13 +596,13 @@ const PricingPage: React.FC = () => {
       {/* FAQ Section */}
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
         <Box
-          initial="initial"
-          whileInView="animate"
-          viewport={{ once: true }}
-          variants={staggerContainer}
+          sx={{
+            ...staggerAnimation,
+            animationDelay: '0.3s',
+          }}
         >
           <Box textAlign="center" sx={{ mb: 6 }}>
-            <Box variants={fadeInUp}>
+            <Box sx={fadeInUpAnimation}>
               <Typography variant="h3" sx={{ fontWeight: 600, mb: 2 }}>
                 Frequently Asked Questions
               </Typography>
@@ -596,7 +611,7 @@ const PricingPage: React.FC = () => {
 
           <Box sx={{ maxWidth: 800, mx: 'auto' }}>
             {faqs.map((faq, index) => (
-              <Box key={index} variants={fadeInUp}>
+              <Box key={index} sx={fadeInUpAnimation}>
                 <Accordion
                   sx={{
                     backgroundColor: 'background.paper',
@@ -626,10 +641,10 @@ const PricingPage: React.FC = () => {
       <Box sx={{ backgroundColor: 'background.paper', py: { xs: 6, md: 8 } }}>
         <Container maxWidth="md">
           <Box
-            initial="initial"
-            whileInView="animate"
-            viewport={{ once: true }}
-            variants={fadeInUp}
+            sx={{
+              ...fadeInUpAnimation,
+              animationDelay: '0.4s',
+            }}
           >
             <Box textAlign="center">
               <Typography variant="h4" sx={{ fontWeight: 600, mb: 2 }}>

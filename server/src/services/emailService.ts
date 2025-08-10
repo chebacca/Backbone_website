@@ -1,27 +1,21 @@
-import sgMail from '@sendgrid/mail';
 import { Resend } from 'resend';
 import { firestoreService } from './firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 
-// Initialize email services based on configuration
+// Initialize Resend email service based on configuration
 let resendClient: Resend | null = null;
-let sendgridConfigured = false;
 
 if (config.resend?.apiKey) {
   resendClient = new Resend(config.resend.apiKey);
   logger.info('Resend email service initialized');
-} else if (config.sendgrid.apiKey) {
-  sgMail.setApiKey(config.sendgrid.apiKey);
-  sendgridConfigured = true;
-  logger.info('SendGrid email service initialized');
 } else {
   logger.warn('No email service configured - emails will be skipped');
 }
 
 export class EmailService {
   /**
-   * Send email using available email service
+   * Send email using Resend only
    */
   private static async sendEmail(emailData: {
     to: string;
@@ -33,49 +27,35 @@ export class EmailService {
     customArgs?: Record<string, string>;
   }) {
     try {
-      // Try Resend first (preferred)
-      if (resendClient) {
-        const result = await resendClient.emails.send({
-          from: `${emailData.fromName} <${emailData.from}>`,
-          to: [emailData.to],
-          subject: emailData.subject,
-          html: emailData.html,
-          text: emailData.text,
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping email send');
+        return { success: false, messageId: null, provider: 'none' as const };
+      }
+
+      const result = await resendClient.emails.send({
+        from: `${emailData.fromName} <${emailData.from}>`,
+        to: [emailData.to],
+        subject: emailData.subject,
+        html: emailData.html,
+        text: emailData.text,
+      });
+
+      if ((result as any)?.error) {
+        const err: any = (result as any).error;
+        logger.error('Resend send failed', {
+          name: err?.name,
+          message: err?.message,
+          statusCode: err?.statusCode,
         });
-        
-        logger.info(`Email sent via Resend: ${result.data?.id}`);
-        return { success: true, messageId: result.data?.id, provider: 'resend' };
-      }
-      
-      // Fallback to SendGrid
-      if (sendgridConfigured) {
-        const msg = {
-          to: emailData.to,
-          from: {
-            email: emailData.from,
-            name: emailData.fromName,
-          },
-          subject: emailData.subject,
-          html: emailData.html,
-          text: emailData.text,
-          customArgs: emailData.customArgs,
-        } as any;
-
-        const result = await sgMail.send(msg);
-        logger.info(`Email sent via SendGrid: ${result[0]?.headers?.['x-message-id']}`);
-        return { 
-          success: true, 
-          messageId: result[0]?.headers?.['x-message-id'], 
-          provider: 'sendgrid' 
-        };
+        return { success: false, messageId: null, provider: 'resend_error' as const };
       }
 
-      // No email service configured
-      logger.warn('No email service configured; skipping email send');
-      return { success: false, messageId: null, provider: 'none' };
+      const messageId = (result as any)?.data?.id;
+      logger.info(`Email sent via Resend: ${messageId || 'no-id-returned'}`);
+      return { success: true, messageId, provider: 'resend' as const };
     } catch (error) {
-      logger.error('Failed to send email', error as any);
-      return { success: false, messageId: null, provider: 'error', error };
+      logger.error('Failed to send email via Resend', error as any);
+      return { success: false, messageId: null, provider: 'resend_error' as const, error } as const;
     }
   }
 
@@ -89,9 +69,8 @@ export class EmailService {
     payment: any
   ) {
     try {
-      // Skip if no email service configured
-      if (!resendClient && !sendgridConfigured) {
-        logger.warn('No email service configured; skipping license delivery email');
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping license delivery email');
         return { success: true, messageId: null };
       }
 
@@ -125,8 +104,8 @@ export class EmailService {
 
       const result = await this.sendEmail({
         to: user.email,
-        from: config.resend?.fromEmail || config.sendgrid.fromEmail,
-        fromName: config.resend?.fromName || config.sendgrid.fromName,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
         subject: `Your Dashboard v14 License Keys - ${subscription.tier} Plan`,
         html: emailContent.html,
         text: emailContent.text,
@@ -138,8 +117,7 @@ export class EmailService {
         },
       });
 
-      if (result.success) {
-        // Update delivery logs
+      if ((result as any).success) {
         for (const license of licenses) {
           await firestoreService.updateLicenseDeliveryLogsForPayment(payment?.id, { 
             deliveryStatus: 'SENT', 
@@ -149,8 +127,8 @@ export class EmailService {
         }
 
         logger.info(`License delivery email sent successfully to ${user.email}`, {
-          messageId: result.messageId,
-          provider: result.provider,
+          messageId: (result as any).messageId,
+          provider: (result as any).provider,
           licenseCount: licenses.length,
         });
       }
@@ -158,7 +136,7 @@ export class EmailService {
       return result;
     } catch (error) {
       logger.error('Failed to send license delivery email', error as any);
-      return { success: false, messageId: null, provider: 'error', error };
+      return { success: false, messageId: null, provider: 'resend_error', error };
     }
   }
 
@@ -167,9 +145,8 @@ export class EmailService {
    */
   static async sendWelcomeEmail(user: any, verificationToken?: string) {
     try {
-      // Skip if no email service configured
-      if (!resendClient && !sendgridConfigured) {
-        logger.warn('No email service configured; skipping welcome email');
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping welcome email');
         return { success: true, messageId: null };
       }
 
@@ -182,18 +159,18 @@ export class EmailService {
         userName: user.name,
         userEmail: user.email,
         verificationUrl: verificationToken 
-          ? `${config.frontendUrl}/verify-email/${verificationToken}` // Changed from ?token= to /token
+          ? `${config.frontendUrl}/verify-email/${verificationToken}`
           : null,
         loginUrl: `${config.frontendUrl}/login`,
         supportUrl: `${config.frontendUrl}/support`,
-        companyName: config.resend?.fromName || config.sendgrid.fromName,
-        companyEmail: config.resend?.fromEmail || config.sendgrid.fromEmail,
+        companyName: config.resend.fromName,
+        companyEmail: config.resend.fromEmail,
       });
 
       const result = await this.sendEmail({
         to: user.email,
-        from: config.resend?.fromEmail || config.sendgrid.fromEmail,
-        fromName: config.resend?.fromName || config.sendgrid.fromName,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
         subject: `Welcome to Dashboard v14 Licensing - Verify Your Email`,
         html: emailContent.html,
         text: emailContent.text,
@@ -203,17 +180,17 @@ export class EmailService {
         },
       });
 
-      if (result.success) {
+      if ((result as any).success) {
         logger.info(`Welcome email sent successfully to ${user.email}`, {
-          messageId: result.messageId,
-          provider: result.provider,
+          messageId: (result as any).messageId,
+          provider: (result as any).provider,
         });
       }
 
       return result;
     } catch (error) {
       logger.error('Failed to send welcome email', error as any);
-      return { success: false, messageId: null, provider: 'error', error };
+      return { success: false, messageId: null, provider: 'resend_error', error };
     }
   }
 
@@ -222,9 +199,8 @@ export class EmailService {
    */
   static async sendPaymentReceiptEmail(user: any, payment: any, subscription: any) {
     try {
-      // Skip if no email service configured
-      if (!resendClient && !sendgridConfigured) {
-        logger.warn('No email service configured; skipping payment receipt email');
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping payment receipt email');
         return { success: true, messageId: null };
       }
 
@@ -253,14 +229,14 @@ export class EmailService {
         },
         accountUrl: `${config.frontendUrl}/account`,
         supportUrl: `${config.frontendUrl}/support`,
-        companyName: config.resend?.fromName || config.sendgrid.fromName,
-        companyEmail: config.resend?.fromEmail || config.sendgrid.fromEmail,
+        companyName: config.resend.fromName,
+        companyEmail: config.resend.fromEmail,
       });
 
       const result = await this.sendEmail({
         to: user.email,
-        from: config.resend?.fromEmail || config.sendgrid.fromEmail,
-        fromName: config.resend?.fromName || config.sendgrid.fromName,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
         subject: `Payment Receipt - Dashboard v14 Licensing`,
         html: emailContent.html,
         text: emailContent.text,
@@ -271,17 +247,17 @@ export class EmailService {
         },
       });
 
-      if (result.success) {
+      if ((result as any).success) {
         logger.info(`Payment receipt email sent successfully to ${user.email}`, {
-          messageId: result.messageId,
-          provider: result.provider,
+          messageId: (result as any).messageId,
+          provider: (result as any).provider,
         });
       }
 
       return result;
     } catch (error) {
       logger.error('Failed to send payment receipt email', error as any);
-      return { success: false, messageId: null, provider: 'error', error };
+      return { success: false, messageId: null, provider: 'resend_error', error };
     }
   }
 
@@ -290,9 +266,8 @@ export class EmailService {
    */
   static async sendPasswordResetEmail(user: any, resetToken: string) {
     try {
-      // Skip if no email service configured
-      if (!resendClient && !sendgridConfigured) {
-        logger.warn('No email service configured; skipping password reset email');
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping password reset email');
         return { success: true, messageId: null };
       }
 
@@ -307,14 +282,14 @@ export class EmailService {
         resetUrl: `${config.frontendUrl}/reset-password?token=${resetToken}`,
         loginUrl: `${config.frontendUrl}/login`,
         supportUrl: `${config.frontendUrl}/support`,
-        companyName: config.resend?.fromName || config.sendgrid.fromName,
-        companyEmail: config.resend?.fromEmail || config.sendgrid.fromEmail,
+        companyName: config.resend.fromName,
+        companyEmail: config.resend.fromEmail,
       });
 
       const result = await this.sendEmail({
         to: user.email,
-        from: config.resend?.fromEmail || config.sendgrid.fromEmail,
-        fromName: config.resend?.fromName || config.sendgrid.fromName,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
         subject: `Reset Your Password - Dashboard v14 Licensing`,
         html: emailContent.html,
         text: emailContent.text,
@@ -334,7 +309,7 @@ export class EmailService {
       return result;
     } catch (error) {
       logger.error('Failed to send password reset email', error as any);
-      return { success: false, messageId: null, provider: 'error', error };
+      return { success: false, messageId: null, provider: 'resend_error', error };
     }
   }
 

@@ -79,14 +79,14 @@
           "SENDGRID_API_KEY": "${SENDGRID_API_KEY}",
           "FROM_EMAIL": "${FROM_EMAIL}",
           "FROM_NAME": "${FROM_NAME}",
-          "RESEND_API_KEY": "${RESEND_API_KEY}",
-          "RESEND_FROM_EMAIL": "${RESEND_FROM_EMAIL}",
-          "RESEND_FROM_NAME": "${RESEND_FROM_NAME}",
+          "RESEND_API_KEY": "re_26D4iq5a_N6s6eVxuSKQjv6RrQ7DYRG5v",
+          "RESEND_FROM_EMAIL": "onboarding@resend.dev",
+          "RESEND_FROM_NAME": "Backbone Logic",
           "JWT_SECRET": "${JWT_SECRET}",
           "JWT_EXPIRES_IN": "${JWT_EXPIRES_IN}",
           "JWT_REFRESH_EXPIRES_IN": "${JWT_REFRESH_EXPIRES_IN}",
-          "FRONTEND_URL": "${FRONTEND_URL}",
-          "CORS_ORIGIN": "${CORS_ORIGIN}",
+          "FRONTEND_URL": "https://backbone-logic.web.app",
+          "CORS_ORIGIN": "https://backbone-logic.web.app",
           "ADMIN_RESET": "${ADMIN_RESET}"
         }
       }

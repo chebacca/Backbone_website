@@ -163,7 +163,8 @@ class DatabaseSeeder {
       BIENNIAL: 730,
     };
 
-    const targetUsers = users; // include admin so we have subscriptions for all 50 users
+    // Only non-SUPERADMIN users should receive subscriptions (and thus licenses)
+    const targetUsers = users.filter(u => u.role !== 'SUPERADMIN');
 
     targetUsers.forEach((user, index) => {
       // Even distribution across tiers by index

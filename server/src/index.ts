@@ -68,13 +68,16 @@ app.use(cors({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: config.rateLimitWindowMs,
-  max: config.rateLimitMaxRequests,
+  // Looser limits to support dashboard bursts
+  windowMs: 60_000, // 1 minute
+  max: 300, // 300 req/min per IP
   message: {
     error: 'Too many requests from this IP, please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip for preflight, health, and admin routes to prevent lockouts while testing
+  skip: (req) => req.method === 'OPTIONS' || req.path === '/api/health' || req.path.startsWith('/api/admin'),
 });
 app.use('/api/', limiter);
 

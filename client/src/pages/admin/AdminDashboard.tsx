@@ -30,6 +30,10 @@ import {
   Alert,
   InputAdornment,
   Container,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Collapse,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -46,6 +50,8 @@ import {
   Search as SearchIcon,
   Clear as ClearIcon,
   ArrowBack as ArrowBackIcon,
+  ExpandMore as ExpandMoreIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
@@ -155,6 +161,8 @@ const AdminDashboard: React.FC = () => {
   });
   const [users, setUsers] = useState<User[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
+  const [usersFilters, setUsersFilters] = useState<{ role?: string; status?: string; tier?: string }>({});
+  const [licensesFilters, setLicensesFilters] = useState<{ tier?: string; status?: string }>({});
   const [recentPayments, setRecentPayments] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [paymentsPage, setPaymentsPage] = useState(1);
@@ -175,21 +183,28 @@ const AdminDashboard: React.FC = () => {
   const [usersSearch, setUsersSearch] = useState('');
   const [licensesSearch, setLicensesSearch] = useState('');
   const [paymentsSearch, setPaymentsSearch] = useState('');
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [showUsersWithNoLicenses, setShowUsersWithNoLicenses] = useState<boolean>(false);
 
   // Filtered data using useMemo for performance
   const filteredUsers = useMemo(() => {
-    if (!usersSearch.trim()) return users;
-    
-    const searchTerm = usersSearch.toLowerCase();
-    return users.filter(user => 
-      user.firstName.toLowerCase().includes(searchTerm) ||
-      user.lastName.toLowerCase().includes(searchTerm) ||
-      user.email.toLowerCase().includes(searchTerm) ||
-      user.role.toLowerCase().includes(searchTerm) ||
-      user.status.toLowerCase().includes(searchTerm) ||
-      (user.subscription && user.subscription.toLowerCase().includes(searchTerm))
-    );
-  }, [users, usersSearch]);
+    const searchTerm = usersSearch.trim().toLowerCase();
+    return users
+      .filter((user) => {
+        if (!searchTerm) return true;
+        return (
+          user.firstName.toLowerCase().includes(searchTerm) ||
+          user.lastName.toLowerCase().includes(searchTerm) ||
+          user.email.toLowerCase().includes(searchTerm) ||
+          user.role.toLowerCase().includes(searchTerm) ||
+          user.status.toLowerCase().includes(searchTerm) ||
+          (user.subscription && user.subscription.toLowerCase().includes(searchTerm))
+        );
+      })
+      .filter((user) => (usersFilters.role ? user.role === usersFilters.role : true))
+      .filter((user) => (usersFilters.status ? user.status === usersFilters.status.toLowerCase() : true))
+      .filter((user) => (usersFilters.tier ? (user.subscription || '').toUpperCase() === usersFilters.tier : true));
+  }, [users, usersSearch, usersFilters]);
 
   const filteredLicenses = useMemo(() => {
     if (!licensesSearch.trim()) return licenses;
@@ -204,6 +219,31 @@ const AdminDashboard: React.FC = () => {
       new Date(license.activatedAt).toLocaleDateString().includes(searchTerm)
     );
   }, [licenses, licensesSearch]);
+
+  // Group by ALL users to ensure everyone is visible (licenses may be zero)
+  const groupedLicenses = useMemo(() => {
+    const licensesByUserId = new Map<string, License[]>();
+    filteredLicenses.forEach((l) => {
+      const list = licensesByUserId.get(l.userId) || [];
+      list.push(l);
+      licensesByUserId.set(l.userId, list);
+    });
+
+    const groups = users.map((u) => {
+      const userLicenses = licensesByUserId.get(u.id) || [];
+      const activeCount = userLicenses.filter((l) => l.status === 'active').length;
+      return {
+        userId: u.id,
+        userEmail: u.email,
+        licenses: userLicenses,
+        totalLicenses: userLicenses.length,
+        activeLicenses: activeCount,
+      };
+    });
+
+    const maybeFiltered = showUsersWithNoLicenses ? groups : groups.filter((g) => g.totalLicenses > 0);
+    return maybeFiltered.sort((a, b) => a.userEmail.localeCompare(b.userEmail));
+  }, [users, filteredLicenses, showUsersWithNoLicenses]);
 
   const parseDate = (value: any): Date => {
     if (!value) return new Date(NaN);
@@ -247,6 +287,18 @@ const AdminDashboard: React.FC = () => {
   const clearLicensesSearch = () => setLicensesSearch('');
   const clearPaymentsSearch = () => setPaymentsSearch('');
 
+  const toggleUserExpansion = (userEmail: string) => {
+    setExpandedUsers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userEmail)) {
+        newSet.delete(userEmail);
+      } else {
+        newSet.add(userEmail);
+      }
+      return newSet;
+    });
+  };
+
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -262,7 +314,8 @@ const AdminDashboard: React.FC = () => {
 
         const [usersRes, licensesRes, paymentsRes, systemHealthRes, statsRes] = await Promise.all([
           api.get(`${endpoints.admin.users()}?page=1&limit=100`),
-          api.get(`${endpoints.admin.licenses()}?page=1&limit=500`),
+          // Initial licenses fetch kept lightweight; full pagination handled by tab effect
+          api.get(`${endpoints.admin.licenses()}?page=1&limit=100`),
           api.get(endpoints.admin.paymentAnalytics()),
           api.get(endpoints.admin.systemHealth()),
           api.get(endpoints.admin.dashboardStats()),
@@ -289,17 +342,9 @@ const AdminDashboard: React.FC = () => {
           createdAt: u.createdAt || new Date().toISOString(),
         })));
 
-        setLicenses(licensesData.map((l: any) => ({
-          id: l.id,
-          key: l.key,
-          userId: l.userId,
-          userEmail: l.user?.email ?? '',
-          tier: l.tier,
-          status: String(l.status || '').toLowerCase() as License['status'],
-          activatedAt: new Date(parseDate(l.activatedAt || l.createdAt)).toISOString(),
-          expiresAt: new Date(parseDate(l.expiresAt || l.createdAt)).toISOString(),
-          lastUsed: new Date(parseDate(l.updatedAt || l.createdAt)).toISOString(),
-        })));
+        // Do not set licenses here to avoid showing only the first page.
+        // The Licenses tab effect will load all pages and populate `licenses`.
+        setLicenses([]);
 
         setStats({
           totalUsers: Number(dashboardStats.totalUsers || usersData.length) || 0,
@@ -322,6 +367,64 @@ const AdminDashboard: React.FC = () => {
     })();
     return () => { isMounted = false; };
   }, [user?.role]);
+
+  // Fetch ALL licenses across pages (server caps 100 per page). Applies current filters.
+  const fetchLicenses = async () => {
+    const buildParams = (page: number) => {
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', '100');
+      if (licensesFilters.tier) params.set('tier', String(licensesFilters.tier));
+      if (licensesFilters.status) params.set('status', String(licensesFilters.status));
+      return params.toString();
+    };
+
+    // First page to discover total pages
+    const firstRes = await api.get(`${endpoints.admin.licenses()}?${buildParams(1)}`);
+    const firstList = firstRes.data?.data?.licenses ?? [];
+    const pagination = firstRes.data?.data?.pagination ?? { pages: 1, page: 1 };
+    const totalPages: number = Math.max(1, Number(pagination.pages) || 1);
+
+    let allLicenses: any[] = [...firstList];
+
+    if (totalPages > 1) {
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+      const batchSize = 5;
+      for (let i = 0; i < remainingPages.length; i += batchSize) {
+        const batch = remainingPages.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map((p) => api.get(`${endpoints.admin.licenses()}?${buildParams(p)}`))
+        );
+        results.forEach((res) => {
+          const list = res.data?.data?.licenses ?? [];
+          allLicenses = allLicenses.concat(list);
+        });
+      }
+    }
+
+    setLicenses(
+      allLicenses.map((l: any) => ({
+        id: l.id,
+        key: l.key,
+        userId: l.userId,
+        userEmail: l.user?.email ?? '',
+        tier: l.tier,
+        status: String(l.status || '').toLowerCase() as License['status'],
+        activatedAt: new Date(parseDate(l.activatedAt || l.createdAt)).toISOString(),
+        expiresAt: new Date(parseDate(l.expiresAt || l.createdAt)).toISOString(),
+        lastUsed: new Date(parseDate(l.updatedAt || l.createdAt)).toISOString(),
+      }))
+    );
+  };
+
+  useEffect(() => {
+    const roleUpper = String(user?.role || '').toUpperCase();
+    const isSuperAdmin = roleUpper === 'SUPERADMIN';
+    if (!isSuperAdmin) return;
+    if (activeTab !== 1) return;
+    fetchLicenses().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, licensesFilters, user?.role]);
 
   const refreshHealth = async () => {
     try {
@@ -669,39 +772,81 @@ const AdminDashboard: React.FC = () => {
               animation: 'fadeInUp 0.6s ease-out forwards',
             }}
           >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <TextField
-                placeholder="Search users by name, email, role, status, or subscription..."
-                value={usersSearch}
-                onChange={(e) => setUsersSearch(e.target.value)}
-                size="small"
-                sx={{ minWidth: 400 }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
-                  ),
-                  endAdornment: usersSearch && (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={clearUsersSearch}>
-                        <ClearIcon />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <Button variant="contained" onClick={openAddDialog}>Add License</Button>
-            </Box>
-            {usersSearch && (
-              <Box sx={{ mb: 2 }}>
-                <Chip 
-                  label={`${filteredUsers.length} of ${users.length} users found`}
-                  color="primary"
-                  variant="outlined"
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
+              {/* Global Search */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <TextField
+                  placeholder="Search users by name, email, role, status, or subscription..."
+                  value={usersSearch}
+                  onChange={(e) => setUsersSearch(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 400 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                    endAdornment: usersSearch && (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={clearUsersSearch}>
+                          <ClearIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
                 />
+                {usersSearch && (
+                  <Chip 
+                    label={`${filteredUsers.length} of ${users.length} users found`}
+                    color="primary"
+                    variant="outlined"
+                  />
+                )}
+                <Button variant="contained" onClick={openAddDialog}>Add License</Button>
               </Box>
-            )}
+
+              {/* Advanced Filters - match Invoices layout */}
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  label="Role"
+                  select
+                  size="small"
+                  value={usersFilters.role || ''}
+                  onChange={(e) => setUsersFilters((f) => ({ ...f, role: e.target.value || undefined }))}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="USER">USER</MenuItem>
+                  <MenuItem value="ADMIN">ADMIN</MenuItem>
+                  <MenuItem value="SUPERADMIN">SUPERADMIN</MenuItem>
+                </TextField>
+                <TextField
+                  label="Status"
+                  select
+                  size="small"
+                  value={usersFilters.status || ''}
+                  onChange={(e) => setUsersFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="active">ACTIVE</MenuItem>
+                  <MenuItem value="suspended">SUSPENDED</MenuItem>
+                </TextField>
+                <TextField
+                  label="Subscription Tier"
+                  select
+                  size="small"
+                  value={usersFilters.tier || ''}
+                  onChange={(e) => setUsersFilters((f) => ({ ...f, tier: (e.target.value || undefined) as any }))}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="BASIC">BASIC</MenuItem>
+                  <MenuItem value="PRO">PRO</MenuItem>
+                  <MenuItem value="ENTERPRISE">ENTERPRISE</MenuItem>
+                </TextField>
+                <Button variant="outlined">Apply Filters</Button>
+                <Button onClick={() => setUsersFilters({})}>Clear</Button>
+              </Box>
+            </Box>
             <TableContainer component={Paper}>
               <Table>
                 <TableHead>
@@ -818,92 +963,194 @@ const AdminDashboard: React.FC = () => {
                   ),
                 }}
               />
-            </Box>
-            {licensesSearch && (
-              <Box sx={{ mb: 2 }}>
-                <Chip 
-                  label={`${filteredLicenses.length} of ${licenses.length} licenses found`}
-                  color="primary"
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Tier"
+                  sx={{ minWidth: 140 }}
+                  value={licensesFilters.tier || ''}
+                  onChange={(e) => setLicensesFilters((f) => ({ ...f, tier: (e.target.value || undefined) as any }))}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="BASIC">BASIC</MenuItem>
+                  <MenuItem value="PRO">PRO</MenuItem>
+                  <MenuItem value="ENTERPRISE">ENTERPRISE</MenuItem>
+                </TextField>
+                <Chip
+                  size="small"
+                  label={showUsersWithNoLicenses ? 'Showing users with 0 licenses' : 'Hiding users with 0 licenses'}
+                  onClick={() => setShowUsersWithNoLicenses((v) => !v)}
                   variant="outlined"
                 />
+                <TextField
+                  select
+                  size="small"
+                  label="Status"
+                  sx={{ minWidth: 160 }}
+                  value={licensesFilters.status || ''}
+                  onChange={(e) => setLicensesFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="ACTIVE">ACTIVE</MenuItem>
+                  <MenuItem value="PENDING">PENDING</MenuItem>
+                  <MenuItem value="SUSPENDED">SUSPENDED</MenuItem>
+                  <MenuItem value="EXPIRED">EXPIRED</MenuItem>
+                  <MenuItem value="REVOKED">REVOKED</MenuItem>
+                </TextField>
+                <Button variant="outlined" onClick={() => fetchLicenses()}>Apply</Button>
+                <Button
+                  onClick={() => { setLicensesFilters({}); fetchLicenses().catch(() => {}); }}
+                >
+                  Clear
+                </Button>
               </Box>
-            )}
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>License Key</TableCell>
-                    <TableCell>User</TableCell>
-                    <TableCell>Tier</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Expires</TableCell>
-                    <TableCell>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredLicenses.length > 0 ? (
-                    filteredLicenses.map((license) => (
-                      <TableRow key={license.id}>
-                        <TableCell>
-                          <Typography variant="body2" fontFamily="monospace">
-                            {license.key}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {license.userEmail}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={license.tier}
-                            size="small"
-                            color={getTierColor(license.tier)}
-                            variant={getTierVariant(license.tier)}
-                          />
-                        </TableCell>
-                        <TableCell>
-          <Chip
-            label={license.status}
-            size="small"
-            color={getStatusColor(String(license.status).toLowerCase())}
-          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {new Date(license.expiresAt).toLocaleDateString()}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleLicenseEdit()}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton size="small">
-                            <VisibilityIcon />
-                          </IconButton>
-                          <IconButton size="small">
-                            <DownloadIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center">
-                        <Box sx={{ py: 4 }}>
-                          <Typography variant="body1" color="text.secondary">
-                            {licensesSearch ? 'No licenses found matching your search criteria.' : 'No licenses available.'}
-                          </Typography>
+            </Box>
+            {/* Licenses Summary */}
+            <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Chip 
+                label={`${groupedLicenses.length} Users with Licenses`}
+                color="primary"
+                variant="outlined"
+              />
+              <Chip 
+                label={`${filteredLicenses.length} Total Licenses`}
+                color="secondary"
+                variant="outlined"
+              />
+              {licensesSearch && (
+                <Chip 
+                  label={`Search: ${licensesSearch}`}
+                  color="info"
+                  variant="outlined"
+                  onDelete={clearLicensesSearch}
+                />
+              )}
+            </Box>
+            {/* Grouped Licenses View */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {groupedLicenses.length > 0 ? (
+                groupedLicenses.map((group) => (
+                  <Card key={group.userEmail} variant="outlined">
+                    <CardContent sx={{ p: 0 }}>
+                      {/* User Group Header */}
+                      <Box
+                        sx={{
+                          p: 2,
+                          backgroundColor: 'background.default',
+                          borderBottom: '1px solid',
+                          borderColor: 'divider',
+                          cursor: 'pointer',
+                          '&:hover': { backgroundColor: 'action.hover' }
+                        }}
+                        onClick={() => toggleUserExpansion(group.userEmail)}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <PersonIcon color="primary" />
+                            <Box>
+                              <Typography variant="h6" component="div">
+                                {group.userEmail}
+                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                                <Chip 
+                                  size="small" 
+                                  label={`${group.totalLicenses} Total Licenses`}
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                                <Chip 
+                                  size="small" 
+                                  label={`${group.activeLicenses} Active`}
+                                  color="success"
+                                  variant="outlined"
+                                />
+                              </Box>
+                            </Box>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <ExpandMoreIcon 
+                              sx={{ 
+                                transform: expandedUsers.has(group.userEmail) ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s'
+                              }} 
+                            />
+                          </Box>
                         </Box>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                      </Box>
+
+                      {/* Collapsible Licenses Table */}
+                      <Collapse in={expandedUsers.has(group.userEmail)}>
+                        <TableContainer component={Paper} sx={{ borderRadius: 0 }}>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>License Key</TableCell>
+                                <TableCell>Tier</TableCell>
+                                <TableCell>Status</TableCell>
+                                <TableCell>Expires</TableCell>
+                                <TableCell>Actions</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {group.licenses.map((license) => (
+                                <TableRow key={license.id}>
+                                  <TableCell>
+                                    <Typography variant="body2" fontFamily="monospace">
+                                      {license.key}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={license.tier}
+                                      size="small"
+                                      color={getTierColor(license.tier)}
+                                      variant={getTierVariant(license.tier)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={license.status}
+                                      size="small"
+                                      color={getStatusColor(String(license.status).toLowerCase())}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2">
+                                      {new Date(license.expiresAt).toLocaleDateString()}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleLicenseEdit()}
+                                    >
+                                      <EditIcon />
+                                    </IconButton>
+                                    <IconButton size="small">
+                                      <VisibilityIcon />
+                                    </IconButton>
+                                    <IconButton size="small">
+                                      <DownloadIcon />
+                                    </IconButton>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Collapse>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <Box sx={{ py: 4, textAlign: 'center' }}>
+                  <Typography variant="body1" color="text.secondary">
+                    {licensesSearch ? 'No licenses found matching your search criteria.' : 'No licenses available.'}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
           </Box>
         )}
 

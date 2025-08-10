@@ -15,7 +15,7 @@ interface SeedUser {
   email: string;
   name: string;
   password: string;
-  role: 'USER' | 'ADMIN' | 'SUPERADMIN';
+  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING';
   emailVerified: boolean;
   isEmailVerified?: boolean;
   twoFactorEnabled: boolean;
@@ -95,6 +95,43 @@ class DatabaseSeeder {
   private static licenses: SeedLicense[] = [];
 
   /**
+   * Promote a subset of users who own ENTERPRISE subscriptions to ADMIN role so they
+   * can administer licenses for their teams. SUPERADMIN users are not modified.
+   * Returns the number of users promoted.
+   */
+  private static assignAdminsToEnterpriseUsers(
+    users: SeedUser[],
+    subscriptions: SeedSubscription[],
+    targetFraction: number = 0.35,
+  ): number {
+    const enterpriseUserIds = new Set(
+      subscriptions
+        .filter((s) => s.tier === 'ENTERPRISE')
+        .map((s) => s.userId)
+    );
+
+    const candidateUsers = users.filter(
+      (u) => enterpriseUserIds.has(u.id) && u.role !== 'SUPERADMIN'
+    );
+
+    let promotedCount = 0;
+    for (const user of candidateUsers) {
+      if (Math.random() < targetFraction) {
+        user.role = 'ADMIN';
+        promotedCount += 1;
+      }
+    }
+
+    // Ensure at least one enterprise admin exists when there are enterprise users
+    if (promotedCount === 0 && candidateUsers.length > 0) {
+      candidateUsers[0].role = 'ADMIN';
+      promotedCount = 1;
+    }
+
+    return promotedCount;
+  }
+
+  /**
    * Generate sample users
    */
   private static async generateUsers(): Promise<SeedUser[]> {
@@ -116,13 +153,28 @@ class DatabaseSeeder {
       updatedAt: now,
     });
 
+    // Accounting user
+    users.push({
+      id: 'accounting-user-001',
+      email: 'accounting@example.com',
+      name: 'Accounting User',
+      password: await PasswordUtil.hash('Account123!'),
+      role: 'ACCOUNTING',
+      emailVerified: true,
+      isEmailVerified: true,
+      twoFactorEnabled: false,
+      status: 'ACTIVE',
+      createdAt: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000),
+      updatedAt: now,
+    });
+
     // Generate 50 unique users with varied security requirements
     const firstNames = ['John','Sarah','Mike','Emily','David','Lisa','Alex','Nicole','Robert','Maria','James','Olivia','Daniel','Sophia','Matthew','Ava','Ethan','Isabella','Andrew','Mia','Joseph','Amelia','Benjamin','Charlotte','Henry','Harper','Samuel','Evelyn','Lucas','Abigail','Christopher','Ella','Joshua','Elizabeth','Nathan','Sofia','Ryan','Madison','Noah','Avery'];
     const lastNames = ['Doe','Wilson','Johnson','Chen','Brown','Garcia','Turner','White','Lee','Rodriguez','Miller','Davis','Martinez','Taylor','Anderson','Thomas','Hernandez','Moore','Martin','Jackson'];
     const domains = ['techcorp.com','startup.io','enterprise.com','design.co','consulting.com','media.net','finance.org','health.care','logistics.com','education.edu'];
 
-    // Generate 49 regular users so total users (including admin) is exactly 50
-    for (let i = 0; i < 49; i++) {
+    // Generate 48 regular users so total users (including admin + accounting) is exactly 50
+    for (let i = 0; i < 48; i++) {
       const first = firstNames[i % firstNames.length];
       const last = lastNames[i % lastNames.length];
       const domain = domains[i % domains.length];
@@ -403,10 +455,12 @@ class DatabaseSeeder {
       logger.info('Generating sample data...');
       this.users = await this.generateUsers();
       this.subscriptions = this.generateSubscriptions(this.users);
+      const promotedAdmins = this.assignAdminsToEnterpriseUsers(this.users, this.subscriptions);
       this.payments = this.generatePayments(this.users, this.subscriptions);
       this.licenses = this.generateLicenses(this.users, this.subscriptions);
 
       logger.info(`Generated: ${this.users.length} users, ${this.subscriptions.length} subscriptions, ${this.payments.length} payments, ${this.licenses.length} licenses`);
+      logger.info(`Assigned ADMIN role to ${promotedAdmins} ENTERPRISE subscription owner(s)`);
 
       // Seed users
       logger.info('Seeding users...');

@@ -12,6 +12,7 @@ import { licensesRouter } from './routes/licenses.js';
 import { paymentsRouter } from './routes/payments.js';
 import { adminRouter } from './routes/admin.js';
 import { webhooksRouter } from './routes/webhooks.js';
+import { accountingRouter } from './routes/accounting.js';
 import invoicesRouter from './routes/invoices.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
@@ -105,6 +106,7 @@ app.use('/api/licenses', licensesRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/accounting', accountingRouter);
 app.use('/api/webhooks', webhooksRouter);
 
 // Setup endpoint: place BEFORE error handlers so it's reachable

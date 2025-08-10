@@ -192,7 +192,7 @@ router.get('/users/:userId', asyncHandler(async (req: Request, res: Response) =>
  */
 router.put('/users/:userId', [
   body('name').optional().trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
-  body('role').optional().isIn(['USER', 'ADMIN', 'SUPERADMIN']).withMessage('Valid role required'),
+  body('role').optional().isIn(['USER', 'ADMIN', 'SUPERADMIN', 'ACCOUNTING']).withMessage('Valid role required'),
   body('isEmailVerified').optional().isBoolean().withMessage('Invalid email verification status'),
   body('kycStatus').optional().isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'EXPIRED'])
     .withMessage('Valid KYC status required'),

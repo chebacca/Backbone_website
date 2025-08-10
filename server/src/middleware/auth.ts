@@ -148,6 +148,11 @@ export const requireRole = (roles: string[]) => {
 export const requireAdmin = requireRole(['SUPERADMIN', 'ADMIN']);
 
 /**
+ * Middleware to require accounting role (or superadmin)
+ */
+export const requireAccounting = requireRole(['ACCOUNTING', 'SUPERADMIN']);
+
+/**
  * Alias for authenticateToken for backward compatibility
  */
 export const authMiddleware = authenticateToken;

@@ -410,6 +410,13 @@ export const endpoints = {
     paymentDetails: (paymentId: string) => `admin/payments/${paymentId}`,
   },
 
+  // Accounting endpoints
+  accounting: {
+    payments: () => 'accounting/payments',
+    exportPayments: () => 'accounting/payments/export',
+    kyc: () => 'accounting/kyc',
+  },
+
   // Webhook endpoints
   webhooks: {
     stripe: () => '/webhooks/stripe',

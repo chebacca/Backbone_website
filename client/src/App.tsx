@@ -25,6 +25,7 @@ const DownloadsPage = React.lazy(() => import('@/pages/dashboard/DownloadsPage')
 const DocumentationPage = React.lazy(() => import('@/pages/dashboard/DocumentationPage'));
 const SupportPage = React.lazy(() => import('@/pages/dashboard/SupportPage'));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
+const AccountingDashboard = React.lazy(() => import('@/pages/admin/AccountingDashboard'));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
 
 // Protected route wrapper
@@ -32,13 +33,15 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   requireEmailVerification?: boolean;
   requireAdmin?: boolean;
+  requireAccounting?: boolean;
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
   children, 
   // requireEmailVerification is reserved for future use
   requireEmailVerification = false,
-  requireAdmin = false 
+  requireAdmin = false,
+  requireAccounting = false,
 }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
 
@@ -59,6 +62,14 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     const roleUpper = String(user?.role || '').toUpperCase();
     const isSuperAdmin = roleUpper === 'SUPERADMIN';
     if (!isSuperAdmin) {
+      return <Navigate to="/dashboard" replace />;
+    }
+  }
+
+  if (requireAccounting) {
+    const roleUpper = String(user?.role || '').toUpperCase();
+    const isAccounting = roleUpper === 'ACCOUNTING' || roleUpper === 'SUPERADMIN';
+    if (!isAccounting) {
       return <Navigate to="/dashboard" replace />;
     }
   }
@@ -205,6 +216,16 @@ function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Accounting Routes (protected) */}
+            <Route 
+              path="/accounting" 
+              element={
+                <ProtectedRoute requireAccounting>
+                  <AccountingDashboard />
                 </ProtectedRoute>
               }
             />

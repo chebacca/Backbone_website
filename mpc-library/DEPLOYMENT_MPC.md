@@ -1,26 +1,58 @@
-# Deployment & Environments (MPC)
+# Deployment (MPC)
 
-Environments
-- Development (default): ports 3002/3003
-- Production: build client, compile server, migrate, start API
+## Current Status
+- **Production**: Fully deployed on Firebase (backbone-logic.web.app)
+- **Backend**: Firebase Cloud Functions (api function)
+- **Database**: PostgreSQL production database via Prisma
+- **Hosting**: Firebase Hosting with SPA routing
 
-Commands
-- Build: `pnpm build`
-- Start: `pnpm start` (server on 3003)
-- Client preview: `pnpm -C client preview` (optional)
+## Deployment Commands
 
-Database
-- Prisma migrations: `pnpm -C server prisma migrate deploy`
-- Generate client: `pnpm -C server prisma generate`
+### Full Deployment
+```bash
+pnpm deploy                    # Build and deploy to Firebase
+pnpm deploy:all               # Build and deploy everything
+pnpm deploy:hosting           # Deploy only frontend
+pnpm deploy:functions         # Deploy only backend
+pnpm deploy:firestore         # Deploy database rules/indexes
+```
 
-Env Vars (prod)
-- FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, JWT_SECRET/EXPIRES, FRONTEND_URL, CORS_ORIGIN, STRIPE_*, SENDGRID_*
-- STRIPE_* keys and price IDs; SENDGRID API key; AWS (if used)
+### Development
+```bash
+pnpm dev                      # Run both client and server locally
+pnpm dev:client              # Run only frontend
+pnpm dev:server              # Run only backend
+```
 
-Webhooks
-- Expose `/api/webhooks/stripe` and `/api/webhooks/sendgrid` with correct public URLs
-- Configure Stripe webhook endpoints per environment
+### Build
+```bash
+pnpm build                    # Build all packages
+pnpm build:shared            # Build shared types
+pnpm build:client            # Build frontend
+pnpm build:server            # Build backend
+```
 
-Observability
-- Log tails for errors; monitor webhook failure rates
-- Consider health checks for k8s/containers via `/health` and `/api/webhooks/health`
+## Firebase Configuration
+- **Project**: backbone-logic
+- **Region**: us-central1
+- **Runtime**: Node.js 20
+- **Memory**: 256MB (functions)
+
+## Environment Variables
+All environment variables are configured in Firebase Functions:
+- Stripe keys and webhooks
+- Resend API for emails
+- JWT secrets
+- Database connection
+- Admin credentials
+
+## Database
+- **Production**: PostgreSQL via Prisma
+- **Schema**: server/prisma/schema.prisma
+- **Migrations**: Prisma migrations
+- **Seeding**: Available via pnpm seed commands
+
+## Monitoring
+- Firebase Console for functions and hosting
+- Stripe Dashboard for payments
+- Resend Dashboard for email delivery

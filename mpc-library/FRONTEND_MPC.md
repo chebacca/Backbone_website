@@ -1,38 +1,70 @@
-# Frontend Guide (MPC)
+# Frontend (MPC)
 
-Stack
-- React 18 + TypeScript + Vite, MUI, React Router, React Query, Framer Motion, Notistack
+## Current Status
+- **Deployment**: Firebase Hosting (https://backbone-logic.web.app)
+- **Build**: Vite 5.0.8 with TypeScript 5.2.2
+- **Framework**: React 18.2.0 with React Router 6.20.1
 
-API Layer
-- Use `client/src/services/api.ts` → `api`, `endpoints`, `apiUtils`
-- Set `VITE_API_BASE_URL` to API origin (default http://localhost:3003)
-- Interceptors attach `Authorization` and handle 401 by redirecting to /login
+## Dependencies
 
-Authentication Flow
-- Login: handle normal auth or catch `{ requires2FA, interimToken }` for 2FA challenge
-- 2FA verification: `authService.verify2FA(interimToken, code)` returns full tokens
-- Settings: 2FA enable/disable with QR code setup and backup codes
+### Core
+- React 18.2.0 + React DOM
+- TypeScript 5.2.2
+- Vite 5.0.8
 
-UX
-- Dark theme with glassmorphism; responsive; motion where appropriate
-- Use `LoadingSpinner` and `ErrorBoundary`
-- Prefer optimistic updates with invalidation via React Query
-- 2FA setup: QR code display, code input validation, backup codes presentation
+### UI & Styling
+- Material-UI (MUI) 5.14.20
+- Emotion (styled components)
+- Framer Motion 12.23.12 (animations)
+- Notistack 3.0.2 (notifications)
 
-Components
-- Layout: `Navigation`, `Footer`, `DashboardLayout`
-- Checkout: `PlanSelectionStep`, `PaymentMethodStep`, `BillingDetailsStep`, `OrderSummary`
-- Auth: Login form with 2FA challenge handling, Settings 2FA section
+### State & Data
+- React Query (TanStack Query)
+- React Hook Form 7.48.2
+- Axios 1.6.2
 
-State
-- Minimal local state; server state via React Query
-- Store `auth_token` in localStorage; provide `AuthContext`
-- Handle 2FA interim tokens and challenge states
+### Payments
+- Stripe React components
+- Stripe.js 2.4.0
 
-Validation
-- Client-side validations mirror server rules (tiers, seats, address); display helpful messages
-- 2FA code validation: 6-digit TOTP or backup code format
+## Project Structure
+```
+client/src/
+├── components/          # Reusable UI components
+│   ├── checkout/        # Checkout flow components
+│   ├── common/          # Shared components
+│   └── layout/          # Layout components
+├── context/             # React contexts
+├── pages/               # Route components
+│   ├── admin/           # Admin dashboard
+│   ├── auth/            # Authentication pages
+│   ├── checkout/        # Payment flow
+│   └── dashboard/       # User dashboard
+├── services/            # API services
+├── theme/               # MUI theme configuration
+└── types.ts             # TypeScript types
+```
 
-Accessibility
-- Use semantic elements, aria roles, focus management, and contrast-aware colors
-- 2FA QR codes include alt text and keyboard navigation
+## Key Features
+- **Authentication**: Login, register, 2FA, email verification
+- **Dashboard**: User management, billing, analytics
+- **Admin Panel**: User management, compliance, system health
+- **Checkout**: Stripe payment integration
+- **Licensing**: License management and activation
+- **Responsive**: Mobile-first design with MUI
+
+## Development
+```bash
+pnpm dev:client           # Start Vite dev server
+pnpm build:client         # Build for production
+pnpm preview              # Preview production build
+```
+
+## Environment
+- `VITE_API_BASE_URL`: Set to `/api` for Firebase hosting
+- `VITE_STRIPE_PUBLISHABLE_KEY`: Stripe public key
+
+## Build Output
+- Production files built to `deploy/` directory
+- SPA routing with Firebase hosting rewrites
+- Static asset optimization and caching

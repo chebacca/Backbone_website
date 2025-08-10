@@ -4,7 +4,8 @@
 export enum UserRole {
   SUPERADMIN = 'SUPERADMIN',
   ADMIN = 'ADMIN',
-  USER = 'USER'
+  USER = 'USER',
+  ACCOUNTING = 'ACCOUNTING'
 }
 
 export enum SubscriptionTier {

@@ -31,6 +31,7 @@ import {
   Support,
   ArrowBack,
 } from '@mui/icons-material';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
@@ -89,10 +90,21 @@ export const Navigation: React.FC = () => {
   const authenticatedNavItems = useMemo(() => {
     const roleUpper = String(user?.role || '').toUpperCase();
     const isSuperAdmin = roleUpper === 'SUPERADMIN';
+    const isAccounting = roleUpper === 'ACCOUNTING';
     if (isSuperAdmin) {
       // SUPERADMIN: only Admin + general links (no /dashboard/*)
       return [
         { label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> },
+        { label: 'Accounting', path: '/accounting', icon: <ReceiptLongIcon /> },
+        { label: 'Documentation', path: '/documentation', icon: <Article /> },
+        { label: 'Support', path: '/support', icon: <Support /> },
+        { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
+      ];
+    }
+
+    if (isAccounting) {
+      return [
+        { label: 'Accounting', path: '/accounting', icon: <ReceiptLongIcon /> },
         { label: 'Documentation', path: '/documentation', icon: <Article /> },
         { label: 'Support', path: '/support', icon: <Support /> },
         { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
@@ -311,7 +323,7 @@ export const Navigation: React.FC = () => {
               {!inDashboardMode && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   {/* SUPERADMIN shows only public items here; Admin button is shown near avatar */}
-                  {(isAuthenticated && String(user?.role || '').toUpperCase() === 'SUPERADMIN'
+                  {(isAuthenticated && (['SUPERADMIN','ACCOUNTING'].includes(String(user?.role || '').toUpperCase()))
                     ? navigationItems
                     : (isAuthenticated ? authenticatedNavItems : navigationItems)).map((item) => (
                     <Button
@@ -372,6 +384,24 @@ export const Navigation: React.FC = () => {
                         }}
                       >
                         Admin Dashboard
+                      </Button>
+                    )}
+                    {String(user?.role || '').toUpperCase() === 'ACCOUNTING' && !inDashboardMode && (
+                      <Button
+                        color="inherit"
+                        startIcon={<ReceiptLongIcon />}
+                        onClick={() => navigate('/accounting')}
+                        sx={{
+                          textTransform: 'none',
+                          fontWeight: 600,
+                          color: 'info.light',
+                          '&:hover': {
+                            color: 'info.main',
+                            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                          },
+                        }}
+                      >
+                        Accounting
                       </Button>
                     )}
                     <IconButton

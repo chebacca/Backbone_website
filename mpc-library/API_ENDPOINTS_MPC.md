@@ -1,8 +1,8 @@
 # API Endpoints (MPC)
 
-Base URL: `${VITE_API_BASE_URL || http://localhost:3003}/api`
+Base URL: `${VITE_API_BASE_URL || /api}` (Firebase hosting)
 
-Auth
+## Auth
 - POST /auth/register
 - POST /auth/login
 - POST /auth/verify-2fa
@@ -17,7 +17,7 @@ Auth
 - POST /auth/2fa/setup/verify
 - POST /auth/2fa/disable
 
-Payments
+## Payments
 - GET  /payments/pricing
 - POST /payments/create-subscription
 - GET  /payments/history?page&limit
@@ -27,7 +27,7 @@ Payments
 - POST /payments/calculate-tax
 - POST /payments/webhook (Stripe events)
 
-Subscriptions
+## Subscriptions
 - GET  /subscriptions/my-subscriptions
 - GET  /subscriptions/:subscriptionId
 - PUT  /subscriptions/:subscriptionId
@@ -41,7 +41,7 @@ Subscriptions
 - GET  /subscriptions/:subscriptionId/renewal
 - POST /subscriptions/:subscriptionId/add-seats
 
-Licenses
+## Licenses
 - GET  /licenses/my-licenses
 - POST /licenses/activate
 - POST /licenses/deactivate
@@ -56,7 +56,7 @@ Licenses
 - POST /licenses/report-issue
 - GET  /licenses/usage/:licenseKey
 
-Users
+## Users
 - PUT  /users/billing-address
 - PUT  /users/tax-information
 - PUT  /users/business-profile
@@ -69,7 +69,7 @@ Users
 - GET  /users/statistics
 - PUT  /users/notifications
 
-Admin
+## Admin
 - GET  /admin/dashboard-stats
 - GET  /admin/users?search&role&status&page&limit
 - GET  /admin/users/:userId
@@ -85,9 +85,22 @@ Admin
 - POST /admin/enterprise/customers
 - GET  /admin/system/health
 
-Webhooks
+## Invoices
+- GET  /invoices/my-invoices?page&limit
+- GET  /invoices/:invoiceId
+- POST /invoices/:invoiceId/resend
+- GET  /invoices/:invoiceId/download
+- GET  /invoices/delivery-status/:invoiceId
+
+## Webhooks
 - POST /webhooks/stripe
-- POST /webhooks/sendgrid
+- POST /webhooks/resend
 - POST /webhooks/test (non-prod only)
 - GET  /webhooks/health
 - POST /webhooks/retry-failed
+
+## Deployment
+- **Production**: Firebase Cloud Functions (us-central1)
+- **Base URL**: https://us-central1-backbone-logic.cloudfunctions.net/api
+- **Hosting**: https://backbone-logic.web.app
+- **CORS**: Configured for Firebase hosting domain

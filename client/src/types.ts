@@ -15,7 +15,8 @@ export interface User {
 export enum UserRole {
   USER = 'USER',
   ADMIN = 'ADMIN',
-  ENTERPRISE_ADMIN = 'ENTERPRISE_ADMIN'
+  ENTERPRISE_ADMIN = 'ENTERPRISE_ADMIN',
+  ACCOUNTING = 'ACCOUNTING'
 }
 
 export enum SubscriptionTier {

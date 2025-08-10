@@ -3,22 +3,25 @@
 Scope: Dashboard v14 Licensing Website — full-stack SaaS (payments, licensing, compliance)
 
 Layers
-- Frontend (client/): React 18 + TypeScript, Vite, MUI, React Query, Stripe.js
-- Backend (server/): Express, Prisma (PostgreSQL), Stripe SDK, SendGrid, Helmet, CORS, Rate limiting
+- Frontend (client/): React 18 + TypeScript, Vite, MUI, React Query, Stripe.js, Framer Motion, Notistack
+- Backend (server/): Express, Prisma (PostgreSQL), Stripe SDK, Resend (email), Helmet, CORS, Rate limiting
 - Shared (shared/): Type-safe cross-package types
 
-Ports
-- Web: http://localhost:3002
-- API: http://localhost:3003
+Deployment
+- Production: Firebase Hosting (https://backbone-logic.web.app)
+- Backend API: Firebase Cloud Functions (https://us-central1-backbone-logic.cloudfunctions.net/api)
+- Database: PostgreSQL via Prisma (production database)
+- Development: Local development with pnpm dev
 
 Key Services (server/src/services)
 - PaymentService: Stripe subscriptions, payments, invoices, webhooks, pricing, updates
 - LicenseService: license generation, activation, validation, analytics, bulk ops, SDK downloads
 - ComplianceService: consent, KYC/AML hooks, audit logs, compliance events
-- EmailService: transactional emails (welcome, license delivery, reset)
+- EmailService: transactional emails via Resend (welcome, license delivery, reset)
+- DataConnectService: Google Cloud Data Connect integration (optional)
 
 API Routes (server/src/routes)
-- auth, payments, subscriptions, licenses, users, admin, webhooks
+- auth, payments, subscriptions, licenses, users, admin, webhooks, invoices
 
 Security
 - JWT via `JwtUtil` (access/refresh)
@@ -31,6 +34,7 @@ Database (server/prisma/schema.prisma)
 - Compliance: UserAuditLog, PrivacyConsent, ComplianceEvent, RegulatoryReport
 - Email/Webhooks: EmailLog, WebhookEvent
 - SDK: SDKVersion
+- Invoices: Invoice system with delivery tracking
 
 Data Flow Highlights
 - Checkout → PaymentService.createSubscription → Stripe create → DB Subscription+Payment → LicenseService.generateLicenses → Email delivery → Compliance logs
@@ -39,6 +43,11 @@ Data Flow Highlights
 
 Client Integration
 - `client/src/services/api.ts` provides `api` instance, `endpoints`, `apiUtils`
-- Set `VITE_API_BASE_URL` to API origin (3003)
+- Set `VITE_API_BASE_URL` to `/api` for Firebase hosting (default)
+
+Package Management
+- pnpm workspace with client, server, shared packages
+- Node >= 18, pnpm >= 8.15.3
+- TypeScript 5.3.3, Vite 5.0.8
 
 See also: API_ENDPOINTS_MPC.md, PAYMENTS_STRIPE_MPC.md, LICENSE_MANAGEMENT_MPC.md, COMPLIANCE_SECURITY_MPC.md

@@ -6,7 +6,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: 'USER' | 'ADMIN' | 'SUPERADMIN';
+  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING';
   subscription?: {
     plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
     status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'TRIALING';

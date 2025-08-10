@@ -36,7 +36,7 @@ export interface FirestoreUser {
   email: string;
   name: string;
   password: string;
-  role: 'SUPERADMIN' | 'USER' | 'ADMIN';
+  role: 'SUPERADMIN' | 'USER' | 'ADMIN' | 'ACCOUNTING';
   isEmailVerified: boolean;
   emailVerifyToken?: string;
   passwordResetToken?: string;

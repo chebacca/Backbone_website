@@ -22,8 +22,9 @@ Two-Factor Authentication (TOTP)
 - Security: 1-step TOTP window, 5-minute interim token expiry, 8 single-use backup codes
 
 RBAC Roles
-- USER, ADMIN, ENTERPRISE_ADMIN
+- USER, ADMIN, ACCOUNTING, (legacy ENTERPRISE_ADMIN migrated to ADMIN)
 - Admin routes require `requireAdmin`
+- Accounting routes require `requireAccounting` (ACCOUNTING or SUPERADMIN)
 
 Auth Routes
 - Register → email verification token stored in DB and sent via EmailService

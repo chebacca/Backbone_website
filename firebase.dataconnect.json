@@ -1,0 +1,12 @@
+{
+  "dataconnect": {
+    "source": "dataconnect"
+  },
+  "functions": {
+    "source": "server"
+  },
+  "hosting": {
+    "public": "deploy"
+  }
+}
+

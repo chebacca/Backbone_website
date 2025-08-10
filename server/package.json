@@ -10,9 +10,24 @@
     "dev": "nodemon --exec \"npx tsx src/index.ts\"",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test:invoices": "echo 'invoice tests disabled (Firestore migration)' && exit 0"
+    "test:invoices": "echo 'invoice tests disabled (Firestore migration)' && exit 0",
+    "seed": "npx tsx scripts/seed-database.ts seed",
+    "seed:clear": "npx tsx scripts/seed-database.ts clear",
+    "seed:reset": "npx tsx scripts/seed-database.ts reset",
+    "seed:enterprise-admin": "npx tsx scripts/seed-enterprise-admin.ts",
+    "seed:all": "npx tsx scripts/seed-all.ts",
+    "seed:enterprise-multi": "npx tsx scripts/seed-enterprise-multi.ts",
+    "db:init": "npx tsx scripts/init-database.ts",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
+    "@prisma/client": "^6.3.1",
     "@sendgrid/mail": "^8.1.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
@@ -22,6 +37,9 @@
     "express-validator": "^7.2.1",
     "firebase-admin": "^13.4.0",
     "firebase-functions": "^6.4.0",
+    "google-auth-library": "^9.14.2",
+    "graphql": "^16.9.0",
+    "graphql-request": "^7.1.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "qrcode": "^1.5.4",
@@ -40,7 +58,11 @@
     "@types/speakeasy": "^2.0.10",
     "@types/uuid": "^9.0.8",
     "nodemon": "^3.1.10",
+    "prisma": "^6.3.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
+  },
+  "prisma": {
+    "seed": "tsx scripts/seed-database.ts seed"
   }
 }

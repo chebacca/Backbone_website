@@ -1,0 +1,313 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+  USER
+}
+
+enum SubscriptionTier {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELLED
+  PAST_DUE
+  TRIALING
+}
+
+enum LicenseStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  REVOKED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PROCESSING
+}
+
+enum AMLStatus {
+  PENDING
+  PASSED
+  FAILED
+  REQUIRES_REVIEW
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model User {
+  id                       String     @id @default(uuid())
+  email                    String     @unique
+  name                     String?
+  password                 String?
+  role                     UserRole   @default(USER)
+  isEmailVerified          Boolean    @default(false)
+  emailVerifyToken         String?
+  passwordResetToken       String?
+  passwordResetExpires     DateTime?
+  twoFactorEnabled         Boolean    @default(false)
+  twoFactorSecret          String?
+  twoFactorTempSecret      String?
+  twoFactorBackupCodes     String[]
+  lastLoginAt              DateTime?
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+  complianceProfile        Json?
+  billingAddress           Json?
+  taxInformation           Json?
+  marketingConsent         Boolean    @default(false)
+  dataProcessingConsent    Boolean    @default(false)
+  termsAcceptedAt          DateTime?
+  privacyPolicyAcceptedAt  DateTime?
+  identityVerified         Boolean    @default(false)
+  identityVerificationData Json?
+  kycStatus                String?
+  kycCompletedAt           DateTime?
+  businessProfile          Json?
+  ipAddress                String?
+  userAgent                String?
+  registrationSource       String?
+  organizationId           String?
+
+  subscriptions  Subscription[]
+  licenses       License[]
+  payments       Payment[]
+  auditLogs      AuditLog[]
+  consents       PrivacyConsent[]
+  analytics      UsageAnalytics[]
+  compliance     ComplianceEvent[]
+}
+
+model Subscription {
+  id                 String              @id @default(uuid())
+  userId             String
+  tier               SubscriptionTier
+  status             SubscriptionStatus
+  stripeSubscriptionId String?           @unique
+  stripeCustomerId   String?
+  stripePriceId      String?
+  seats              Int
+  pricePerSeat       Int
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelledAt        DateTime?
+  cancelAtPeriodEnd  Boolean             @default(false)
+  trialStart         DateTime?
+  trialEnd           DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  organizationId     String?
+
+  user       User     @relation(fields: [userId], references: [id])
+  licenses   License[]
+  payments   Payment[]
+
+  @@index([userId])
+}
+
+model License {
+  id              String           @id @default(uuid())
+  key             String           @unique
+  userId          String
+  subscriptionId  String
+  status          LicenseStatus
+  tier            SubscriptionTier
+  activatedAt     DateTime?
+  expiresAt       DateTime?
+  deviceInfo      Json?
+  ipAddress       String?
+  activationCount Int              @default(0)
+  maxActivations  Int              @default(1)
+  features        Json
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organizationId  String?
+
+  user         User         @relation(fields: [userId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  analytics    UsageAnalytics[]
+
+  @@index([userId])
+  @@index([subscriptionId])
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+  userId                String
+  subscriptionId        String
+  stripePaymentIntentId String?       @unique
+  stripeInvoiceId       String?       @unique
+  amount                Int
+  currency              String
+  status                PaymentStatus
+  description           String?
+  receiptUrl            String?
+  paymentMethod         String?
+  billingAddressSnapshot Json
+  taxAmount             Int?
+  taxRate               Float?
+  taxJurisdiction       String?
+  complianceData        Json?
+  ipAddress             String?
+  userAgent             String?
+  processingLocation    String?
+  amlScreeningStatus    AMLStatus     @default(PENDING)
+  amlScreeningDate      DateTime?
+  amlRiskScore          Int?
+  pciCompliant          Boolean       @default(true)
+  tokenizationId        String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  complianceEvents ComplianceEvent[]
+
+  @@index([userId])
+  @@index([subscriptionId])
+}
+
+model UsageAnalytics {
+  id        String   @id @default(uuid())
+  userId    String
+  licenseId String
+  event     String
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  license License @relation(fields: [licenseId], references: [id])
+
+  @@index([userId, timestamp])
+  @@index([licenseId, timestamp])
+}
+
+model SDKVersion {
+  id           String   @id @default(uuid())
+  platform     String
+  version      String
+  isLatest     Boolean  @default(false)
+  size         Int?
+  checksum     String?
+  releaseNotes String?
+  downloadUrl  String
+  createdAt    DateTime @default(now())
+}
+
+model LicenseDeliveryLog {
+  id             String   @id @default(uuid())
+  licenseId      String
+  paymentId      String
+  deliveryMethod String
+  emailAddress   String?
+  deliveryStatus String
+  emailSent      Boolean?
+  lastAttemptAt  DateTime?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([licenseId])
+}
+
+model EmailLog {
+  id         String   @id @default(uuid())
+  sendgridId String   @unique
+  template   String?
+  email      String?
+  status     String?
+  error      String?
+  data       Json?
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+}
+
+model PrivacyConsent {
+  id             String   @id @default(uuid())
+  userId         String
+  consentType    String
+  consentGranted Boolean
+  consentVersion String
+  ipAddress      String?
+  userAgent      String?
+  legalBasis     String?
+  consentDate    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, consentDate])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String
+  action      String
+  description String
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, timestamp])
+}
+
+model ComplianceEvent {
+  id          String   @id @default(uuid())
+  userId      String?
+  paymentId   String?
+  eventType   String
+  severity    Severity
+  description String
+  metadata    Json?
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User?    @relation(fields: [userId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([severity, resolved, createdAt])
+}
+
+model WebhookEvent {
+  id         String   @id @default(uuid())
+  type       String
+  stripeId   String   @unique
+  data       Json
+  processed  Boolean  @default(false)
+  retryCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([processed, retryCount])
+}
+
+

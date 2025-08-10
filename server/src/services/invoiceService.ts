@@ -102,7 +102,7 @@ export class InvoiceService {
       total,
       currency: 'usd',
       status: 'PENDING' as PaymentStatus,
-      billingAddress: subscription.user.billingAddress || this.generateDefaultBillingAddress(),
+      billingAddress: user?.billingAddress || this.generateDefaultBillingAddress(),
       paymentMethod: 'credit_card',
       dueDate,
       issuedDate,
@@ -144,17 +144,19 @@ export class InvoiceService {
 
       const invoiceData = await this.createInvoiceData(subscription as any, user);
 
+      const toCents = (num: number): number => Math.round((Number.isFinite(num) ? num : 0) * 100);
+
       const payment = await firestoreService.createPayment({
         userId: subscription.userId,
         subscriptionId: subscription.id,
         stripeInvoiceId: invoiceData.invoiceNumber,
-        amount: invoiceData.total,
+        amount: toCents(invoiceData.total),
         currency: invoiceData.currency,
         status: invoiceData.status,
         description: `Invoice ${invoiceData.invoiceNumber} - ${invoiceData.items[0].description}`,
         receiptUrl: `https://dashboard-v14.com/receipts/${invoiceData.invoiceNumber}`,
         billingAddressSnapshot: invoiceData.billingAddress,
-        taxAmount: invoiceData.taxTotal,
+        taxAmount: toCents(invoiceData.taxTotal),
         taxRate: invoiceData.items[0].taxRate,
         taxJurisdiction: 'US',
         paymentMethod: invoiceData.paymentMethod,
@@ -223,15 +225,50 @@ export class InvoiceService {
   }
 
   /**
-   * Get all invoices (admin function)
+   * Get all invoices with optional filtering (for SUPERADMIN)
    */
-  public static async getAllInvoices(page: number = 1, limit: number = 20): Promise<{ invoices: any[]; total: number }> {
+  public static async getAllInvoices(
+    page: number = 1, 
+    limit: number = 20, 
+    filters?: {
+      status?: string;
+      email?: string;
+      from?: string;
+      to?: string;
+    }
+  ): Promise<{ invoices: any[]; total: number }> {
     try {
       const skip = (page - 1) * limit;
 
-      const all = (await firestoreService.getPaymentsByUserId('')).filter(p => p.stripeInvoiceId); // placeholder filter; in practice, query by presence
+      let all = (await firestoreService.getAllPayments()).filter(p => p.stripeInvoiceId);
+      
+      // Apply filters
+      if (filters?.status) {
+        all = all.filter(p => p.status === filters.status);
+      }
+      
+      if (filters?.from) {
+        all = all.filter(p => new Date(p.createdAt) >= new Date(filters.from!));
+      }
+      
+      if (filters?.to) {
+        all = all.filter(p => new Date(p.createdAt) <= new Date(filters.to!));
+      }
+      
+      if (filters?.email) {
+        // Get all users and filter by email
+        const users = await firestoreService.getAllUsers();
+        const userIds = users
+          .filter(u => (u.email || '').toLowerCase().includes(filters.email!.toLowerCase()))
+          .map(u => u.id);
+        all = all.filter(p => userIds.includes(p.userId));
+      }
+
+      const getTime = (d: any) => (d && typeof (d as any).toDate === 'function') ? (d as any).toDate().getTime() : new Date(d).getTime();
       const total = all.length;
-      const payments = all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(skip, skip + limit);
+      const payments = all
+        .sort((a, b) => getTime(b.createdAt) - getTime(a.createdAt))
+        .slice(skip, skip + limit);
 
       return {
         invoices: payments,
@@ -239,6 +276,18 @@ export class InvoiceService {
       };
     } catch (error) {
       logger.error('Error getting all invoices:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get subscription by ID (for access control)
+   */
+  public static async getSubscriptionById(subscriptionId: string): Promise<any> {
+    try {
+      return await firestoreService.getSubscriptionById(subscriptionId);
+    } catch (error) {
+      logger.error('Error getting subscription by ID:', error);
       throw error;
     }
   }
@@ -266,7 +315,7 @@ export class InvoiceService {
    */
   public static async getInvoiceSummary(): Promise<InvoiceSummary> {
     try {
-      const payments = (await firestoreService.getPaymentsByUserId('')).filter(p => p.stripeInvoiceId);
+      const payments = (await firestoreService.getAllPayments()).filter(p => p.stripeInvoiceId);
       const subsById = new Map<string, any>();
       for (const p of payments) {
         if (!subsById.has(p.subscriptionId)) {

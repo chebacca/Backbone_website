@@ -51,6 +51,7 @@ import {
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { paymentService } from '@/services/paymentService';
+import { api, endpoints } from '@/services/api';
 
 interface PaymentMethod {
   id: string;
@@ -64,12 +65,16 @@ interface PaymentMethod {
 
 interface Invoice {
   id: string;
+  stripeInvoiceId?: string;
   number: string;
   date: string;
   amount: number;
-  status: 'paid' | 'pending' | 'failed';
+  status: 'paid' | 'pending' | 'failed' | 'succeeded' | 'cancelled' | 'refunded';
   description: string;
   downloadUrl?: string;
+  receiptUrl?: string;
+  currency?: string;
+  createdAt?: string;
 }
 
 interface Subscription {
@@ -81,6 +86,7 @@ interface Subscription {
   seats: number;
   amount: number;
   nextPaymentDate: string;
+  tier?: string;
 }
 
 const mockPaymentMethods: PaymentMethod[] = [
@@ -104,47 +110,6 @@ const mockPaymentMethods: PaymentMethod[] = [
   },
 ];
 
-const mockInvoices: Invoice[] = [
-  {
-    id: '1',
-    number: 'INV-2024-001',
-    date: '2024-01-15',
-    amount: 29700,
-    status: 'paid',
-    description: 'Pro Plan - 3 seats (Monthly)',
-    downloadUrl: '#',
-  },
-  {
-    id: '2',
-    number: 'INV-2023-052',
-    date: '2023-12-15',
-    amount: 29700,
-    status: 'paid',
-    description: 'Pro Plan - 3 seats (Monthly)',
-    downloadUrl: '#',
-  },
-  {
-    id: '3',
-    number: 'INV-2023-051',
-    date: '2023-11-15',
-    amount: 29700,
-    status: 'paid',
-    description: 'Pro Plan - 3 seats (Monthly)',
-    downloadUrl: '#',
-  },
-];
-
-const mockSubscription: Subscription = {
-  id: '1',
-  plan: 'PRO',
-  status: 'active',
-  currentPeriodStart: '2024-01-15',
-  currentPeriodEnd: '2024-02-15',
-  seats: 3,
-  amount: 29700,
-  nextPaymentDate: '2024-02-15',
-};
-
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -153,43 +118,52 @@ const formatCurrency = (amount: number) => {
 };
 
 const getStatusColor = (status: string) => {
-  switch (status) {
+  switch (status.toLowerCase()) {
+    case 'succeeded':
     case 'paid':
     case 'active':
       return 'success';
     case 'pending':
+    case 'processing':
       return 'warning';
     case 'failed':
-    case 'past_due':
-      return 'error';
+    case 'cancelled':
     case 'canceled':
-      return 'default';
+      return 'error';
+    case 'refunded':
+      return 'info';
     default:
       return 'default';
   }
 };
 
 const getStatusIcon = (status: string) => {
-  switch (status) {
+  switch (status.toLowerCase()) {
+    case 'succeeded':
     case 'paid':
     case 'active':
       return <CheckCircle />;
     case 'pending':
+    case 'processing':
       return <Schedule />;
     case 'failed':
-    case 'past_due':
+    case 'cancelled':
+    case 'canceled':
       return <Warning />;
+    case 'refunded':
+      return <Receipt />;
     default:
-      return <CheckCircle />;
+      return <Payment />;
   }
 };
 
 const BillingPage: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   const [paymentMethods] = useState<PaymentMethod[]>(mockPaymentMethods);
-  const [subscription] = useState<Subscription>(mockSubscription);
-  const [invoices, setInvoices] = useState<any[]>([]);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   
   const [addPaymentDialogOpen, setAddPaymentDialogOpen] = useState(false);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
@@ -207,7 +181,7 @@ const BillingPage: React.FC = () => {
     setUpgradeDialogOpen(false);
   };
 
-  const handleDownloadInvoice = (invoice: any) => {
+  const handleDownloadInvoice = (invoice: Invoice) => {
     if (invoice.receiptUrl) {
       window.open(invoice.receiptUrl, '_blank');
     } else {
@@ -215,24 +189,101 @@ const BillingPage: React.FC = () => {
     }
   };
 
+  // Fetch subscription data
+  useEffect(() => {
+    (async () => {
+      try {
+        setSubscriptionLoading(true);
+        const response = await api.get(endpoints.subscriptions.mySubscriptions());
+        const subscriptions = response.data?.data?.subscriptions || [];
+        
+        if (subscriptions.length > 0) {
+          const primarySubscription = subscriptions[0];
+          setSubscription({
+            id: primarySubscription.id,
+            plan: primarySubscription.tier?.toUpperCase() as any || 'PRO',
+            status: primarySubscription.status?.toLowerCase() as any || 'active',
+            currentPeriodStart: primarySubscription.currentPeriodStart,
+            currentPeriodEnd: primarySubscription.currentPeriodEnd,
+            seats: primarySubscription.seats || 1,
+            amount: primarySubscription.amount || 0,
+            nextPaymentDate: primarySubscription.currentPeriodEnd,
+            tier: primarySubscription.tier,
+          });
+        }
+      } catch (e: any) {
+        console.error('Failed to load subscription:', e);
+        enqueueSnackbar(e?.message || 'Failed to load subscription', { variant: 'error' });
+      } finally {
+        setSubscriptionLoading(false);
+      }
+    })();
+  }, [enqueueSnackbar]);
+
+  // Fetch billing history
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        const history = await paymentService.getPaymentHistory({ limit: 25 });
-        setInvoices(history.payments || []);
+        // Try to get invoices first, fallback to payment history
+        let invoiceData;
+        try {
+          invoiceData = await paymentService.getUserInvoices({ limit: 25 });
+        } catch (invoiceError) {
+          console.log('Invoice endpoint not available, falling back to payment history');
+          const history = await paymentService.getPaymentHistory({ limit: 25 });
+          invoiceData = history.payments || [];
+        }
+        
+        const formattedInvoices = invoiceData.map((payment: any) => ({
+          id: payment.id,
+          stripeInvoiceId: payment.stripeInvoiceId,
+          number: payment.stripeInvoiceId || `PAY-${payment.id.substring(0, 8).toUpperCase()}`,
+          date: payment.createdAt,
+          amount: payment.amount,
+          status: payment.status?.toLowerCase(),
+          description: payment.description || `${payment.subscription?.tier || 'Subscription'} Plan - ${payment.subscription?.seats || 1} seat(s)`,
+          downloadUrl: payment.receiptUrl,
+          receiptUrl: payment.receiptUrl,
+          currency: payment.currency,
+          createdAt: payment.createdAt,
+        }));
+        setInvoices(formattedInvoices);
+        console.log('Billing history loaded:', invoiceData); // Debug log
       } catch (e: any) {
+        console.error('Failed to load billing history:', e); // Debug log
         enqueueSnackbar(e?.message || 'Failed to load billing history', { variant: 'error' });
+        setInvoices([]); // Set empty array on error
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [enqueueSnackbar]);
 
   const calculateUpgradePrice = () => {
     const planPrices = { BASIC: 2900, PRO: 9900, ENTERPRISE: 19900 };
     return planPrices[selectedPlan as keyof typeof planPrices] * seats;
   };
+
+  if (subscriptionLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <Typography variant="h6" color="text.secondary">
+          Loading billing information...
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (!subscription) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <Typography variant="h6" color="text.secondary">
+          No subscription found. Please contact support.
+        </Typography>
+      </Box>
+    );
+  }
 
   const nextPaymentAmount = formatCurrency(subscription.amount);
   const daysUntilRenewal = Math.ceil(
@@ -315,11 +366,11 @@ const BillingPage: React.FC = () => {
               </Grid>
               
               <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
                     Next Payment
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
                     {nextPaymentAmount}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -334,10 +385,10 @@ const BillingPage: React.FC = () => {
 
       <Grid container spacing={4}>
         {/* Payment Methods */}
-        <Grid item xs={12} lg={6}>
+        <Grid item xs={12} md={8}>
           <Box
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
             <Paper
@@ -346,7 +397,6 @@ const BillingPage: React.FC = () => {
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
                 backdropFilter: 'blur(20px)',
                 border: '1px solid rgba(255,255,255,0.1)',
-                mb: 3,
               }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -357,62 +407,60 @@ const BillingPage: React.FC = () => {
                   variant="outlined"
                   startIcon={<Add />}
                   onClick={() => setAddPaymentDialogOpen(true)}
-                  size="small"
                 >
-                  Add Method
+                  + Add Method
                 </Button>
               </Box>
 
-              <List>
-                {paymentMethods.map((method, index) => (
-                  <React.Fragment key={method.id}>
-                    <ListItem
-                      sx={{
-                        px: 0,
-                        border: method.isDefault ? '1px solid rgba(0, 212, 255, 0.3)' : '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 2,
-                        mb: 1,
-                        backgroundColor: method.isDefault ? 'rgba(0, 212, 255, 0.05)' : 'rgba(255,255,255,0.02)',
-                      }}
-                    >
-                      <ListItemIcon sx={{ ml: 2 }}>
-                        <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
-                          <CreditCard />
-                        </Avatar>
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {paymentMethods.map((method) => (
+                  <Card
+                    key={method.id}
+                    sx={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    <CardContent sx={{ p: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Avatar sx={{ bgcolor: 'primary.main' }}>
+                            <CreditCard />
+                          </Avatar>
+                          <Box>
                             <Typography variant="body1" sx={{ fontWeight: 500 }}>
                               {method.brand} •••• {method.last4}
                             </Typography>
-                            {method.isDefault && (
-                              <Chip label="Default" size="small" color="primary" />
-                            )}
+                            <Typography variant="body2" color="text.secondary">
+                              Expires {method.expiryMonth.toString().padStart(2, '0')}/{method.expiryYear}
+                            </Typography>
                           </Box>
-                        }
-                        secondary={`Expires ${method.expiryMonth}/${method.expiryYear}`}
-                        sx={{ ml: 1 }}
-                      />
-                      <IconButton
-                        onClick={(e) => setAnchorEl(e.currentTarget)}
-                        sx={{ mr: 2 }}
-                      >
-                        <MoreVert />
-                      </IconButton>
-                    </ListItem>
-                  </React.Fragment>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {method.isDefault && (
+                            <Chip label="Default" size="small" color="primary" />
+                          )}
+                          <IconButton
+                            size="small"
+                            onClick={(event) => setAnchorEl(event.currentTarget)}
+                          >
+                            <MoreVert />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
                 ))}
-              </List>
+              </Box>
             </Paper>
           </Box>
         </Grid>
 
         {/* Quick Actions */}
-        <Grid item xs={12} lg={6}>
+        <Grid item xs={12} md={4}>
           <Box
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
           >
             <Paper
@@ -421,7 +469,6 @@ const BillingPage: React.FC = () => {
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
                 backdropFilter: 'blur(20px)',
                 border: '1px solid rgba(255,255,255,0.1)',
-                mb: 3,
               }}
             >
               <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
@@ -434,8 +481,8 @@ const BillingPage: React.FC = () => {
                     variant="outlined"
                     startIcon={<Star />}
                     fullWidth
-                    onClick={() => setUpgradeDialogOpen(true)}
                     sx={{ justifyContent: 'flex-start', py: 1.5 }}
+                    onClick={() => setUpgradeDialogOpen(true)}
                   >
                     Upgrade Plan
                   </Button>
@@ -453,7 +500,7 @@ const BillingPage: React.FC = () => {
                 <Grid item xs={12}>
                   <Button
                     variant="outlined"
-                    startIcon={<Receipt />}
+                    startIcon={<Download />}
                     fullWidth
                     sx={{ justifyContent: 'flex-start', py: 1.5 }}
                   >
@@ -507,48 +554,76 @@ const BillingPage: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {invoices.map((invoice) => (
-                      <TableRow key={invoice.id} hover>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontWeight: 500, fontFamily: 'monospace' }}>
-                            {invoice.id}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {new Date(invoice.createdAt).toLocaleDateString()}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">
-                            {invoice.description}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: (invoice.currency || 'USD').toUpperCase() }).format((invoice.amount || 0) / 100)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            icon={getStatusIcon(String(invoice.status).toLowerCase())}
-                            label={String(invoice.status).toUpperCase()}
-                            color={getStatusColor(String(invoice.status).toLowerCase()) as any}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<Download />}
-                            onClick={() => handleDownloadInvoice(invoice)}
-                          >
-                            Receipt
-                          </Button>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">
+                          <Box sx={{ py: 4 }}>
+                            <Typography variant="body1" color="text.secondary">
+                              Loading billing history...
+                            </Typography>
+                          </Box>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : invoices.length > 0 ? (
+                      invoices.map((invoice) => (
+                        <TableRow key={invoice.id} hover>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 500, fontFamily: 'monospace' }}>
+                              {invoice.number}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {new Date(invoice.createdAt || invoice.date).toLocaleDateString()}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {invoice.description}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {new Intl.NumberFormat('en-US', { 
+                                style: 'currency', 
+                                currency: (invoice.currency || 'USD').toUpperCase() 
+                              }).format((invoice.amount || 0) / 100)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              icon={getStatusIcon(String(invoice.status).toLowerCase())}
+                              label={String(invoice.status).toUpperCase()}
+                              color={getStatusColor(String(invoice.status).toLowerCase()) as any}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<Download />}
+                              onClick={() => handleDownloadInvoice(invoice)}
+                            >
+                              Receipt
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">
+                          <Box sx={{ py: 4 }}>
+                            <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
+                              No billing history found
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Your payment history will appear here once you have completed transactions.
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>

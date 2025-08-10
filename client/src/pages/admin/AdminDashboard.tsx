@@ -80,7 +80,7 @@ interface License {
   userId: string;
   userEmail: string;
   tier: string;
-  status: 'active' | 'expired' | 'suspended';
+  status: 'active' | 'expired' | 'suspended' | 'pending' | 'revoked';
   activatedAt: string;
   expiresAt: string;
   lastUsed: string;
@@ -148,6 +148,29 @@ const AdminDashboard: React.FC = () => {
     );
   }, [licenses, licensesSearch]);
 
+  const parseDate = (value: any): Date => {
+    if (!value) return new Date(NaN);
+    if (typeof value === 'string') return new Date(value);
+    if (value instanceof Date) return value;
+    if (typeof value === 'object' && value !== null) {
+      if (typeof (value as any)._seconds === 'number') {
+        return new Date((value as any)._seconds * 1000);
+      }
+      if (typeof (value as any).seconds === 'number') {
+        return new Date((value as any).seconds * 1000);
+      }
+      if (typeof (value as any).toDate === 'function') {
+        try { return (value as any).toDate(); } catch { /* ignore */ }
+      }
+    }
+    return new Date(value);
+  };
+
+  const formatCurrency = (amountCents: number | undefined | null): string => {
+    const cents = typeof amountCents === 'number' ? amountCents : 0;
+    return `$${(cents / 100).toFixed(2)}`;
+  };
+
   const filteredPayments = useMemo(() => {
     if (!paymentsSearch.trim()) return payments;
     
@@ -157,8 +180,8 @@ const AdminDashboard: React.FC = () => {
       (payment.user?.email && payment.user.email.toLowerCase().includes(searchTerm)) ||
       (payment.subscription?.tier && payment.subscription.tier.toLowerCase().includes(searchTerm)) ||
       payment.status.toLowerCase().includes(searchTerm) ||
-      new Date(payment.createdAt).toLocaleDateString().includes(searchTerm) ||
-      `$${(payment.amount / 100).toFixed(2)}`.includes(searchTerm)
+      parseDate(payment.createdAt).toLocaleDateString().toLowerCase().includes(searchTerm) ||
+      formatCurrency(payment.amount).toLowerCase().includes(searchTerm)
     );
   }, [payments, paymentsSearch]);
 
@@ -181,8 +204,8 @@ const AdminDashboard: React.FC = () => {
         }
 
         const [usersRes, licensesRes, paymentsRes, systemHealthRes, statsRes] = await Promise.all([
-          api.get(endpoints.admin.users()),
-          api.get(endpoints.admin.licenses()),
+          api.get(`${endpoints.admin.users()}?page=1&limit=100`),
+          api.get(`${endpoints.admin.licenses()}?page=1&limit=500`),
           api.get(endpoints.admin.paymentAnalytics()),
           api.get(endpoints.admin.systemHealth()),
           api.get(endpoints.admin.dashboardStats()),
@@ -190,9 +213,10 @@ const AdminDashboard: React.FC = () => {
 
         const usersData = usersRes.data?.data?.users ?? [];
         const licensesData = licensesRes.data?.data?.licenses ?? [];
-        const paymentSummary = paymentsRes.data?.data?.summary ?? { totalRevenue: 0, activeSubscriptions: 0 };
-        const recent = statsRes.data?.data?.stats?.recentPayments ?? [];
-        const health = systemHealthRes.data?.data?.status ?? 'healthy';
+        // Use dashboard-stats as the source of truth for revenue/subscriptions
+        const dashboardStats = statsRes.data?.data?.stats ?? { totalRevenue: 0, activeSubscriptions: 0 };
+        const recent = dashboardStats?.recentPayments ?? [];
+        const health = systemHealthRes.data?.data?.health?.overall || systemHealthRes.data?.data?.overall || systemHealthRes.data?.data?.status || 'healthy';
 
         if (!isMounted) return;
         setUsers(usersData.map((u: any) => ({
@@ -213,16 +237,17 @@ const AdminDashboard: React.FC = () => {
           userId: l.userId,
           userEmail: l.user?.email ?? '',
           tier: l.tier,
-          status: (l.status || '').toLowerCase(),
-          activatedAt: l.activatedAt || l.createdAt,
-          expiresAt: l.expiresAt || l.createdAt,
-          lastUsed: l.updatedAt || l.createdAt,
+          status: String(l.status || '').toLowerCase() as License['status'],
+          activatedAt: new Date(parseDate(l.activatedAt || l.createdAt)).toISOString(),
+          expiresAt: new Date(parseDate(l.expiresAt || l.createdAt)).toISOString(),
+          lastUsed: new Date(parseDate(l.updatedAt || l.createdAt)).toISOString(),
         })));
 
         setStats({
-          totalUsers: usersData.length,
-          activeSubscriptions: paymentSummary.activeSubscriptions ?? 0,
-          totalRevenue: paymentSummary.totalRevenue ?? 0,
+          totalUsers: Number(dashboardStats.totalUsers || usersData.length) || 0,
+          activeSubscriptions: dashboardStats.activeSubscriptions ?? 0,
+          // Convert cents to dollars for display
+          totalRevenue: Math.round((dashboardStats.totalRevenue ?? 0)) / 100,
           pendingApprovals: 0,
           systemHealth: health === 'healthy' ? 'healthy' : health === 'degraded' ? 'warning' : 'error',
         });
@@ -241,7 +266,7 @@ const AdminDashboard: React.FC = () => {
   const fetchPayments = async (page = 1) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
-    params.set('limit', '20');
+    params.set('limit', '100');
     if (paymentsFilters.status) params.set('status', paymentsFilters.status);
     if (paymentsFilters.email) params.set('email', paymentsFilters.email);
     if (paymentsFilters.from) params.set('from', paymentsFilters.from);
@@ -452,7 +477,7 @@ const AdminDashboard: React.FC = () => {
                       Total Revenue
                     </Typography>
                   </Box>
-                  <Typography variant="h3" sx={{ fontWeight: 700, color: 'success.main' }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: 'success.main' }}>
                     ${stats.totalRevenue.toLocaleString()}
                   </Typography>
                 </CardContent>
@@ -706,11 +731,11 @@ const AdminDashboard: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell>
-                          <Chip
-                            label={license.status}
-                            size="small"
-                            color={getStatusColor(license.status)}
-                          />
+          <Chip
+            label={license.status}
+            size="small"
+            color={getStatusColor(String(license.status).toLowerCase())}
+          />
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
@@ -859,16 +884,22 @@ const AdminDashboard: React.FC = () => {
                           <Chip size="small" variant="outlined" label={p.subscription?.tier || '—'} />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">${'{'}(p.amount / 100).toFixed(2){'}'}</Typography>
+                          <Typography variant="body2">{formatCurrency(p.amount)}</Typography>
                         </TableCell>
                         <TableCell>
                           <Chip size="small" label={p.status} color={p.status === 'SUCCEEDED' ? 'success' : p.status === 'FAILED' ? 'error' : 'default'} />
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">{new Date(p.createdAt).toLocaleDateString()}</Typography>
+                          <Typography variant="body2">{parseDate(p.createdAt).toLocaleDateString()}</Typography>
                         </TableCell>
                         <TableCell>
-                          {p.receiptUrl ? (
+                          {p.stripeInvoiceId ? (
+                            <Button size="small" variant="outlined" onClick={() => {
+                              const token = localStorage.getItem('auth_token');
+                              const url = `/api/invoices/${p.stripeInvoiceId}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+                              window.open(url, '_blank');
+                            }}>View</Button>
+                          ) : p.receiptUrl ? (
                             <Button size="small" variant="outlined" onClick={() => window.open(p.receiptUrl, '_blank')}>View</Button>
                           ) : (
                             <Typography variant="body2" color="text.secondary">N/A</Typography>

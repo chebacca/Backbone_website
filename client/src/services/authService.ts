@@ -2,16 +2,16 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: 'user' | 'admin' | 'enterprise';
+  role: 'USER' | 'ADMIN' | 'SUPERADMIN';
   subscription?: {
-    plan: 'basic' | 'pro' | 'enterprise';
-    status: 'active' | 'inactive' | 'cancelled';
+    plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
+    status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'TRIALING';
     currentPeriodEnd: string;
   };
   licenses?: Array<{
     id: string;
     key: string;
-    status: 'active' | 'inactive' | 'expired';
+    status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'PENDING';
     createdAt: string;
     expiresAt: string;
   }>;
@@ -27,6 +27,7 @@ export interface LoginRequest {
 export interface LoginResponse {
   user: User;
   token: string;
+  refreshToken?: string;
 }
 
 export interface Login2FAChallengeResponse {
@@ -75,10 +76,11 @@ export const authService = {
       return { requires2FA: true, interimToken: data.interimToken };
     }
 
-    // Normalize tokens → token (accessToken)
+    // Normalize tokens → token (accessToken) + refreshToken
     return {
       user: data.user,
       token: data.tokens?.accessToken,
+      refreshToken: data.tokens?.refreshToken,
     } as LoginResponse;
   },
 
@@ -94,6 +96,7 @@ export const authService = {
       return {
         user: data.user,
         token: data.tokens?.accessToken,
+        refreshToken: data.tokens?.refreshToken,
       } as LoginResponse;
     } else {
       throw new Error(response.data.message || '2FA verification failed');
@@ -271,11 +274,16 @@ export const authService = {
     return localStorage.getItem('auth_token');
   },
 
+  getStoredRefreshToken(): string | null {
+    return localStorage.getItem('refresh_token');
+  },
+
   /**
    * Clear stored auth data
    */
   clearStoredAuth(): void {
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('auth_user');
   },
 };

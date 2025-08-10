@@ -172,33 +172,39 @@ const LicensesPage: React.FC = () => {
   const [assignEmail, setAssignEmail] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Load licenses: admins see all, users see their own
+  // Load licenses: SUPERADMIN sees all via admin endpoint; others see their own
   useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
         setLoading(true);
-        const isAdmin = ['admin', 'enterprise']
-                      .includes(String(user?.role || '').toLowerCase());
+        const roleUpper = String(user?.role || '').toUpperCase();
+        const isSuperAdmin = roleUpper === 'SUPERADMIN';
 
-        const response = isAdmin
-          ? await api.get(`${endpoints.admin.licenses()}?limit=200`)
-          : await api.get(endpoints.licenses.myLicenses());
-
-        const list: any[] = isAdmin
-          ? (response.data?.data?.licenses ?? [])
-          : (response.data?.data?.licenses ?? []);
+        let list: any[] = [];
+        if (isSuperAdmin) {
+          try {
+            const response = await api.get(`${endpoints.admin.licenses()}?limit=200`);
+            list = response.data?.data?.licenses ?? [];
+          } catch (e) {
+            const my = await api.get(endpoints.licenses.myLicenses());
+            list = my.data?.data?.licenses ?? [];
+          }
+        } else {
+          const my = await api.get(endpoints.licenses.myLicenses());
+          list = my.data?.data?.licenses ?? [];
+        }
 
         const mapped: License[] = list.map((l: any, idx: number) => ({
           id: l.id,
           key: l.key,
           name: l.user?.name ? `${l.user.name}'s License` : `License ${idx + 1}`,
-          tier: l.tier,
-          status: l.status,
+          tier: String(l.tier || '').toUpperCase() as License['tier'],
+          status: String(l.status || '').toUpperCase() as License['status'],
           assignedTo: l.user ? { name: l.user.name || 'User', email: l.user.email || '' } : undefined,
-          activatedAt: l.activatedAt || undefined,
-          expiresAt: l.expiresAt || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-          lastUsed: l.updatedAt || undefined,
+          activatedAt: l.activatedAt || l.createdAt || undefined,
+          expiresAt: l.expiresAt || l.currentPeriodEnd || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+          lastUsed: l.updatedAt || l.activatedAt || l.createdAt || undefined,
           deviceCount: l.activationCount ?? 0,
           maxDevices: l.maxActivations ?? 1,
           usage: { apiCalls: 0, dataTransfer: 0 },

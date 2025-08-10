@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import { firestoreService } from '../services/firestoreService.js';
+import { db } from '../services/db.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { 
   asyncHandler, 
@@ -49,7 +49,7 @@ router.put('/billing-address', [
     throw createApiError(`Invalid address: ${validation.errors.join(', ')}`, 400);
   }
 
-  await firestoreService.updateUser(userId, {
+  await db.updateUser(userId, {
     billingAddress: {
       ...addressData,
       validated: true,
@@ -57,14 +57,14 @@ router.put('/billing-address', [
       validationSource: 'user_update',
     },
   } as any);
-  const address = (await firestoreService.getUserById(userId))?.billingAddress;
+  const address = (await db.getUserById(userId))?.billingAddress as any;
 
   // Create audit log
   await ComplianceService.createAuditLog(
     userId,
     'PROFILE_UPDATE',
     'Billing address updated',
-    { addressId: address.id },
+    { addressId: (address && (address as any).id) || undefined },
     requestInfo
   );
 
@@ -94,15 +94,15 @@ router.put('/tax-information', [
   const requestInfo = (req as any).requestInfo;
   const taxData = req.body;
 
-  await firestoreService.updateUser(userId, { taxInformation: taxData } as any);
-  const taxInfo = (await firestoreService.getUserById(userId))?.taxInformation;
+  await db.updateUser(userId, { taxInformation: taxData } as any);
+  const taxInfo = (await db.getUserById(userId))?.taxInformation as any;
 
   // Create audit log
   await ComplianceService.createAuditLog(
     userId,
     'PROFILE_UPDATE',
     'Tax information updated',
-    { taxInfoId: taxInfo.id },
+    { taxInfoId: (taxInfo && (taxInfo as any).id) || undefined },
     requestInfo
   );
 
@@ -132,15 +132,15 @@ router.put('/business-profile', [
   const requestInfo = (req as any).requestInfo;
   const businessData = req.body;
 
-  await firestoreService.updateUser(userId, { businessProfile: businessData } as any);
-  const businessProfile = (await firestoreService.getUserById(userId))?.businessProfile;
+  await db.updateUser(userId, { businessProfile: businessData } as any);
+  const businessProfile = (await db.getUserById(userId))?.businessProfile as any;
 
   // Create audit log
   await ComplianceService.createAuditLog(
     userId,
     'PROFILE_UPDATE',
     'Business profile updated',
-    { businessProfileId: businessProfile.id },
+    { businessProfileId: (businessProfile && (businessProfile as any).id) || undefined },
     requestInfo
   );
 
@@ -220,7 +220,7 @@ router.post('/consent', [
 router.get('/consent-history', asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const consents = await firestoreService.getPrivacyConsentsByUser(userId);
+  const consents = await db.getPrivacyConsentsByUser(userId);
 
   res.json({
     success: true,
@@ -237,7 +237,7 @@ router.get('/audit-log', asyncHandler(async (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
   const skip = (page - 1) * limit;
 
-  const all = await firestoreService.getAuditLogsByUser(userId);
+  const all = await db.getAuditLogsByUser(userId);
   const total = all.length;
   const auditLogs = all.slice(skip, skip + limit);
 
@@ -262,17 +262,17 @@ router.post('/export-data', asyncHandler(async (req: Request, res: Response) => 
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const userDoc = await firestoreService.getUserById(userId);
+  const userDoc = await db.getUserById(userId);
   if (!userDoc) throw createApiError('User not found', 404);
-  const subscriptions = await firestoreService.getSubscriptionsByUserId(userId);
-  const subsWithData = await Promise.all(subscriptions.map(async s => ({
+  const subscriptions = await db.getSubscriptionsByUserId(userId);
+  const subsWithData = await Promise.all(subscriptions.map(async (s: any) => ({
     ...s,
-    licenses: (await firestoreService.getLicensesByUserId(userId)).filter(l => l.subscriptionId === s.id),
-    payments: (await firestoreService.getPaymentsBySubscriptionId(s.id)),
+    licenses: (await db.getLicensesByUserId(userId)).filter((l: any) => l.subscriptionId === s.id),
+    payments: (await db.getPaymentsBySubscriptionId(s.id)),
   })));
-  const privacyConsent = await firestoreService.getPrivacyConsentsByUser(userId);
-  const auditLogsAll = await firestoreService.getAuditLogsByUser(userId);
-  const usageAnalytics = await firestoreService.getUsageAnalyticsByUser(userId);
+  const privacyConsent = await db.getPrivacyConsentsByUser(userId);
+  const auditLogsAll = await db.getAuditLogsByUser(userId);
+  const usageAnalytics = await db.getUsageAnalyticsByUser(userId);
 
   // Remove sensitive data before export
   const exportData = {
@@ -314,15 +314,15 @@ router.post('/request-deletion', [
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const user = await firestoreService.getUserById(userId);
+  const user = await db.getUserById(userId);
 
   if (!user || user.email !== confirmEmail) {
     throw createApiError('Email confirmation does not match', 400);
   }
 
   // Check for active subscriptions
-  const subs = await firestoreService.getSubscriptionsByUserId(userId);
-  const activeSubscriptions = subs.filter(s => s.status === 'ACTIVE').length;
+  const subs = await db.getSubscriptionsByUserId(userId);
+  const activeSubscriptions = subs.filter((s: any) => s.status === 'ACTIVE').length;
 
   if (activeSubscriptions > 0) {
     throw createApiError('Cannot delete account with active subscriptions. Please cancel all subscriptions first.', 400);
@@ -364,19 +364,19 @@ router.get('/statistics', asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
   const [subs2, licenses, paymentsAll, userLatest, auditAll] = await Promise.all([
-    firestoreService.getSubscriptionsByUserId(userId),
-    firestoreService.getLicensesByUserId(userId),
-    firestoreService.getPaymentsByUserId(userId),
-    firestoreService.getUserById(userId),
-    firestoreService.getAuditLogsByUser(userId),
+    db.getSubscriptionsByUserId(userId),
+    db.getLicensesByUserId(userId),
+    db.getPaymentsByUserId(userId),
+    db.getUserById(userId),
+    db.getAuditLogsByUser(userId),
   ]);
-  const succeeded = paymentsAll.filter(p => p.status === 'SUCCEEDED');
+  const succeeded = paymentsAll.filter((p: any) => p.status === 'SUCCEEDED');
 
   const stats = {
     subscriptions: subs2.length,
     licenses: licenses.length,
     payments: succeeded.length,
-    totalSpent: succeeded.reduce((sum, p) => sum + (p.amount || 0), 0),
+    totalSpent: succeeded.reduce((sum: number, p: any) => sum + (p.amount || 0), 0),
     lastLogin: (userLatest as any)?.lastLoginAt,
     memberSince: (userLatest as any)?.createdAt,
     accountAge: (userLatest as any)?.createdAt 
@@ -423,7 +423,7 @@ router.put('/notifications', [
 
   // In a full implementation, you'd store these preferences
   // For now, just update the marketing consent
-  await firestoreService.updateUser(userId, { marketingConsent: marketingEmails } as any);
+  await db.updateUser(userId, { marketingConsent: marketingEmails } as any);
 
   // Create audit log
   await ComplianceService.createAuditLog(

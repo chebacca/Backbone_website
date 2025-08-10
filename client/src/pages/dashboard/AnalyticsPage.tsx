@@ -187,8 +187,8 @@ const AnalyticsPage: React.FC = () => {
     (async () => {
       try {
         setLoading(true);
-        const isAdmin = ['admin', 'enterprise']
-          .includes(String(user?.role || '').toLowerCase());
+        const roleUpper = String(user?.role || '').toUpperCase();
+        const isAdmin = roleUpper === 'ADMIN' || roleUpper === 'SUPERADMIN';
 
         if (isAdmin) {
           // Use admin license analytics as a proxy for system usage

@@ -22,13 +22,17 @@ import {
   ArrowForward,
   CheckCircle,
   Star,
+  AdminPanelSettings,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
+import { useAuth } from '@/context/AuthContext';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
+  const isSuperAdmin = isAuthenticated && String(user?.role || '').toUpperCase() === 'SUPERADMIN';
 
   const features = [
     {
@@ -168,12 +172,12 @@ const LandingPage: React.FC = () => {
                 </Box>
                 
                 <Box>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 4 }}>
+                  {isSuperAdmin ? (
                     <Button
                       variant="contained"
                       size="large"
-                      startIcon={<PlayArrow />}
-                      onClick={() => navigate('/pricing')}
+                      startIcon={<AdminPanelSettings />}
+                      onClick={() => navigate('/admin')}
                       sx={{
                         px: 4,
                         py: 1.5,
@@ -188,29 +192,53 @@ const LandingPage: React.FC = () => {
                         },
                       }}
                     >
-                      Start Free Trial
+                      Admin Dashboard
                     </Button>
-                    
-                    <Button
-                      variant="outlined"
-                      size="large"
-                      onClick={() => navigate('/pricing')}
-                      sx={{
-                        px: 4,
-                        py: 1.5,
-                        fontSize: '1.1rem',
-                        borderRadius: 2,
-                        borderColor: 'rgba(255, 255, 255, 0.3)',
-                        color: 'white',
-                        '&:hover': {
-                          borderColor: 'primary.main',
-                          backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                        },
-                      }}
-                    >
-                      View Pricing
-                    </Button>
-                  </Stack>
+                  ) : (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 4 }}>
+                      <Button
+                        variant="contained"
+                        size="large"
+                        startIcon={<PlayArrow />}
+                        onClick={() => navigate('/pricing')}
+                        sx={{
+                          px: 4,
+                          py: 1.5,
+                          fontSize: '1.1rem',
+                          borderRadius: 2,
+                          background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+                          color: '#000',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #33ddff 0%, #7b8eed 100%)',
+                            transform: 'translateY(-2px)',
+                            boxShadow: '0 8px 25px rgba(0, 212, 255, 0.4)',
+                          },
+                        }}
+                      >
+                        Start Free Trial
+                      </Button>
+                      
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        onClick={() => navigate('/pricing')}
+                        sx={{
+                          px: 4,
+                          py: 1.5,
+                          fontSize: '1.1rem',
+                          borderRadius: 2,
+                          borderColor: 'rgba(255, 255, 255, 0.3)',
+                          color: 'white',
+                          '&:hover': {
+                            borderColor: 'primary.main',
+                            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                          },
+                        }}
+                      >
+                        View Pricing
+                      </Button>
+                    </Stack>
+                  )}
                 </Box>
                 
                 <Box>
@@ -487,16 +515,12 @@ const LandingPage: React.FC = () => {
               production process with BackboneLogic, Inc.
             </Typography>
             
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={2}
-              justifyContent="center"
-            >
+            {isSuperAdmin ? (
               <Button
                 variant="contained"
                 size="large"
-                endIcon={<ArrowForward />}
-                onClick={() => navigate('/register')}
+                startIcon={<AdminPanelSettings />}
+                onClick={() => navigate('/admin')}
                 sx={{
                   px: 4,
                   py: 1.5,
@@ -505,24 +529,46 @@ const LandingPage: React.FC = () => {
                   color: '#000',
                 }}
               >
-                Start Your Free Trial
+                Go to Admin Dashboard
               </Button>
-              
-              <Button
-                variant="outlined"
-                size="large"
-                onClick={() => navigate('/pricing')}
-                sx={{
-                  px: 4,
-                  py: 1.5,
-                  fontSize: '1.1rem',
-                  borderColor: 'rgba(255, 255, 255, 0.3)',
-                  color: 'white',
-                }}
+            ) : (
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                justifyContent="center"
               >
-                View Pricing Plans
-              </Button>
-            </Stack>
+                <Button
+                  variant="contained"
+                  size="large"
+                  endIcon={<ArrowForward />}
+                  onClick={() => navigate('/register')}
+                  sx={{
+                    px: 4,
+                    py: 1.5,
+                    fontSize: '1.1rem',
+                    background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+                    color: '#000',
+                  }}
+                >
+                  Start Your Free Trial
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => navigate('/pricing')}
+                  sx={{
+                    px: 4,
+                    py: 1.5,
+                    fontSize: '1.1rem',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    color: 'white',
+                  }}
+                >
+                  View Pricing Plans
+                </Button>
+              </Stack>
+            )}
             
             <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
               <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />

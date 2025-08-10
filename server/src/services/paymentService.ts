@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { firestoreService } from './firestoreService.js';
+import { db } from './db.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
 import { ComplianceService } from './complianceService.js';
@@ -35,7 +35,7 @@ export class PaymentService {
       });
 
       // 1. Get user and validate
-      const user = await firestoreService.getUserById(userId);
+      const user = await db.getUserById(userId);
 
       if (!user) {
         throw new Error('User not found');
@@ -51,7 +51,7 @@ export class PaymentService {
       }
 
       // 3. Save/update billing address
-      await firestoreService.updateUser(userId, {
+      await db.updateUser(userId, {
         billingAddress: {
           ...subscriptionData.billingAddress,
           validated: true,
@@ -114,7 +114,7 @@ export class PaymentService {
       });
 
       // 11. Create subscription record in database
-      const subscription = await firestoreService.createSubscription({
+      const subscription = await db.createSubscription({
         userId,
         tier: subscriptionData.tier,
         status: this.mapStripeStatusToOurStatus(stripeSubscription.status),
@@ -132,7 +132,7 @@ export class PaymentService {
       const latestInvoice = stripeSubscription.latest_invoice as Stripe.Invoice;
       const paymentIntent = latestInvoice.payment_intent as Stripe.PaymentIntent;
 
-      const payment = await firestoreService.createPayment({
+      const payment = await db.createPayment({
         userId,
         subscriptionId: subscription.id,
         stripePaymentIntentId: paymentIntent.id,
@@ -223,10 +223,10 @@ export class PaymentService {
       logger.info(`Processing successful payment for subscription ${subscription.id}`);
 
       // 1. Update payment status
-      await firestoreService.updatePayment(payment.id, { status: 'SUCCEEDED' });
+      await db.updatePayment(payment.id, { status: 'SUCCEEDED' });
 
       // 2. Update subscription status
-      await firestoreService.updateSubscription(subscription.id, { status: 'ACTIVE' });
+      await db.updateSubscription(subscription.id, { status: 'ACTIVE' });
 
       // 3. Generate licenses based on seats
       const licenses = await LicenseService.generateLicenses(
@@ -238,7 +238,7 @@ export class PaymentService {
 
       // 4. Create license delivery logs
       for (const license of licenses) {
-        await firestoreService.createLicenseDeliveryLog({
+        await db.createLicenseDeliveryLog({
           licenseId: license.id,
           paymentId: payment.id,
           deliveryMethod: 'EMAIL',
@@ -276,7 +276,7 @@ export class PaymentService {
       );
 
       // 8. Update license delivery status
-      await firestoreService.updateLicenseDeliveryLogsForPayment(payment.id, {
+      await db.updateLicenseDeliveryLogsForPayment(payment.id, {
         deliveryStatus: 'SENT',
         emailSent: true,
         lastAttemptAt: new Date(),
@@ -314,7 +314,7 @@ export class PaymentService {
       const webhookSecret = config.stripe.webhookSecret;
       
       // Log webhook event
-      await firestoreService.createWebhookEvent({
+      await db.createWebhookEvent({
         type: event.type,
         stripeId: event.id,
         data: event.data,
@@ -346,9 +346,9 @@ export class PaymentService {
       }
 
       // Mark webhook as processed
-      const existing = await firestoreService.getWebhookEventByStripeId(event.id);
+      const existing = await db.getWebhookEventByStripeId(event.id);
       if (existing) {
-        await firestoreService.updateWebhookEvent(existing.id, { processed: true });
+        await db.updateWebhookEvent(existing.id, { processed: true });
       }
 
       return { received: true, processed: true };
@@ -356,9 +356,9 @@ export class PaymentService {
       logger.error('Webhook processing failed', error);
       
       // Update webhook with error
-      const existing = await firestoreService.getWebhookEventByStripeId(event.id);
+      const existing = await db.getWebhookEventByStripeId(event.id);
       if (existing) {
-        await firestoreService.updateWebhookEvent(existing.id, {
+        await db.updateWebhookEvent(existing.id, {
           processed: false,
           error: (error as Error).message,
           retryCount: 1,
@@ -397,8 +397,8 @@ export class PaymentService {
 
   private static async getOrCreateStripeCustomer(user: any, billingAddress: any) {
     // Check if user already has a Stripe customer ID
-    const existingSubscriptions = await firestoreService.getSubscriptionsByUserId(user.id);
-    const withCustomer = existingSubscriptions.find(s => s.stripeCustomerId);
+    const existingSubscriptions = await db.getSubscriptionsByUserId(user.id);
+    const withCustomer = existingSubscriptions.find((s: any) => s.stripeCustomerId);
     if (withCustomer?.stripeCustomerId) {
       return await stripe.customers.retrieve(withCustomer.stripeCustomerId);
     }
@@ -455,10 +455,10 @@ export class PaymentService {
 
   private static async handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     // Find and update payment record
-    const payment = await firestoreService.getPaymentByStripePaymentIntentId(paymentIntent.id);
+    const payment = await db.getPaymentByStripePaymentIntentId(paymentIntent.id);
     if (payment) {
-      const subscription = await firestoreService.getSubscriptionById(payment.subscriptionId);
-      const user = await firestoreService.getUserById(payment.userId);
+      const subscription = await db.getSubscriptionById(payment.subscriptionId);
+      const user = await db.getUserById(payment.userId);
       if (subscription && user) {
         await this.handleSuccessfulPayment(subscription, payment, user);
       }
@@ -467,10 +467,10 @@ export class PaymentService {
 
   private static async handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
     // Update payment record and create compliance event
-    const payment = await firestoreService.getPaymentByStripePaymentIntentId(paymentIntent.id);
+    const payment = await db.getPaymentByStripePaymentIntentId(paymentIntent.id);
 
     if (payment) {
-      await firestoreService.updatePayment(payment.id, { status: 'FAILED' });
+      await db.updatePayment(payment.id, { status: 'FAILED' });
 
       await ComplianceService.createComplianceEvent(
         'SUSPICIOUS_TRANSACTION',
@@ -490,10 +490,10 @@ export class PaymentService {
 
   private static async handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     // Update subscription record in database
-    const dbSubscription = await firestoreService.getSubscriptionByStripeId(subscription.id);
+    const dbSubscription = await db.getSubscriptionByStripeId(subscription.id);
 
     if (dbSubscription) {
-      await firestoreService.updateSubscription(dbSubscription.id, {
+      await db.updateSubscription(dbSubscription.id, {
         status: this.mapStripeStatusToOurStatus(subscription.status),
         currentPeriodStart: new Date(subscription.current_period_start * 1000),
         currentPeriodEnd: new Date(subscription.current_period_end * 1000),
@@ -503,19 +503,19 @@ export class PaymentService {
 
   private static async handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     // Cancel subscription and revoke licenses
-    const dbSubscription = await firestoreService.getSubscriptionByStripeId(subscription.id);
+    const dbSubscription = await db.getSubscriptionByStripeId(subscription.id);
 
     if (dbSubscription) {
-      await firestoreService.updateSubscription(dbSubscription.id, {
+      await db.updateSubscription(dbSubscription.id, {
         status: 'CANCELLED',
         cancelledAt: new Date(),
       });
 
       // Revoke associated licenses
-      const licenses = await firestoreService.getLicensesByUserId(dbSubscription.userId);
-      const affected = licenses.filter(l => l.subscriptionId === dbSubscription.id);
+      const licenses = await db.getLicensesByUserId(dbSubscription.userId);
+      const affected = licenses.filter((l: any) => l.subscriptionId === dbSubscription.id);
       for (const lic of affected) {
-        await firestoreService.updateLicense(lic.id, { status: 'REVOKED' });
+        await db.updateLicense(lic.id, { status: 'REVOKED' });
       }
     }
   }
@@ -538,8 +538,8 @@ export class PaymentService {
    */
   static async getPaymentHistory(userId: string, options: { skip?: number; take?: number } = {}) {
     const { skip = 0, take = 10 } = options;
-    const all = await firestoreService.getPaymentsByUserId(userId);
-    const sorted = all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const all = await db.getPaymentsByUserId(userId);
+    const sorted = all.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const payments = sorted.slice(skip, skip + take);
     const total = all.length;
     return { payments, total };
@@ -549,10 +549,10 @@ export class PaymentService {
    * Get specific payment details
    */
   static async getPaymentDetails(userId: string, paymentId: string) {
-    const payment = await firestoreService.getPaymentById(paymentId);
+    const payment = await db.getPaymentById(paymentId);
     if (!payment || payment.userId !== userId) return null;
-    const subscription = await firestoreService.getSubscriptionById(payment.subscriptionId);
-    const auditLogs = await firestoreService.getAuditLogsByUser(userId);
+    const subscription = await db.getSubscriptionById(payment.subscriptionId);
+    const auditLogs = await db.getAuditLogsByUser(userId);
     return { ...payment, subscription, auditLogs: auditLogs.slice(0, 10) } as any;
   }
 
@@ -569,7 +569,7 @@ export class PaymentService {
     },
     requestInfo: any
   ) {
-    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    const subscription = await db.getSubscriptionById(subscriptionId);
     if (!subscription || subscription.userId !== userId) {
       throw new Error('Subscription not found');
     }
@@ -586,12 +586,12 @@ export class PaymentService {
     }
 
     // Update subscription in database
-    await firestoreService.updateSubscription(subscriptionId, {
+    await db.updateSubscription(subscriptionId, {
       cancelAtPeriodEnd: options.cancelAtPeriodEnd,
       cancelledAt: options.cancelAtPeriodEnd ? null as any : new Date(),
       status: options.cancelAtPeriodEnd ? 'ACTIVE' : 'CANCELLED',
     });
-    const updatedSubscription = await firestoreService.getSubscriptionById(subscriptionId);
+    const updatedSubscription = await db.getSubscriptionById(subscriptionId);
 
     // Create audit log
     await ComplianceService.createAuditLog(
@@ -619,7 +619,7 @@ export class PaymentService {
     paymentMethodId: string,
     requestInfo: any
   ) {
-    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    const subscription = await db.getSubscriptionById(subscriptionId);
     if (!subscription || subscription.userId !== userId) {
       throw new Error('Subscription not found');
     }
@@ -668,7 +668,7 @@ export class PaymentService {
     updates: { seats?: number; tier?: string },
     requestInfo: any
   ) {
-    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    const subscription = await db.getSubscriptionById(subscriptionId);
     if (!subscription || subscription.userId !== userId) {
       throw new Error('Subscription not found');
     }
@@ -693,10 +693,10 @@ export class PaymentService {
     }
 
     // Update in database
-    await firestoreService.updateSubscription(subscriptionId, {
+    await db.updateSubscription(subscriptionId, {
       seats: updates.seats || subscription.seats,
     });
-    updatedSubscription = (await firestoreService.getSubscriptionById(subscriptionId))!;
+    updatedSubscription = (await db.getSubscriptionById(subscriptionId))!;
 
     // Generate additional licenses if seats increased
     if (updates.seats && updates.seats > subscription.seats) {
@@ -729,7 +729,7 @@ export class PaymentService {
     subscriptionId: string,
     requestInfo: any
   ) {
-    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+    const subscription = await db.getSubscriptionById(subscriptionId);
     if (!subscription || subscription.userId !== userId) {
       throw new Error('Subscription not found');
     }
@@ -746,12 +746,12 @@ export class PaymentService {
     }
 
     // Update subscription in database
-    await firestoreService.updateSubscription(subscriptionId, {
+    await db.updateSubscription(subscriptionId, {
       cancelAtPeriodEnd: false,
       cancelledAt: null as any,
       status: 'ACTIVE',
     });
-    const updatedSubscription = await firestoreService.getSubscriptionById(subscriptionId);
+    const updatedSubscription = await db.getSubscriptionById(subscriptionId);
 
     // Create audit log
     await ComplianceService.createAuditLog(

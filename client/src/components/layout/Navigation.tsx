@@ -29,8 +29,9 @@ import {
   VpnKey,
   Article,
   Support,
+  ArrowBack,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 
@@ -42,9 +43,11 @@ interface NavigationItem {
 
 export const Navigation: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, user, logout } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const inDashboardMode = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin');
   
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -95,7 +98,6 @@ export const Navigation: React.FC = () => {
       { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
       { label: 'Licenses', path: '/dashboard/licenses', icon: <VpnKey /> },
       { label: 'Analytics', path: '/dashboard/analytics', icon: <Receipt /> },
-      { label: 'Billing', path: '/dashboard/billing', icon: <Receipt /> },
       { label: 'Team', path: '/dashboard/team', icon: <Receipt /> },
       { label: 'Downloads', path: '/dashboard/downloads', icon: <Receipt /> },
       { label: 'Documentation', path: '/documentation', icon: <Article /> },
@@ -103,12 +105,9 @@ export const Navigation: React.FC = () => {
       { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
     ];
 
-    // Hide Dashboard and Billing for SUPERADMIN
+    // Hide Dashboard and Billing for SUPERADMIN (they use Admin dashboard instead)
     if (isSuperAdmin) {
-      return items.filter((item) => 
-        item.path !== '/dashboard/billing' && 
-        item.path !== '/dashboard'
-      );
+      return items.filter((item) => item.path !== '/dashboard' && item.path !== '/dashboard/billing');
     }
     return items;
   }, [user?.role]);
@@ -136,7 +135,8 @@ export const Navigation: React.FC = () => {
       <Divider />
       
       <List>
-        {navigationItems.map((item) => (
+        {/* Hide top-level page buttons when inside dashboard/admin */}
+        {(!inDashboardMode ? (isAuthenticated ? authenticatedNavItems : navigationItems) : []).map((item) => (
           <ListItem 
             key={item.label}
             onClick={() => {
@@ -174,23 +174,6 @@ export const Navigation: React.FC = () => {
         
         {isAuthenticated && (
           <>
-            <Divider sx={{ my: 1 }} />
-            {authenticatedNavItems.map((item) => (
-              <ListItem
-                key={item.label}
-                onClick={() => {
-                  navigate(item.path);
-                  handleDrawerToggle();
-                }}
-                sx={{ cursor: 'pointer' }}
-              >
-                <ListItemIcon sx={{ color: 'text.primary' }}>
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItem>
-            ))}
-            
             <Divider sx={{ my: 1 }} />
             
             <ListItem onClick={handleLogout} sx={{ cursor: 'pointer' }}>
@@ -242,12 +225,24 @@ export const Navigation: React.FC = () => {
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between' }}>
-          {/* Logo */}
-          <Box
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
+          {/* Left: Back (when in dashboard/admin) + Logo */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {inDashboardMode && (
+              <IconButton
+                color="inherit"
+                aria-label="Back"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.history.length > 1) {
+                    navigate(-1);
+                  } else {
+                    navigate('/');
+                  }
+                }}
+                sx={{ mr: 1 }}
+              >
+                <ArrowBack />
+              </IconButton>
+            )}
             <Box
               sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
               onClick={() => navigate('/')}
@@ -294,43 +289,46 @@ export const Navigation: React.FC = () => {
           {/* Desktop Navigation */}
           {!isMobile && (
             <>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {navigationItems.map((item) => (
-                  <Button
-                    key={item.label}
-                    color="inherit"
-                    startIcon={item.icon}
-                    onClick={() => {
-                      if (item.path.startsWith('#')) return;
-                      // Check if route requires authentication (only admin routes, not dashboard or licenses)
-                      if (item.path.includes('/admin') && !isAuthenticated) {
-                        navigate('/login');
-                        return;
-                      }
-                      navigate(item.path);
-                    }}
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: 500,
-                      color: item.label === 'Admin' ? 'warning.main' : 
-                             item.label === 'Licenses' ? 'primary.main' : 
-                             item.label === 'Dashboard' ? 'primary.main' : 'text.secondary',
-                      '&:hover': {
-                        color: item.label === 'Admin' ? 'warning.light' : 
-                               item.label === 'Licenses' ? 'primary.light' : 
-                               item.label === 'Dashboard' ? 'primary.light' : 'primary.main',
-                        backgroundColor: item.label === 'Admin' 
-                          ? 'rgba(255, 152, 0, 0.1)' 
-                          : item.label === 'Licenses' || item.label === 'Dashboard'
-                          ? 'rgba(0, 212, 255, 0.1)'
-                          : 'rgba(0, 212, 255, 0.1)',
-                      },
-                    }}
-                  >
-                    {item.label}
-                  </Button>
-                ))}
-              </Box>
+              {!inDashboardMode && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {/* Show authenticated nav items when logged in, otherwise show public nav items */}
+                  {(isAuthenticated ? authenticatedNavItems : navigationItems).map((item) => (
+                    <Button
+                      key={item.label}
+                      color="inherit"
+                      startIcon={item.icon}
+                      onClick={() => {
+                        if (item.path.startsWith('#')) return;
+                        // Check if route requires authentication (only admin routes, not dashboard or licenses)
+                        if (item.path.includes('/admin') && !isAuthenticated) {
+                          navigate('/login');
+                          return;
+                        }
+                        navigate(item.path);
+                      }}
+                      sx={{
+                        textTransform: 'none',
+                        fontWeight: 500,
+                        color: item.label === 'Admin' ? 'warning.main' : 
+                               item.label === 'Licenses' ? 'primary.main' : 
+                               item.label === 'Dashboard' ? 'primary.main' : 'text.secondary',
+                        '&:hover': {
+                          color: item.label === 'Admin' ? 'warning.light' : 
+                                 item.label === 'Licenses' ? 'primary.light' : 
+                                 item.label === 'Dashboard' ? 'primary.light' : 'primary.main',
+                          backgroundColor: item.label === 'Admin' 
+                            ? 'rgba(255, 152, 0, 0.1)' 
+                            : item.label === 'Licenses' || item.label === 'Dashboard'
+                            ? 'rgba(0, 212, 255, 0.1)'
+                            : 'rgba(0, 212, 255, 0.1)',
+                        },
+                      }}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </Box>
+              )}
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 {isAuthenticated ? (

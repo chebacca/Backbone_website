@@ -6,16 +6,16 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: 'user' | 'admin' | 'enterprise';
+  role: 'USER' | 'ADMIN' | 'SUPERADMIN';
   subscription?: {
-    plan: 'basic' | 'pro' | 'enterprise';
-    status: 'active' | 'inactive' | 'cancelled';
+    plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
+    status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'TRIALING';
     currentPeriodEnd: string;
   };
   licenses?: Array<{
     id: string;
     key: string;
-    status: 'active' | 'inactive' | 'expired';
+    status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'PENDING';
     createdAt: string;
     expiresAt: string;
   }>;
@@ -127,6 +127,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       // Normal login branch
       localStorage.setItem('auth_token', response.token);
+      if (response.refreshToken) {
+        localStorage.setItem('refresh_token', response.refreshToken);
+      }
       localStorage.setItem('auth_user', JSON.stringify(response.user));
 
       setAuthState({
@@ -171,6 +174,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = (): void => {
     // Clear localStorage
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('auth_user');
 
     // Reset auth state

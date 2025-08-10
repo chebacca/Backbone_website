@@ -38,6 +38,7 @@ import {
   Security,
   Description,
   Home,
+  ArrowBack,
 } from '@mui/icons-material';
 import { Link as RouterLink, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -97,14 +98,16 @@ export const DashboardLayout: React.FC = () => {
     handleProfileMenuClose();
   };
 
-  const isEnterprise = user?.subscription?.plan === 'enterprise';
+  const isEnterprise = String(user?.subscription?.plan || '').toUpperCase() === 'ENTERPRISE';
 
-  // Compute navigation, hiding Billing for Master Admins
+  // Compute navigation, hiding Billing for SUPERADMIN only
   const navigationItems: NavigationItem[] = React.useMemo(() => {
     const items = [...baseNavigationItems];
     const roleUpper = String(user?.role || '').toUpperCase();
-    const isAdminLike = ['ADMIN', 'SUPERADMIN', 'ENTERPRISE_ADMIN'].includes(roleUpper);
-    if (isAdminLike) {
+    const isSuperAdmin = roleUpper === 'SUPERADMIN';
+    
+    // Only hide Billing for SUPERADMIN (they use Admin dashboard instead)
+    if (isSuperAdmin) {
       return items.filter((item) => item.path !== '/dashboard/billing');
     }
     return items;
@@ -112,8 +115,23 @@ export const DashboardLayout: React.FC = () => {
 
   const NavigationList = () => (
     <Box sx={{ width: drawerWidth, height: '100%', backgroundColor: 'background.paper' }}>
-      {/* Logo and Brand */}
-      <Box sx={{ p: 3, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+      {/* Logo and Brand (clickable to go to Landing Page) */}
+      <Box
+        component={RouterLink}
+        to="/"
+        aria-label="Go to Landing Page"
+        sx={{
+          p: 3,
+          display: 'block',
+          textDecoration: 'none',
+          color: 'inherit',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          cursor: 'pointer',
+          '&:hover': {
+            backgroundColor: 'rgba(255, 255, 255, 0.04)',
+          },
+        }}
+      >
         <Typography
           variant="h6"
           sx={{
@@ -146,9 +164,9 @@ export const DashboardLayout: React.FC = () => {
             </Typography>
             {user?.subscription && (
               <Chip
-                label={user.subscription.plan}
+                label={String(user.subscription.plan).toUpperCase()}
                 size="small"
-                color={user.subscription.plan === 'enterprise' ? 'primary' : 'default'}
+                color={String(user.subscription.plan).toUpperCase() === 'ENTERPRISE' ? 'primary' : 'default'}
                 sx={{ mt: 0.5, fontSize: '0.7rem' }}
               />
             )}
@@ -338,22 +356,34 @@ export const DashboardLayout: React.FC = () => {
             <MenuIcon />
           </IconButton>
 
-          {/* Back to Landing */}
+          {/* Contextual Back */}
           {isMobile ? (
             <IconButton
               color="inherit"
-              aria-label="Back to landing"
-              onClick={() => navigate('/')}
+              aria-label="Back"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.history.length > 1) {
+                  navigate(-1);
+                } else {
+                  navigate('/');
+                }
+              }}
               sx={{ mr: 1 }}
             >
-              <Home />
+              <ArrowBack />
             </IconButton>
           ) : (
             <Button
               variant="outlined"
               size="small"
-              startIcon={<Home />}
-              onClick={() => navigate('/')}
+              startIcon={<ArrowBack />}
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.history.length > 1) {
+                  navigate(-1);
+                } else {
+                  navigate('/');
+                }
+              }}
               sx={{
                 mr: 1,
                 borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -365,7 +395,7 @@ export const DashboardLayout: React.FC = () => {
                 },
               }}
             >
-              Back to Landing
+              Back
             </Button>
           )}
 

@@ -48,8 +48,8 @@ export class ComplianceService {
         action,
         description,
         metadata,
-        ipAddress: request?.ip,
-        userAgent: request?.userAgent,
+        ipAddress: request?.ip || '127.0.0.1',
+        userAgent: request?.userAgent || 'Seeder/1.0',
       });
 
       logger.info(`Audit log created for user ${userId}`, {

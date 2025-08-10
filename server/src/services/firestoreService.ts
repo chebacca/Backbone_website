@@ -7,15 +7,20 @@ if (!getApps().length) {
   const isCloudFunctionsEnv = Boolean(
     process.env.FUNCTION_TARGET || process.env.K_SERVICE || process.env.FIREBASE_CONFIG
   );
-  if (isCloudFunctionsEnv) {
-    // In Cloud Functions/Run, use Application Default Credentials bound to the service account
-    initializeApp();
+  
+  // Try to use Application Default Credentials first (gcloud auth application-default login)
+  const hasApplicationDefaultCreds = Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCLOUD_PROJECT);
+  
+  if (isCloudFunctionsEnv || hasApplicationDefaultCreds) {
+    // In Cloud Functions/Run or with Application Default Credentials, use those
+    const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || 'backbone-logic';
+    initializeApp({ projectId });
   } else {
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
     const rawKey = process.env.FIREBASE_PRIVATE_KEY;
     if (!projectId || !clientEmail || !rawKey) {
-      throw new Error('Missing FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, or FIREBASE_PRIVATE_KEY');
+      throw new Error('Missing FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, or FIREBASE_PRIVATE_KEY. Run "gcloud auth application-default login" to use Application Default Credentials.');
     }
     const privateKey = rawKey.replace(/\\n/g, '\n');
     initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
@@ -31,7 +36,7 @@ export interface FirestoreUser {
   email: string;
   name: string;
   password: string;
-  role: 'SUPERADMIN' | 'USER' | 'ENTERPRISE_ADMIN';
+  role: 'SUPERADMIN' | 'USER' | 'ADMIN';
   isEmailVerified: boolean;
   emailVerifyToken?: string;
   passwordResetToken?: string;
@@ -279,6 +284,10 @@ export class FirestoreService {
     });
   }
 
+  async deleteSubscription(id: string): Promise<void> {
+    await db.collection('subscriptions').doc(id).delete();
+  }
+
   // License operations
   async createLicense(licenseData: Omit<FirestoreLicense, 'id' | 'createdAt' | 'updatedAt'>): Promise<FirestoreLicense> {
     const licenseRef = db.collection('licenses').doc();
@@ -321,6 +330,10 @@ export class FirestoreService {
       ...updates,
       updatedAt: new Date(),
     });
+  }
+
+  async deleteLicense(id: string): Promise<void> {
+    await db.collection('licenses').doc(id).delete();
   }
 
   // Payment operations
@@ -475,6 +488,10 @@ export class FirestoreService {
       ...updates,
       updatedAt: new Date(),
     });
+  }
+
+  async deletePayment(id: string): Promise<void> {
+    await db.collection('payments').doc(id).delete();
   }
 
   // Audit and compliance operations

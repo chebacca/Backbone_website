@@ -21,7 +21,10 @@
     "firebase:init": "firebase init",
     "firebase:login": "firebase login",
     "firebase:use": "firebase use",
-    "firebase:emulators": "firebase emulators:start"
+    "firebase:emulators": "firebase emulators:start",
+    "seed": "cd server && pnpm seed",
+    "seed:clear": "cd server && pnpm seed:clear",
+    "seed:reset": "cd server && pnpm seed:reset"
   },
   "keywords": [
     "licensing",

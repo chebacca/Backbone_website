@@ -46,7 +46,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       return;
     }
     
-    // Get user from Firestore to ensure they still exist and are active
+    // Get user to ensure they still exist and are active (Firestore authoritative)
     const user = await firestoreService.getUserById(payload.userId);
 
     if (!user) {
@@ -62,7 +62,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
       id: user.id,
       email: user.email,
       role: user.role,
-      name: user.name,
+      name: user.name || '',
     };
 
     next();
@@ -145,7 +145,7 @@ export const requireRole = (roles: string[]) => {
 /**
  * Middleware to require admin role
  */
-export const requireAdmin = requireRole(['SUPERADMIN', 'ENTERPRISE_ADMIN']);
+export const requireAdmin = requireRole(['SUPERADMIN', 'ADMIN']);
 
 /**
  * Alias for authenticateToken for backward compatibility
@@ -155,7 +155,8 @@ export const authMiddleware = authenticateToken;
 /**
  * Middleware to require enterprise admin role
  */
-export const requireEnterpriseAdmin = requireRole(['ENTERPRISE_ADMIN']);
+// Deprecated: enterprise admin role removed. Keep alias to ADMIN for backward compatibility
+export const requireEnterpriseAdmin = requireRole(['ADMIN']);
 
 /**
  * Middleware to require superadmin role
@@ -180,7 +181,7 @@ export const optionalAuth = async (req: Request, res: Response, next: NextFuncti
             id: user.id,
             email: user.email,
             role: user.role,
-            name: user.name,
+            name: user.name || '',
           };
         }
       } catch (error) {
@@ -256,7 +257,7 @@ export const validateSubscriptionOwnership = async (req: Request, res: Response,
     const hasAccess = 
       subscription.userId === req.user.id ||
       req.user.role === 'SUPERADMIN' ||
-      req.user.role === 'ENTERPRISE_ADMIN';
+      req.user.role === 'ADMIN';
 
     if (!hasAccess) {
       res.status(403).json({
@@ -316,7 +317,7 @@ export const validateLicenseOwnership = async (req: Request, res: Response, next
     const hasAccess = 
       license.userId === req.user.id ||
       req.user.role === 'SUPERADMIN' ||
-      req.user.role === 'ENTERPRISE_ADMIN';
+      req.user.role === 'ADMIN';
 
     if (!hasAccess) {
       res.status(403).json({

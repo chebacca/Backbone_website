@@ -171,6 +171,23 @@ export const paymentService = {
   },
 
   /**
+   * Get user invoices
+   */
+  async getUserInvoices(options: { page?: number; limit?: number } = {}): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (options.page) params.append('page', options.page.toString());
+    if (options.limit) params.append('limit', options.limit.toString());
+
+    const response = await api.get(`${endpoints.invoices.list()}?${params}`);
+    
+    if (response.data.success) {
+      return response.data.data;
+    } else {
+      throw new Error(response.data.message || 'Failed to get invoices');
+    }
+  },
+
+  /**
    * Get specific payment details
    */
   async getPaymentDetails(paymentId: string): Promise<any> {

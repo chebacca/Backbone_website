@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import { firestoreService } from '../services/firestoreService.js';
+import { db } from '../services/db.js';
 import { PaymentService } from '../services/paymentService.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { 
@@ -28,7 +28,7 @@ router.use(requireEmailVerification);
 router.get('/my-subscriptions', asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const subscriptions = await firestoreService.getSubscriptionsByUserId(userId);
+  const subscriptions = await db.getSubscriptionsByUserId(userId);
 
   res.json({
     success: true,
@@ -44,10 +44,10 @@ router.get('/:subscriptionId', [
 ], asyncHandler(async (req: Request, res: Response) => {
   const { subscriptionId } = req.params;
 
-  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
-  const user = subscription ? await firestoreService.getUserById(subscription.userId) : null;
-  const licenses = subscription ? await firestoreService.getLicensesBySubscriptionId(subscription.id) : [];
-  const payments = subscription ? await firestoreService.getPaymentsBySubscriptionId(subscription.id) : [];
+  const subscription = await db.getSubscriptionById(subscriptionId);
+  const user = subscription ? await db.getUserById(subscription.userId) : null;
+  const licenses = subscription ? await db.getLicensesBySubscriptionId(subscription.id) : [];
+  const payments = subscription ? await db.getPaymentsBySubscriptionId(subscription.id) : [];
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -77,7 +77,7 @@ router.put('/:subscriptionId', [
     throw validationErrorHandler(errors.array());
   }
 
-  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+  const subscription = await db.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -158,7 +158,7 @@ router.post('/:subscriptionId/reactivate', [
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+  const subscription = await db.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -196,7 +196,9 @@ router.get('/:subscriptionId/invoices', [
   const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
   const skip = (page - 1) * limit;
 
-  const { payments, total } = await firestoreService.getPaymentsPageBySubscriptionId(subscriptionId, page, limit);
+  const all = await db.getPaymentsBySubscriptionId(subscriptionId);
+  const total = all.length;
+  const payments = all.slice(skip, skip + limit);
 
   res.json({
     success: true,
@@ -225,14 +227,14 @@ router.get('/:subscriptionId/usage', [
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
 
-  const licenses = await firestoreService.getLicensesBySubscriptionId(subscriptionId);
-  const usageLists = await Promise.all(licenses.map((l: any) => firestoreService.getUsageAnalyticsByLicense(l.id, startDate)));
+  const licenses = await db.getLicensesBySubscriptionId(subscriptionId);
+  const usageLists = await Promise.all(licenses.map((l: any) => db.getUsageAnalyticsByLicense(l.id, startDate)));
   const usageAnalytics = usageLists.flat();
 
   // Aggregate usage data
   const usageStats = {
     totalLicenses: licenses.length,
-    activeLicenses: licenses.filter(l => l.status === 'ACTIVE').length,
+    activeLicenses: licenses.filter((l: any) => l.status === 'ACTIVE').length,
     totalUsageEvents: usageAnalytics.length,
     eventTypes: usageAnalytics.reduce((acc: Record<string, number>, event: any) => {
       acc[event.event] = (acc[event.event] || 0) + 1;
@@ -294,7 +296,7 @@ router.get('/:subscriptionId/billing-history', [
 ], asyncHandler(async (req: Request, res: Response) => {
   const { subscriptionId } = req.params;
 
-  const billingHistory = (await firestoreService.getPaymentsBySubscriptionId(subscriptionId)).map(p => ({
+  const billingHistory = (await db.getPaymentsBySubscriptionId(subscriptionId)).map((p: any) => ({
     id: p.id,
     amount: p.amount,
     currency: p.currency,
@@ -322,7 +324,7 @@ router.post('/:subscriptionId/preview-changes', [
   const { subscriptionId } = req.params;
   const { seats, tier } = req.body;
 
-  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+  const subscription = await db.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -347,7 +349,7 @@ router.get('/:subscriptionId/renewal', [
 ], asyncHandler(async (req: Request, res: Response) => {
   const { subscriptionId } = req.params;
 
-  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+  const subscription = await db.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);
@@ -383,7 +385,7 @@ router.post('/:subscriptionId/add-seats', [
   const userId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
-  const subscription = await firestoreService.getSubscriptionById(subscriptionId);
+  const subscription = await db.getSubscriptionById(subscriptionId);
 
   if (!subscription) {
     throw createApiError('Subscription not found', 404);

@@ -13,6 +13,7 @@ import {
   addRequestInfo,
   validateSubscriptionOwnership 
 } from '../middleware/auth.js';
+import { db } from '../services/db.js';
 
 const router: Router = Router();
 

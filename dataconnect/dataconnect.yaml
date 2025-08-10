@@ -1,0 +1,12 @@
+specVersion: "v1"
+serviceId: "licensing-service"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "licensing_db"
+      cloudSql:
+        instanceId: "licensing-sql"
+      # schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]

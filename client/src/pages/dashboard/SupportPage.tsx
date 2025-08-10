@@ -52,6 +52,7 @@ import {
 import { useSnackbar } from 'notistack';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
+import { useLocation } from 'react-router-dom';
 
 interface FAQItem {
   id: string;
@@ -177,11 +178,14 @@ const SupportPage: React.FC = () => {
     </Box>
   );
 
+  const location = useLocation();
+  const inDashboard = location.pathname.startsWith('/dashboard');
+
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
-      <Navigation />
+      {!inDashboard && <Navigation />}
       
-      <Container maxWidth="lg" sx={{ pt: { xs: 12, md: 16 }, pb: { xs: 4, md: 8 } }}>
+      <Container maxWidth="lg" sx={{ pt: inDashboard ? { xs: 2, md: 4 } : { xs: 12, md: 16 }, pb: inDashboard ? { xs: 2, md: 4 } : { xs: 4, md: 8 } }}>
         <Box
           sx={{
             background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%)',
@@ -624,7 +628,7 @@ const SupportPage: React.FC = () => {
         </Box>
       </Container>
       
-      <Footer />
+      {!inDashboard && <Footer />}
     </Box>
   );
 };

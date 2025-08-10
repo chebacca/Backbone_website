@@ -33,6 +33,28 @@ const getBaseURL = (): string => {
 
 const baseURL = getBaseURL();
 
+// Simple token storage helpers to avoid circular deps with authService
+const tokenStorage = {
+  getAccessToken(): string | null {
+    return localStorage.getItem('auth_token');
+  },
+  setAccessToken(token: string | null): void {
+    if (token) localStorage.setItem('auth_token', token);
+    else localStorage.removeItem('auth_token');
+  },
+  getRefreshToken(): string | null {
+    return localStorage.getItem('refresh_token');
+  },
+  setRefreshToken(token: string | null): void {
+    if (token) localStorage.setItem('refresh_token', token);
+    else localStorage.removeItem('refresh_token');
+  },
+  clearAll(): void {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+  },
+};
+
 // Debug: surface which baseURL is being used (dev only)
 if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
   // eslint-disable-next-line no-console
@@ -52,7 +74,7 @@ const createApiInstance = (): AxiosInstance => {
   // Request interceptor to add auth token
   instance.interceptors.request.use(
     (config) => {
-      const token = localStorage.getItem('auth_token');
+      const token = tokenStorage.getAccessToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -63,19 +85,107 @@ const createApiInstance = (): AxiosInstance => {
     }
   );
 
-  // Response interceptor to handle common errors
-  instance.interceptors.response.use(
-    (response) => {
-      return response;
-    },
-    (error) => {
-      if (error.response?.status === 401) {
-        // Unauthorized - clear token and redirect to login
-        localStorage.removeItem('auth_token');
-        window.location.href = '/login';
+  // Response interceptor with refresh flow on 401
+  let isRefreshing = false;
+  let pendingRequests: Array<(token: string | null) => void> = [];
+
+  const processQueue = (newToken: string | null): void => {
+    pendingRequests.forEach((cb) => cb(newToken));
+    pendingRequests = [];
+  };
+
+  const refreshAccessToken = async (): Promise<{ accessToken: string; refreshToken?: string } | null> => {
+    const refreshToken = tokenStorage.getRefreshToken();
+    if (!refreshToken) return null;
+    try {
+      // Use a bare axios instance to avoid interceptor recursion
+      const res = await axios.post(
+        `${baseURL.replace(/\/$/, '')}/auth/refresh`,
+        { refreshToken },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+      );
+      if (res.data?.success && res.data?.data?.tokens?.accessToken) {
+        const accessToken: string = res.data.data.tokens.accessToken;
+        const nextRefresh: string | undefined = res.data.data.tokens.refreshToken;
+        tokenStorage.setAccessToken(accessToken);
+        if (nextRefresh) tokenStorage.setRefreshToken(nextRefresh);
+        return { accessToken, refreshToken: nextRefresh };
       }
-      
-      return Promise.reject(error);
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  instance.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+
+      // If not a 401, or there is no response, just reject
+      if (!error.response || error.response.status !== 401) {
+        return Promise.reject(error);
+      }
+
+      // Do not try to refresh on auth endpoints
+      const url = (originalRequest.url || '').toString();
+      const isAuthEndpoint =
+        url.includes('/auth/login') ||
+        url.includes('/auth/verify-2fa') ||
+        url.includes('/auth/refresh') ||
+        url.includes('/auth/register');
+
+      if (isAuthEndpoint) {
+        tokenStorage.clearAll();
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
+      if (originalRequest._retry) {
+        // Already retried once, force logout
+        tokenStorage.clearAll();
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        // Queue the request until refresh completes
+        return new Promise((resolve, reject) => {
+          pendingRequests.push((newToken) => {
+            if (!newToken) {
+              reject(error);
+              return;
+            }
+            try {
+              originalRequest.headers = originalRequest.headers || {};
+              (originalRequest.headers as any).Authorization = `Bearer ${newToken}`;
+              originalRequest._retry = true;
+              resolve(instance(originalRequest));
+            } catch (e) {
+              reject(e);
+            }
+          });
+        });
+      }
+
+      isRefreshing = true;
+      const newTokens = await refreshAccessToken();
+      isRefreshing = false;
+
+      if (!newTokens?.accessToken) {
+        processQueue(null);
+        tokenStorage.clearAll();
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
+      processQueue(newTokens.accessToken);
+
+      // Retry the original request with the new token
+      originalRequest.headers = originalRequest.headers || {};
+      (originalRequest.headers as any).Authorization = `Bearer ${newTokens.accessToken}`;
+      originalRequest._retry = true;
+      return instance(originalRequest);
     }
   );
 
@@ -199,6 +309,7 @@ export const endpoints = {
     register: () => 'auth/register',
     logout: () => 'auth/logout',
     profile: () => 'auth/me',
+    refresh: () => 'auth/refresh',
     verifyEmail: (token: string) => `auth/verify-email/${token}`,
     resendVerification: () => 'auth/resend-verification',
     forgotPassword: () => 'auth/forgot-password',
@@ -219,6 +330,15 @@ export const endpoints = {
     updatePaymentMethod: (subscriptionId: string) => `payments/payment-method/${subscriptionId}`,
     calculateTax: () => 'payments/calculate-tax',
     webhook: () => 'payments/webhook',
+  },
+
+  // Invoice endpoints
+  invoices: {
+    list: () => 'invoices',
+    details: (invoiceId: string) => `invoices/${invoiceId}`,
+    create: () => 'invoices',
+    updateStatus: (invoiceId: string) => `invoices/${invoiceId}/status`,
+    delete: (invoiceId: string) => `invoices/${invoiceId}`,
   },
 
   // License endpoints

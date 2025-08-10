@@ -29,10 +29,16 @@ import {
   Update,
   Star,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useAuth } from '@/context/AuthContext';
 import { Link as RouterLink } from 'react-router-dom';
 import api, { endpoints } from '@/services/api';
+import { 
+  Subscription, 
+  License, 
+  UsageAnalytics,
+  SubscriptionTier,
+  LicenseStatus 
+} from '@/types';
 
 interface MetricCardProps {
   title: string;
@@ -155,7 +161,7 @@ const getStatusColor = (status?: string) => {
 const DashboardOverview: React.FC = () => {
   const { user } = useAuth();
 
-  const [_, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [activeLicenses, setActiveLicenses] = useState<number>(0);
   const [totalLicenses, setTotalLicenses] = useState<number>(0);
   const [monthlyUsage, setMonthlyUsage] = useState<number>(0);
@@ -163,48 +169,69 @@ const DashboardOverview: React.FC = () => {
   const [currentPlan, setCurrentPlan] = useState<string>('');
   const [daysUntilRenewal, setDaysUntilRenewal] = useState<string>('');
   const [hasEnterpriseFeatures, setHasEnterpriseFeatures] = useState<boolean>(false);
+  const [teamMembers, setTeamMembers] = useState<number>(0);
 
   useEffect(() => {
     let isMounted = true;
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [subsRes, analyticsRes] = await Promise.all([
+        
+        // Fetch all data in parallel for better performance
+        const [subsRes, analyticsRes, licensesRes] = await Promise.all([
           api.get(endpoints.subscriptions.mySubscriptions()),
           api.get(endpoints.licenses.analytics()),
+          api.get(endpoints.licenses.myLicenses()),
         ]);
 
-        // Subscriptions
-        const subscriptions = subsRes.data?.data?.subscriptions ?? [];
-        const totalLic = subscriptions.reduce((acc: number, s: any) => acc + (s._count?.licenses ?? s.licenses?.length ?? 0), 0);
-        const activeLic = subscriptions.reduce(
-          (acc: number, s: any) => acc + (s.licenses?.filter((l: any) => l.status === 'ACTIVE').length ?? 0),
-          0
-        );
         if (!isMounted) return;
+
+        // Process licenses data - now properly typed from Prisma
+        const licenses: License[] = licensesRes.data?.data?.licenses ?? [];
+        const totalLic = licenses.length;
+        const activeLic = licenses.filter(license => 
+          license.status === LicenseStatus.ACTIVE
+        ).length;
+        
         setTotalLicenses(totalLic);
         setActiveLicenses(activeLic);
 
-        // Plan and renewal
-        const primary = subscriptions[0];
+        // Process subscription data - now properly typed from Prisma
+        const subscriptions: Subscription[] = subsRes.data?.data?.subscriptions ?? [];
+        const primary = subscriptions.find(sub => sub.status === 'ACTIVE') || subscriptions[0];
+        
         if (primary) {
-          setCurrentPlan(primary.tier?.toLowerCase?.() ?? String(primary.tier));
+          setCurrentPlan(primary.tier?.toLowerCase() ?? '');
+          
           if (primary.currentPeriodEnd) {
             const end = new Date(primary.currentPeriodEnd);
             const days = Math.max(0, Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
             setDaysUntilRenewal(`${days} day${days === 1 ? '' : 's'}`);
           }
-          setHasEnterpriseFeatures(primary.tier === 'ENTERPRISE');
+          
+          setHasEnterpriseFeatures(primary.tier === SubscriptionTier.ENTERPRISE);
+          
+          // Calculate team members for enterprise
+          if (primary.tier === SubscriptionTier.ENTERPRISE) {
+            setTeamMembers(primary.seats || 0);
+          }
         }
 
-        // Analytics summary
-        const summary = analyticsRes.data?.data?.summary;
-        if (summary) {
-          setMonthlyUsage(summary.totalEvents ?? 0);
-          const downloads = (summary.eventTypes && (summary.eventTypes.SDK_DOWNLOAD_REQUEST || summary.eventTypes['SDK_DOWNLOAD_REQUEST'])) || 0;
-          setTotalDownloads(downloads);
+        // Process analytics data - now properly typed from Prisma
+        const analytics = analyticsRes.data?.data;
+        if (analytics) {
+          // Handle both old and new analytics structure
+          if (analytics.summary) {
+            setMonthlyUsage(analytics.summary.totalEvents ?? 0);
+            const downloads = analytics.summary.eventTypes?.['SDK_DOWNLOAD_REQUEST'] || 0;
+            setTotalDownloads(downloads);
+          } else if (analytics.totalEvents !== undefined) {
+            setMonthlyUsage(analytics.totalEvents);
+            setTotalDownloads(analytics.downloads || 0);
+          }
         }
       } catch (err) {
+        console.error('Error fetching dashboard data:', err);
         // Fallback to zeros on error
         if (!isMounted) return;
         setActiveLicenses(0);
@@ -214,10 +241,12 @@ const DashboardOverview: React.FC = () => {
         setCurrentPlan('');
         setDaysUntilRenewal('');
         setHasEnterpriseFeatures(false);
+        setTeamMembers(0);
       } finally {
         if (isMounted) setLoading(false);
       }
     };
+    
     fetchData();
     return () => {
       isMounted = false;
@@ -228,6 +257,14 @@ const DashboardOverview: React.FC = () => {
     if (totalLicenses <= 0) return 0;
     return Math.round((activeLicenses / totalLicenses) * 100);
   }, [activeLicenses, totalLicenses]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <Typography>Loading dashboard...</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -266,7 +303,7 @@ const DashboardOverview: React.FC = () => {
           <Grid item xs={12} sm={6} lg={3}>
             <MetricCard
               title="Team Members"
-              value={8}
+              value={teamMembers}
               icon={<People />}
               trend={{ value: 8, direction: 'up' }}
               color="secondary"

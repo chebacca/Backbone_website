@@ -85,6 +85,38 @@ export const authService = {
     } as LoginResponse;
   },
 
+  /**
+   * Login with Google ID token
+   */
+  async loginWithGoogle(idToken: string): Promise<LoginResponse> {
+    const response = await api.post(endpoints.auth.oauthGoogle(), { idToken });
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Google login failed');
+    }
+    const data = response.data.data;
+    return {
+      user: data.user,
+      token: data.tokens?.accessToken,
+      refreshToken: data.tokens?.refreshToken,
+    } as LoginResponse;
+  },
+
+  /**
+   * Login with Apple ID token
+   */
+  async loginWithApple(idToken: string): Promise<LoginResponse> {
+    const response = await api.post(endpoints.auth.oauthApple(), { idToken });
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Apple login failed');
+    }
+    const data = response.data.data;
+    return {
+      user: data.user,
+      token: data.tokens?.accessToken,
+      refreshToken: data.tokens?.refreshToken,
+    } as LoginResponse;
+  },
+
   async verify2FA(interimToken: string, code: string): Promise<LoginResponse> {
     const response = await api.post(
       endpoints.auth.verify2FA(),

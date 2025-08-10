@@ -1,7 +1,7 @@
 # Compliance, Security, and Privacy (MPC)
 
 Controls
-- Helmet CSP + CORS + rate limiting on `/api/`
+- Helmet CSP + CORS + rate limiting on `/api/` + HSTS in production
 - JWT auth; email verification gates for protected actions
 - Input validation and sanitization via `express-validator`/Zod
 - Optional TOTP-based 2FA with interim tokens and backup codes
@@ -22,7 +22,9 @@ GDPR & Data Subject Rights
 - Data retention via `DataRetentionPolicy` and `DataProcessingRecord`
 
 Webhooks
-- All webhook events persisted; failures retried with capped attempts
+- Stripe signatures verified using raw request body (`express.raw`) and `stripe.webhooks.constructEvent`
+- All webhook events persisted to `webhook_events`; failures retried with capped attempts
+- Mount `/api/webhooks` before global JSON body parser to preserve raw body
 
 2FA Security
 - Interim tokens expire in 5 minutes with `twofaPending` flag
@@ -35,3 +37,26 @@ Security Notes
 - Enforce JSON responses for APIs; consistent `{ success, data|message|error }`
 - Use least-privilege role checks in admin endpoints
 - Interim tokens block access until 2FA verification completes
+- Protect setup/debug endpoints with `x-setup-token` and disable them in production
+
+## Versioned Legal Consent (ToS/Privacy)
+- Versioning
+  - Terms of Service: `config.legal.termsVersion` (env `TERMS_VERSION`, default `1.0`)
+  - Privacy Policy: `config.legal.privacyVersion` (env `PRIVACY_VERSION`, default `1.0`)
+- Storage
+  - Event-level: `privacy_consents` collection with fields: `userId`, `consentType`, `consentGranted`, `consentVersion`, `ipAddress`, `userAgent`, `consentDate`
+  - User snapshot fields (fast checks): `termsVersionAccepted`, `termsAcceptedAt`, `privacyPolicyVersionAccepted`, `privacyPolicyAcceptedAt`
+- Capture points
+  - Registration: records `TERMS_OF_SERVICE` and `PRIVACY_POLICY` consent with current versions
+  - Payments: records `DATA_PROCESSING` consent
+  - Manual: `POST /users/consent` for all supported consent types
+- Enforcement
+  - Login response includes `requiresLegalAcceptance` if user snapshot versions do not match current configured versions
+  - Client blocks flows until acceptance and calls `POST /users/consent` with current versions
+- Accounting/Legal Review
+  - `GET /accounting/consents/latest` → per-user ToS/Privacy snapshot
+  - `GET /accounting/users/:userId/consent-history?includePII=false|true` → full event history
+
+Security notes
+- Do not log raw tokens, full license keys, or PII; IP and UA are stored in consent events (exported with `includePII` when authorized)
+- All API responses are JSON-only with consistent schema

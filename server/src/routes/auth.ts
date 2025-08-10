@@ -18,6 +18,8 @@ import {
   requireEmailVerification 
 } from '../middleware/auth.js';
 import { config } from '../config/index.js';
+import { OAuth2Client } from 'google-auth-library';
+import crypto from 'crypto';
 
 const router: Router = Router();
 
@@ -91,6 +93,159 @@ router.post('/register', [
   return;
 }));
 
+/**
+ * Google OAuth login
+ * Body: { idToken: string }
+ */
+router.post('/oauth/google', [body('idToken').notEmpty()], asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
+
+  const { idToken } = req.body as { idToken: string };
+  if (!config.google.clientId) throw createApiError('Google OAuth not configured', 500);
+
+  const client = new OAuth2Client(config.google.clientId);
+  let ticket;
+  try {
+    ticket = await client.verifyIdToken({ idToken, audience: config.google.clientId });
+  } catch (e) {
+    throw createApiError('Invalid Google ID token', 401);
+  }
+
+  const payload = ticket.getPayload();
+  if (!payload || !payload.email) throw createApiError('Google profile missing email', 400);
+
+  const email = payload.email.toLowerCase();
+  const name = payload.name || email.split('@')[0];
+  const emailVerified = Boolean(payload.email_verified);
+
+  let user = await firestoreService.getUserByEmail(email);
+  if (!user) {
+    // Create user with a random password; mark verified if provider verified
+    const randomPassword = crypto.randomBytes(16).toString('hex');
+    user = await firestoreService.createUser({
+      email,
+      password: await PasswordUtil.hash(randomPassword),
+      name,
+      role: 'USER',
+      isEmailVerified: emailVerified,
+      twoFactorEnabled: false,
+      twoFactorBackupCodes: [],
+      privacyConsent: [],
+      marketingConsent: false,
+      dataProcessingConsent: false,
+      termsAcceptedAt: new Date(),
+      termsVersionAccepted: config.legal.termsVersion,
+      privacyPolicyAcceptedAt: new Date(),
+      privacyPolicyVersionAccepted: config.legal.privacyVersion,
+      identityVerified: false,
+      kycStatus: 'PENDING',
+      registrationSource: 'google-oauth',
+    });
+  } else {
+    // Update verification if Google says verified and we aren't yet
+    if (emailVerified && !user.isEmailVerified) {
+      await firestoreService.updateUser(user.id, { isEmailVerified: true });
+    }
+  }
+
+  // Generate tokens
+  const tokens = JwtUtil.generateTokens({ userId: user.id, email: user.email, role: user.role });
+  await firestoreService.updateUser(user.id, { lastLoginAt: new Date() });
+  await ComplianceService.createAuditLog(user.id, 'LOGIN', 'User logged in via Google OAuth', { email }, (req as any).requestInfo);
+
+  const requiresLegalAcceptance = (user.termsVersionAccepted !== config.legal.termsVersion) || (user.privacyPolicyVersionAccepted !== config.legal.privacyVersion);
+  res.json({
+    success: true,
+    message: 'Login successful',
+    data: {
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified },
+      tokens,
+      requiresLegalAcceptance,
+      requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },
+    }
+  });
+  return;
+}));
+
+/**
+ * Apple OAuth login
+ * Body: { idToken?: string, code?: string, nonce?: string }
+ * Supports direct ID token post from Apple or server-side exchange path later.
+ */
+router.post('/oauth/apple', asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const { idToken } = req.body as { idToken?: string };
+  if (!idToken) throw createApiError('idToken is required', 400);
+  if (!config.apple.clientId) throw createApiError('Apple Sign In not configured', 500);
+
+  // Verify Apple ID token via JWKS
+  // Lightweight verification approach: use apple-signin-auth library substitute inline via jwt decode + aud/sub checks is not acceptable here
+  // We will use the Apple JWKS endpoint with jsonwebtoken for signature verification.
+  const jwksUrl = 'https://appleid.apple.com/auth/keys';
+  const jwt = await import('jsonwebtoken');
+  const resKeys = await fetch(jwksUrl);
+  const { keys } = await resKeys.json();
+
+  const header = JSON.parse(Buffer.from(idToken.split('.')[0], 'base64').toString());
+  const jwk = keys.find((k: any) => k.kid === header.kid);
+  if (!jwk) throw createApiError('Invalid Apple token header', 401);
+
+  // Convert JWK to PEM
+  const getPem = (await import('jwk-to-pem')).default;
+  const pem = getPem(jwk);
+  let decoded: any;
+  try {
+    decoded = jwt.verify(idToken, pem, { algorithms: ['RS256'], audience: config.apple.clientId });
+  } catch {
+    throw createApiError('Invalid Apple ID token', 401);
+  }
+
+  const email = (decoded?.email || '').toLowerCase();
+  if (!email) throw createApiError('Apple profile missing email', 400);
+  const name = email.split('@')[0];
+
+  let user = await firestoreService.getUserByEmail(email);
+  if (!user) {
+    const randomPassword = crypto.randomBytes(16).toString('hex');
+    user = await firestoreService.createUser({
+      email,
+      password: await PasswordUtil.hash(randomPassword),
+      name,
+      role: 'USER',
+      isEmailVerified: true, // Apple returns verified email
+      twoFactorEnabled: false,
+      twoFactorBackupCodes: [],
+      privacyConsent: [],
+      marketingConsent: false,
+      dataProcessingConsent: false,
+      termsAcceptedAt: new Date(),
+      termsVersionAccepted: config.legal.termsVersion,
+      privacyPolicyAcceptedAt: new Date(),
+      privacyPolicyVersionAccepted: config.legal.privacyVersion,
+      identityVerified: false,
+      kycStatus: 'PENDING',
+      registrationSource: 'apple-oauth',
+    });
+  }
+
+  const tokens = JwtUtil.generateTokens({ userId: user.id, email: user.email, role: user.role });
+  await firestoreService.updateUser(user.id, { lastLoginAt: new Date() });
+  await ComplianceService.createAuditLog(user.id, 'LOGIN', 'User logged in via Apple Sign In', { email }, (req as any).requestInfo);
+
+  const requiresLegalAcceptance = (user.termsVersionAccepted !== config.legal.termsVersion) || (user.privacyPolicyVersionAccepted !== config.legal.privacyVersion);
+  res.json({
+    success: true,
+    message: 'Login successful',
+    data: {
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified },
+      tokens,
+      requiresLegalAcceptance,
+      requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },
+    }
+  });
+  return;
+}));
+
 router.post('/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
@@ -119,7 +274,18 @@ router.post('/login', [
   await ComplianceService.createAuditLog(user.id, 'LOGIN', 'User logged in successfully', { email }, requestInfo);
   logger.info(`User logged in successfully: ${email}`, { userId: user.id });
 
-  res.json({ success: true, message: 'Login successful', data: { user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified }, tokens } });
+  const requiresLegalAcceptance = (user.termsVersionAccepted !== config.legal.termsVersion) || (user.privacyPolicyVersionAccepted !== config.legal.privacyVersion);
+
+  res.json({
+    success: true,
+    message: 'Login successful',
+    data: {
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified },
+      tokens,
+      requiresLegalAcceptance,
+      requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },
+    }
+  });
   return;
 }));
 

@@ -33,7 +33,8 @@
 
 ## Webhook Processing
 - **Endpoint**: `/api/webhooks/stripe`
-- **Verification**: Stripe signature verification
+- **Verification**: Stripe signature verification using `stripe.webhooks.constructEvent` with the raw request body
+- **Body Parsing**: The route uses `express.raw({ type: 'application/json' })`; ensure `/api/webhooks` mounts before global JSON parsers
 - **Events**: Subscription updates, payment confirmations
 - **Persistence**: Webhook events stored in database
 - **Retry Logic**: Failed webhook processing with retry mechanism

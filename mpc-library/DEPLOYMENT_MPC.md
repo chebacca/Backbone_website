@@ -3,7 +3,7 @@
 ## Current Status
 - **Production**: Fully deployed on Firebase (backbone-logic.web.app)
 - **Backend**: Firebase Cloud Functions (api function)
-- **Database**: PostgreSQL production database via Prisma
+- **Database**: Firestore via Firebase Admin (authoritative)
 - **Hosting**: Firebase Hosting with SPA routing
 
 ## Deployment Commands
@@ -40,19 +40,25 @@ pnpm build:server            # Build backend
 
 ## Environment Variables
 All environment variables are configured in Firebase Functions:
-- Stripe keys and webhooks
-- Resend API for emails
+- Stripe keys and webhooks (Functions secret `STRIPE_WEBHOOK_SECRET`)
+- Resend/SendGrid API keys for emails
 - JWT secrets
-- Database connection
-- Admin credentials
+- Firebase Admin credentials
+- Admin setup token (`ADMIN_SETUP_TOKEN`) for guarded setup endpoints (non-prod)
 
 ## Database
-- **Production**: PostgreSQL via Prisma
-- **Schema**: server/prisma/schema.prisma
-- **Migrations**: Prisma migrations
-- **Seeding**: Available via pnpm seed commands
+- **Production**: Firestore collections (see `server/src/services/firestoreService.ts` types)
+- **Schema**: Modeled via TypeScript interfaces, no SQL schema
+- **Migrations**: Not applicable (NoSQL); evolve collections via services
+- **Seeding**: Guarded setup endpoints; disabled in production
 
 ## Monitoring
 - Firebase Console for functions and hosting
 - Stripe Dashboard for payments
 - Resend Dashboard for email delivery
+
+## Post-Deploy Checklist
+- [ ] Visit `/api/health` → returns `ok`
+- [ ] Stripe webhook test via Stripe CLI → event stored in `webhook_events` and processed
+- [ ] HSTS header present in production responses (`Strict-Transport-Security`)
+- [ ] Setup/debug endpoints return 403/404 in production

@@ -1,5 +1,12 @@
 # Workflows (MPC)
 
+## 2025-08-10 — Compliance & Security Hardening
+
+- Stripe webhooks: Use `express.raw({ type: 'application/json' })` and verify with `stripe.webhooks.constructEvent`. Mount `/api/webhooks` before global `express.json()`.
+- HTTP security: Enable HSTS via Helmet in production.
+- Setup/debug endpoints: Require `x-setup-token`; block in production.
+- Persistence: Use Firestore Admin (`services/firestoreService.ts`); `services/db.ts` maps legacy interface to Firestore.
+
 ## Current Status
 - **Deployment**: Fully deployed on Firebase
 - **Database**: PostgreSQL production database
@@ -12,7 +19,7 @@
 1. **Sign Up**: User creates account with email/password
 2. **Email Verification**: Verification email sent via Resend
 3. **Profile Setup**: User completes business profile and preferences
-4. **Consent Management**: GDPR and marketing consent collection
+4. **Consent Management**: Versioned ToS/Privacy consent at registration; GDPR and marketing consent collection
 5. **KYC Verification**: Business verification for enterprise features
 
 ### Subscription & Payment Flow
@@ -54,9 +61,10 @@
 
 ### Compliance & Security
 1. **Audit Logging**: Monitor system access and changes
-2. **Compliance Events**: Track and resolve compliance issues
-3. **Data Export**: Handle GDPR data export requests
-4. **System Health**: Monitor system performance and security
+2. **Consent Review**: Accounting/Legal tab surfaces users’ latest ToS/Privacy snapshots and CSV export of histories
+3. **Compliance Events**: Track and resolve compliance issues
+4. **Data Export**: Handle GDPR data export requests
+5. **System Health**: Monitor system performance and security
 
 ## Technical Workflows
 
@@ -82,7 +90,7 @@
 ## Compliance Workflows
 
 ### GDPR Compliance
-1. **Consent Collection**: User consent tracking
+1. **Consent Collection**: User consent tracking with event-level records and per-user snapshots. Re-acceptance prompted on login if versions change.
 2. **Data Processing**: Audit logging of data operations
 3. **Data Export**: User data export functionality
 4. **Data Deletion**: Right to be forgotten implementation

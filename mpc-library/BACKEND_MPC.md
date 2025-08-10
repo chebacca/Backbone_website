@@ -4,22 +4,23 @@
 - **Deployment**: Firebase Cloud Functions (us-central1)
 - **Runtime**: Node.js 20
 - **Memory**: 256MB
-- **Database**: PostgreSQL via Prisma (production)
+- **Database**: Firestore via Firebase Admin (authoritative)
 
 ## Architecture
 - **Framework**: Express.js with TypeScript
-- **Database**: Prisma ORM with PostgreSQL
+- **Database**: Firestore (admin SDK) via `services/firestoreService.ts` (centralized access)
+- **DB Facade**: `services/db.ts` maps legacy Prisma-shaped calls to Firestore implementations
 - **Authentication**: JWT with Firebase Admin
-- **Email**: Resend API (replaced SendGrid)
+- **Email**: Resend API (SendGrid as fallback for events)
 - **Payments**: Stripe SDK v14
-- **Security**: Helmet, CORS, Rate limiting
+- **Security**: Helmet (with HSTS in prod), CORS, Rate limiting
 
 ## Dependencies
 
 ### Core
 - Express 4.21.2
 - TypeScript 5.3.3
-- Prisma 6.3.1 (PostgreSQL client)
+- Firebase Admin 13.x (Firestore/Auth)
 
 ### Security & Middleware
 - Helmet 7.1.0
@@ -36,7 +37,7 @@
 ### External Services
 - Stripe 14.14.0
 - Resend 6.0.1 (email)
-- SendGrid 8.1.0 (legacy, can be removed)
+- SendGrid 8.1.0 (fallback/event webhooks)
 
 ### Utilities
 - Zod 3.22.4 (validation)
@@ -64,12 +65,12 @@ server/src/
 - `/api/admin/*` - Admin operations
 - `/api/webhooks/*` - External webhooks
 - `/api/invoices/*` - Invoice system
+ - `/api/accounting/*` - Accounting & compliance review (payments, tax summary, KYC, consent snapshots)
 
 ## Database
-- **Schema**: `server/prisma/schema.prisma`
-- **Migrations**: Prisma migration system
-- **Seeding**: Available via pnpm seed commands
-- **Client**: Generated Prisma client
+- **Authoritative**: Firestore collections (see `services/firestoreService.ts` types)
+- **Seeding**: Setup endpoints guarded by `x-setup-token` (disabled in production)
+- **Note**: Legacy Prisma references have been removed from runtime paths
 
 ## Environment Variables
 Configured in Firebase Functions:
@@ -79,6 +80,8 @@ Configured in Firebase Functions:
 - JWT secrets
 - Firebase credentials
 - Admin setup tokens
+ - TERMS_VERSION (default `1.0`) — ToS version for consent
+ - PRIVACY_VERSION (default `1.0`) — Privacy Policy version for consent
 
 ## Development
 ```bash
@@ -88,7 +91,6 @@ pnpm start                # Run compiled server
 ```
 
 ## Deployment
-- Functions deployed via `firebase deploy --only functions`
-- Environment variables set in Firebase Console
-- Database migrations run separately
-- Prisma client generated during build
+- Functions deployed via `pnpm deploy` (Firebase Hosting + Functions)
+- Environment variables set via Functions secrets / env
+- No SQL migrations; Firestore used for persistence

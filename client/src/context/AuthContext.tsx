@@ -34,6 +34,8 @@ interface AuthContextType extends AuthState {
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
+  loginWithGoogle: (idToken: string) => Promise<User>;
+  loginWithApple: (idToken: string) => Promise<User>;
 }
 
 interface RegisterData {
@@ -138,7 +140,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isLoading: false,
         token: response.token,
       });
+
+      // If backend indicates updated legal acceptance is required, redirect user to Terms page
+      if ((response as any)?.requiresLegalAcceptance) {
+        // Rely on UI to present modal or direct users to the Terms page
+        // We store a flag so pages can block critical flows until accepted
+        localStorage.setItem('legal_acceptance_required', 'true');
+      } else {
+        localStorage.removeItem('legal_acceptance_required');
+      }
       
+      return response.user;
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithGoogle = async (idToken: string): Promise<User> => {
+    setLoading(true);
+    try {
+      const response = await authService.loginWithGoogle(idToken);
+      localStorage.setItem('auth_token', response.token);
+      if (response.refreshToken) localStorage.setItem('refresh_token', response.refreshToken);
+      localStorage.setItem('auth_user', JSON.stringify(response.user));
+      setAuthState({ user: response.user, isAuthenticated: true, isLoading: false, token: response.token });
+      localStorage.removeItem('legal_acceptance_required');
+      return response.user;
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithApple = async (idToken: string): Promise<User> => {
+    setLoading(true);
+    try {
+      const response = await authService.loginWithApple(idToken);
+      localStorage.setItem('auth_token', response.token);
+      if (response.refreshToken) localStorage.setItem('refresh_token', response.refreshToken);
+      localStorage.setItem('auth_user', JSON.stringify(response.user));
+      setAuthState({ user: response.user, isAuthenticated: true, isLoading: false, token: response.token });
+      localStorage.removeItem('legal_acceptance_required');
       return response.user;
     } catch (error) {
       setAuthState(prev => ({ ...prev, isLoading: false }));
@@ -166,6 +213,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isLoading: false,
         token: response.token,
       });
+      localStorage.removeItem('legal_acceptance_required');
     } catch (error) {
       setAuthState(prev => ({ ...prev, isLoading: false }));
       throw error;
@@ -231,6 +279,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const contextValue: AuthContextType = {
     ...authState,
     login,
+    loginWithGoogle,
+    loginWithApple,
     register,
     logout,
     refreshUser,

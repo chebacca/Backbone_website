@@ -16,6 +16,7 @@ const PricingPage = React.lazy(() => import('@/pages/PricingPage'));
 const TermsPage = React.lazy(() => import('@/pages/legal/TermsPage'));
 const PrivacyPolicyPage = React.lazy(() => import('@/pages/legal/PrivacyPolicyPage'));
 const SlaPage = React.lazy(() => import('@/pages/legal/SlaPage'));
+const CookiePolicyPage = React.lazy(() => import('@/pages/legal/CookiePolicyPage'));
 const CheckoutPage = React.lazy(() => import('@/pages/checkout/CheckoutPage'));
 const DashboardLayout = React.lazy(() => import('@/components/layout/DashboardLayout'));
 const DashboardOverview = React.lazy(() => import('@/pages/dashboard/DashboardOverview'));
@@ -188,6 +189,7 @@ function App() {
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/sla" element={<SlaPage />} />
+            <Route path="/cookies" element={<CookiePolicyPage />} />
 
             {/* Dashboard Routes (protected) */}
             <Route 

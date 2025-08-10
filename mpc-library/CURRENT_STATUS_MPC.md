@@ -7,7 +7,7 @@
 - ✅ **Production**: Fully deployed on Firebase
 - ✅ **Domain**: https://backbone-logic.web.app
 - ✅ **Backend**: Firebase Cloud Functions (us-central1)
-- ✅ **Database**: PostgreSQL production database
+- ✅ **Database**: Firestore (Firebase Admin) — authoritative persistence
 - ✅ **Hosting**: Firebase Hosting with SPA routing
 
 ## Technology Stack
@@ -23,7 +23,7 @@
 
 ### Backend
 - Express.js 4.21.2 + TypeScript 5.3.3
-- Prisma 6.3.1 ORM with PostgreSQL
+- Firestore via Firebase Admin (centralized `services/firestoreService.ts`)
 - Firebase Admin 13.4.0
 - Stripe SDK 14.14.0
 - Resend 6.0.1 (email service)
@@ -31,8 +31,8 @@
 
 ### Infrastructure
 - Firebase Hosting & Functions
-- PostgreSQL database
-- Prisma migrations
+- Firestore database
+- No SQL migrations (collections governed by service types)
 - Environment variables in Firebase
 
 ## Implemented Features
@@ -81,11 +81,11 @@
 - ✅ Compliance event tracking
 - ✅ Data export/deletion requests
 
-## Database Schema
+## Data Model Overview
 - **Users**: Authentication, profiles, compliance data
 - **Subscriptions**: Payment plans, status, billing cycles
 - **Licenses**: License keys, activation, usage tracking
-- **Payments**: Transaction history, Stripe integration
+- **Payments**: Transaction history, Stripe integration, webhook events
 - **Invoices**: Invoice generation and delivery
 - **Compliance**: Audit logs, consent records, KYC data
 
@@ -104,7 +104,7 @@
 pnpm dev                    # Start development environment
 pnpm build                  # Build all packages
 pnpm deploy                 # Deploy to Firebase
-pnpm seed                   # Seed database with test data
+pnpm seed                   # Seed test data via guarded setup endpoints (not available in production)
 ```
 
 ## Environment Configuration
@@ -112,7 +112,7 @@ All environment variables configured in Firebase Functions:
 - Stripe API keys and webhooks
 - Resend email API
 - JWT secrets and expiration
-- Database connection strings
+- Firebase credentials (Admin SDK)
 - Admin setup tokens
 
 ## Current Status Summary

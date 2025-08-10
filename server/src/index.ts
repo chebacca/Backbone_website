@@ -30,6 +30,8 @@ app.set('trust proxy', true);
 
 // Security middleware
 app.use(helmet({
+  // Enable HSTS in production
+  hsts: config.isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -41,19 +43,24 @@ app.use(helmet({
         "'unsafe-eval'",
         "'wasm-unsafe-eval'",
         "https://js.stripe.com",
-        "https://m.stripe.network"
+        "https://m.stripe.network",
+        "https://accounts.google.com",
+        "https://appleid.cdn-apple.com"
       ],
       connectSrc: [
         "'self'",
         "https://api.stripe.com",
         "https://js.stripe.com",
         "https://m.stripe.network",
-        "https://q.stripe.com"
+        "https://q.stripe.com",
+        "https://accounts.google.com",
+        "https://appleid.apple.com"
       ],
       frameSrc: [
         "'self'",
         "https://js.stripe.com",
-        "https://m.stripe.network"
+        "https://m.stripe.network",
+        "https://accounts.google.com"
       ],
       frameAncestors: ["'self'"],
       workerSrc: ["'self'", "blob:"],

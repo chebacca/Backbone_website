@@ -52,6 +52,7 @@ client/src/
 - **Checkout**: Stripe payment integration
 - **Licensing**: License management and activation
 - **Responsive**: Mobile-first design with MUI
+ - **Legal Pages**: `/terms`, `/privacy`, `/sla`, `/cookies` with versioned ToS labels in register/checkout
 
 ## Development
 ```bash
@@ -63,6 +64,7 @@ pnpm preview              # Preview production build
 ## Environment
 - `VITE_API_BASE_URL`: Set to `/api` for Firebase hosting
 - `VITE_STRIPE_PUBLISHABLE_KEY`: Stripe public key
+ - `VITE_TERMS_VERSION`: Optional; surface version label in UI. If omitted, defaults to `1.0` while server remains authoritative via `TERMS_VERSION`.
 
 ## Build Output
 - Production files built to `deploy/` directory

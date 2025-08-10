@@ -318,6 +318,8 @@ export const endpoints = {
     twoFASetupInitiate: () => 'auth/2fa/setup/initiate',
     twoFASetupVerify: () => 'auth/2fa/setup/verify',
     twoFADisable: () => 'auth/2fa/disable',
+    oauthGoogle: () => 'auth/oauth/google',
+    oauthApple: () => 'auth/oauth/apple',
   },
 
   // Payment endpoints

@@ -100,6 +100,18 @@ Base URL: `${VITE_API_BASE_URL || /api}` (Firebase hosting)
 - POST /webhooks/retry-failed
 
 ## Deployment
+## Accounting
+- GET  /accounting/overview
+- GET  /accounting/payments?status&from&to&page&limit
+- POST /accounting/payments/export
+- GET  /accounting/tax/summary?from&to
+- GET  /accounting/kyc
+- GET  /accounting/compliance-events
+- GET  /accounting/consents/latest
+- GET  /accounting/users/:userId/consent-history?includePII=false|true
+
+## Auth — Legal Acceptance Flags
+- POST /auth/login → returns `requiresLegalAcceptance` and `requiredVersions` when user’s accepted versions are behind `config.legal`
 - **Production**: Firebase Cloud Functions (us-central1)
 - **Base URL**: https://us-central1-backbone-logic.cloudfunctions.net/api
 - **Hosting**: https://backbone-logic.web.app

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Container,
@@ -34,7 +34,7 @@ interface LoginFormData {
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, loginWithGoogle, loginWithApple } = useAuth();
   const { setLoading } = useLoading();
   const { enqueueSnackbar } = useSnackbar();
   
@@ -85,6 +85,56 @@ const LoginPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const handleGoogleCredential = async (credential: string) => {
+    try {
+      setError(null);
+      setLoading(true);
+      const user = await loginWithGoogle(credential);
+      enqueueSnackbar('Signed in with Google', { variant: 'success' });
+      const roleUpper = String(user?.role || '').toUpperCase();
+      if (roleUpper === 'SUPERADMIN') navigate('/admin');
+      else if (roleUpper === 'ACCOUNTING') navigate('/accounting');
+      else navigate('/dashboard');
+    } catch (err: any) {
+      const errorMessage = err.message || 'Google sign-in failed.';
+      setError(errorMessage);
+      enqueueSnackbar(errorMessage, { variant: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAppleIdToken = async (idToken: string) => {
+    try {
+      setError(null);
+      setLoading(true);
+      const user = await loginWithApple(idToken);
+      enqueueSnackbar('Signed in with Apple', { variant: 'success' });
+      const roleUpper = String(user?.role || '').toUpperCase();
+      if (roleUpper === 'SUPERADMIN') navigate('/admin');
+      else if (roleUpper === 'ACCOUNTING') navigate('/accounting');
+      else navigate('/dashboard');
+    } catch (err: any) {
+      const errorMessage = err.message || 'Apple sign-in failed.';
+      setError(errorMessage);
+      enqueueSnackbar(errorMessage, { variant: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Subscribe to Google credential events initialized in main.tsx
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { credential?: string };
+      if (detail?.credential) {
+        handleGoogleCredential(detail.credential);
+      }
+    };
+    window.addEventListener('google-credential', handler as EventListener);
+    return () => window.removeEventListener('google-credential', handler as EventListener);
+  }, []);
 
   const handleTogglePasswordVisibility = () => {
     setShowPassword(!showPassword);
@@ -306,6 +356,39 @@ const LoginPage: React.FC = () => {
                 >
                   {isSubmitting ? 'Signing In...' : 'Sign In'}
                 </Button>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Divider sx={{ flex: 1 }} />
+                  <Typography variant="body2" sx={{ mx: 2, color: 'text.secondary' }}>
+                    or
+                  </Typography>
+                  <Divider sx={{ flex: 1 }} />
+                </Box>
+
+                <Stack spacing={2} direction={{ xs: 'column', sm: 'row' }}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={async () => {
+                      const anyWindow = window as any;
+                      if (anyWindow.google?.accounts?.id) {
+                        anyWindow.google.accounts.id.prompt();
+                      } else {
+                        enqueueSnackbar('Google Sign-In not initialized. Please refresh.', { variant: 'warning' });
+                      }
+                    }}
+                  >
+                    Continue with Google
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={async () => {
+                      enqueueSnackbar('Apple Sign-In will appear if configured.', { variant: 'info' });
+                    }}
+                  >
+                    Continue with Apple
+                  </Button>
+                </Stack>
               </Stack>
             </Box>
             ) : (

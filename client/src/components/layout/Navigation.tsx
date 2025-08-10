@@ -48,7 +48,7 @@ export const Navigation: React.FC = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const inDashboardMode = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin');
+  const inDashboardMode = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin') || location.pathname.startsWith('/accounting');
   
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -79,8 +79,10 @@ export const Navigation: React.FC = () => {
       { label: 'Support', path: '/support', icon: <Support /> },
     ];
 
-    // Show Dashboard only when authenticated and NOT SUPERADMIN
-    if (isAuthenticated && String(user?.role || '').toUpperCase() !== 'SUPERADMIN') {
+    // Show Dashboard only when authenticated and NOT SUPERADMIN or ACCOUNTING
+    if (isAuthenticated && 
+        String(user?.role || '').toUpperCase() !== 'SUPERADMIN' && 
+        String(user?.role || '').toUpperCase() !== 'ACCOUNTING') {
       items.push({ label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> });
     }
 
@@ -107,7 +109,6 @@ export const Navigation: React.FC = () => {
         { label: 'Accounting', path: '/accounting', icon: <ReceiptLongIcon /> },
         { label: 'Documentation', path: '/documentation', icon: <Article /> },
         { label: 'Support', path: '/support', icon: <Support /> },
-        { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
       ];
     }
 

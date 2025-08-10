@@ -383,7 +383,22 @@ const LoginPage: React.FC = () => {
                     fullWidth
                     variant="outlined"
                     onClick={async () => {
-                      enqueueSnackbar('Apple Sign-In will appear if configured.', { variant: 'info' });
+                      const anyWindow = window as any;
+                      if (anyWindow.AppleID?.auth?.signIn) {
+                        try {
+                          const result = await anyWindow.AppleID.auth.signIn();
+                          const idToken = result?.authorization?.id_token;
+                          if (idToken) {
+                            await handleAppleIdToken(idToken);
+                          } else {
+                            enqueueSnackbar('Apple did not return an id_token.', { variant: 'warning' });
+                          }
+                        } catch (e: any) {
+                          enqueueSnackbar(e?.message || 'Apple Sign-In was cancelled or failed.', { variant: 'error' });
+                        }
+                      } else {
+                        enqueueSnackbar('Apple Sign-In not initialized. Please refresh.', { variant: 'warning' });
+                      }
                     }}
                   >
                     Continue with Apple

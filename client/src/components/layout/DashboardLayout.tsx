@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Drawer,
@@ -40,6 +40,7 @@ import {
   Description,
   Home,
   ArrowBack,
+  AccountBalance,
 } from '@mui/icons-material';
 import { Link as RouterLink, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -73,6 +74,11 @@ const enterpriseItems: NavigationItem[] = [
   { text: 'Compliance', icon: <Security />, path: '/dashboard/compliance' },
 ];
 
+// Accounting-specific navigation items
+const accountingNavigationItems: NavigationItem[] = [
+  { text: 'Accounting Dashboard', icon: <AccountBalance />, path: '/accounting' },
+];
+
 export const DashboardLayout: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
@@ -88,6 +94,21 @@ export const DashboardLayout: React.FC = () => {
       return false;
     }
   });
+
+  // Check if user is accounting user
+  const isAccountingUser = String(user?.role || '').toUpperCase() === 'ACCOUNTING';
+
+  // Redirect accounting users to accounting dashboard
+  useEffect(() => {
+    if (isAccountingUser && location.pathname.startsWith('/dashboard')) {
+      navigate('/accounting', { replace: true });
+    }
+  }, [isAccountingUser, location.pathname, navigate]);
+
+  // If user is accounting user, don't render the dashboard layout
+  if (isAccountingUser) {
+    return null; // This will trigger the redirect in useEffect
+  }
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);

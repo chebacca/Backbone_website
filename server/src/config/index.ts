@@ -82,6 +82,12 @@ export const config = {
     enableStripe: process.env.STRIPE_ENABLED !== 'false',
   },
 
+  // Legal versions (used for versioned consent)
+  legal: {
+    termsVersion: process.env.TERMS_VERSION || '1.0',
+    privacyVersion: process.env.PRIVACY_VERSION || '1.0',
+  },
+
   // Pricing
   pricing: {
     basicPricePerSeat: parseInt(process.env.BASIC_PRICE_PER_SEAT || '2900'),

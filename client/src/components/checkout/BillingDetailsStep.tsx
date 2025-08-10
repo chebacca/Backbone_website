@@ -416,7 +416,7 @@ export const BillingDetailsStep: React.FC<BillingDetailsStepProps> = ({
                       target="_blank"
                       sx={{ color: 'primary.main' }}
                     >
-                      Terms of Service
+                      Terms of Service (v{import.meta.env?.VITE_TERMS_VERSION || '1.0'})
                     </Link>
                     {' '}and{' '}
                     <Link

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import express from 'express';
 import { PaymentService } from '../services/paymentService.js';
 import { EmailService } from '../services/emailService.js';
 import { ComplianceService } from '../services/complianceService.js';
@@ -15,9 +16,10 @@ const router: Router = Router();
  * Stripe webhook handler
  * This endpoint receives webhooks from Stripe to handle payment events
  */
-router.post('/stripe', asyncHandler(async (req: Request, res: Response) => {
+// Stripe requires the exact raw body for signature verification
+router.post('/stripe', express.raw({ type: 'application/json' }), asyncHandler(async (req: Request, res: Response) => {
   const signature = req.headers['stripe-signature'] as string;
-  const event = req.body;
+  const rawBody = (req as any).body as Buffer;
 
   if (!signature) {
     logger.error('Missing Stripe signature header');
@@ -25,20 +27,13 @@ router.post('/stripe', asyncHandler(async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await PaymentService.handleWebhook(event, signature);
+    const result = await PaymentService.handleWebhook(rawBody, signature);
     
-    logger.info('Stripe webhook processed successfully', {
-      eventId: event.id,
-      eventType: event.type,
-    });
+    logger.info('Stripe webhook processed successfully');
 
     res.json(result);
   } catch (error) {
-    logger.error('Stripe webhook processing failed', {
-      eventId: event.id,
-      eventType: event.type,
-      error: (error as Error).message,
-    });
+    logger.error('Stripe webhook processing failed', { error: (error as Error).message });
 
     // Create compliance event for webhook failures
     await ComplianceService.createComplianceEvent(
@@ -47,11 +42,7 @@ router.post('/stripe', asyncHandler(async (req: Request, res: Response) => {
       `Webhook processing failed: ${(error as Error).message}`,
       undefined,
       undefined,
-      {
-        eventId: event.id,
-        eventType: event.type,
-        signature: signature?.substring(0, 20) + '...',
-      }
+      { signature: signature?.substring(0, 20) + '...' }
     ).catch(() => {
       // Don't let compliance logging failures break webhook response
     });

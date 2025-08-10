@@ -408,6 +408,8 @@ export const endpoints = {
     systemHealth: () => 'admin/system/health',
     payments: () => 'admin/payments',
     paymentDetails: (paymentId: string) => `admin/payments/${paymentId}`,
+    companyFilingGet: () => 'admin/settings/company-filing',
+    companyFilingSave: () => 'admin/settings/company-filing',
   },
 
   // Accounting endpoints
@@ -415,6 +417,8 @@ export const endpoints = {
     payments: () => 'accounting/payments',
     exportPayments: () => 'accounting/payments/export',
     kyc: () => 'accounting/kyc',
+    consentsLatest: () => 'accounting/consents/latest',
+    userConsentHistory: (userId: string) => `accounting/users/${userId}/consent-history`,
   },
 
   // Webhook endpoints

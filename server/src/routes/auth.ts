@@ -58,7 +58,9 @@ router.post('/register', [
     marketingConsent: false,
     dataProcessingConsent: false,
     termsAcceptedAt: new Date(),
+    termsVersionAccepted: config.legal.termsVersion,
     privacyPolicyAcceptedAt: new Date(),
+    privacyPolicyVersionAccepted: config.legal.privacyVersion,
     identityVerified: false,
     kycStatus: 'PENDING',
     ipAddress: requestInfo.ip,
@@ -66,8 +68,8 @@ router.post('/register', [
     registrationSource: 'website',
   });
 
-  await ComplianceService.recordConsent(user.id, 'TERMS_OF_SERVICE', true, '1.0', requestInfo.ip, requestInfo.userAgent);
-  await ComplianceService.recordConsent(user.id, 'PRIVACY_POLICY', true, '1.0', requestInfo.ip, requestInfo.userAgent);
+  await ComplianceService.recordConsent(user.id, 'TERMS_OF_SERVICE', true, config.legal.termsVersion, requestInfo.ip, requestInfo.userAgent);
+  await ComplianceService.recordConsent(user.id, 'PRIVACY_POLICY', true, config.legal.privacyVersion, requestInfo.ip, requestInfo.userAgent);
 
   const verificationToken = JwtUtil.generateActivationToken(user.id);
   await firestoreService.updateUser(user.id, { emailVerifyToken: verificationToken });

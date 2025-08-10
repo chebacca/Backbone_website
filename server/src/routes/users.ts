@@ -12,6 +12,7 @@ import {
   requireEmailVerification,
   addRequestInfo 
 } from '../middleware/auth.js';
+import { firestoreService } from '../services/firestoreService.js';
 
 const router: Router = Router();
 
@@ -206,6 +207,14 @@ router.post('/consent', [
     requestInfo.ip,
     requestInfo.userAgent
   );
+
+  // Update snapshot fields on user for quick lookups
+  if (consentType === 'TERMS_OF_SERVICE' && granted) {
+    await firestoreService.updateUser(userId, { termsAcceptedAt: new Date(), termsVersionAccepted: version } as any);
+  }
+  if (consentType === 'PRIVACY_POLICY' && granted) {
+    await firestoreService.updateUser(userId, { privacyPolicyAcceptedAt: new Date(), privacyPolicyVersionAccepted: version } as any);
+  }
 
   res.json({
     success: true,

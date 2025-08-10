@@ -13,6 +13,9 @@ const ForgotPasswordPage = React.lazy(() => import('@/pages/auth/ForgotPasswordP
 const ResetPasswordPage = React.lazy(() => import('@/pages/auth/ResetPasswordPage'));
 const EmailVerificationPage = React.lazy(() => import('@/pages/auth/EmailVerificationPage'));
 const PricingPage = React.lazy(() => import('@/pages/PricingPage'));
+const TermsPage = React.lazy(() => import('@/pages/legal/TermsPage'));
+const PrivacyPolicyPage = React.lazy(() => import('@/pages/legal/PrivacyPolicyPage'));
+const SlaPage = React.lazy(() => import('@/pages/legal/SlaPage'));
 const CheckoutPage = React.lazy(() => import('@/pages/checkout/CheckoutPage'));
 const DashboardLayout = React.lazy(() => import('@/components/layout/DashboardLayout'));
 const DashboardOverview = React.lazy(() => import('@/pages/dashboard/DashboardOverview'));
@@ -181,6 +184,10 @@ function App() {
               path="/support" 
               element={<SupportPage />}
             />
+            {/* Legal Routes */}
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/sla" element={<SlaPage />} />
 
             {/* Dashboard Routes (protected) */}
             <Route 

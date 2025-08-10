@@ -465,6 +465,7 @@ const RegisterPage: React.FC = () => {
                             >
                               Terms of Service
                             </Link>
+                            {' '}(v{import.meta.env?.VITE_TERMS_VERSION || '1.0'})
                           </Typography>
                         }
                         sx={{

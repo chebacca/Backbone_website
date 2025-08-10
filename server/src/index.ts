@@ -82,7 +82,10 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Body parsing middleware
+// Mount webhooks BEFORE global body parsers so Stripe raw body is preserved in its route
+app.use('/api/webhooks', webhooksRouter);
+
+// Body parsing middleware (applies to all non-webhook routes)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -107,7 +110,6 @@ app.use('/api/payments', paymentsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/accounting', accountingRouter);
-app.use('/api/webhooks', webhooksRouter);
 
 // Setup endpoint: place BEFORE error handlers so it's reachable
 app.post('/api/setup/seed-superadmin', async (req, res) => {
@@ -122,13 +124,18 @@ app.post('/api/setup/seed-superadmin', async (req, res) => {
 });
 
 app.post('/api/setup/seed-test-data', async (req, res) => {
-  // Temporarily disabled token check for debugging
-  // const token = req.headers['x-setup-token'] as string;
-  // const expected = process.env.ADMIN_SETUP_TOKEN;
-  // if (!expected || token !== expected) {
-  //   res.status(403).json({ success: false, error: 'Forbidden' });
-  //   return;
-  // }
+  // Block in production
+  if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({ success: false, error: 'Forbidden in production' });
+    return;
+  }
+  // Require setup token
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
   try {
     await seedTestData();
     res.json({ success: true, message: 'Database seeded with invoice data successfully!' });
@@ -151,6 +158,16 @@ app.post('/api/setup/clear-test-data', async (req, res) => {
 
 // Temporary debug endpoint to check database contents (remove after debugging)
 app.get('/api/debug/database-stats', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ success: false, error: 'Not found' });
+    return;
+  }
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
   try {
     const [users, subscriptions, payments, licenses] = await Promise.all([
       db.getAllUsers(),
@@ -184,6 +201,16 @@ app.get('/api/debug/database-stats', async (req, res) => {
 
 // Temporary endpoint to get all payments for debugging
 app.get('/api/debug/all-payments', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ success: false, error: 'Not found' });
+    return;
+  }
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
   try {
     const payments = await db.getAllPayments();
     const totalRevenue = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
@@ -218,6 +245,16 @@ app.get('/api/debug/all-payments', async (req, res) => {
 
 // Temporary endpoint to create payments for all subscriptions with detailed error reporting
 app.post('/api/debug/create-all-payments', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ success: false, error: 'Not found' });
+    return;
+  }
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
   try {
     logger.info('Creating payments for all existing subscriptions...');
     
@@ -372,6 +409,16 @@ app.post('/api/debug/create-all-payments', async (req, res) => {
 
 // Temporary endpoint to create a test payment and force the collection to exist
 app.post('/api/debug/create-test-payment', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ success: false, error: 'Not found' });
+    return;
+  }
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
   try {
     logger.info('Creating test payment to initialize payments collection...');
     
@@ -458,6 +505,16 @@ app.post('/api/debug/create-test-payment', async (req, res) => {
 
 // Temporary test endpoint to create a single payment (remove after debugging)
 app.post('/api/debug/create-single-payment', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ success: false, error: 'Not found' });
+    return;
+  }
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
   try {
     logger.info('Creating test payment...');
     

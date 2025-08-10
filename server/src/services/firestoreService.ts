@@ -55,7 +55,9 @@ export interface FirestoreUser {
   marketingConsent: boolean;
   dataProcessingConsent: boolean;
   termsAcceptedAt?: Date;
+  termsVersionAccepted?: string;
   privacyPolicyAcceptedAt?: Date;
+  privacyPolicyVersionAccepted?: string;
   identityVerified: boolean;
   identityVerificationData?: any;
   kycStatus: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'EXPIRED';
@@ -632,6 +634,16 @@ export class FirestoreService {
 
   async transaction<T>(updateFunction: (transaction: any) => Promise<T>): Promise<T> {
     return db.runTransaction(updateFunction);
+  }
+
+  // System settings (generic key-value)
+  async getSystemSetting<T = any>(key: string): Promise<T | null> {
+    const doc = await db.collection('system_settings').doc(key).get();
+    return doc.exists ? (doc.data() as T) : null;
+  }
+
+  async setSystemSetting<T = any>(key: string, data: T): Promise<void> {
+    await db.collection('system_settings').doc(key).set({ ...data, updatedAt: new Date() }, { merge: true });
   }
 }
 

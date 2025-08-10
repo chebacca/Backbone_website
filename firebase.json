@@ -50,8 +50,7 @@
     "ignore": [
       "**/node_modules/**",
       ".git/**",
-      "prisma/**",
-      "dist/**"
+      "prisma/**"
     ],
     "endpoints": {
       "api": {

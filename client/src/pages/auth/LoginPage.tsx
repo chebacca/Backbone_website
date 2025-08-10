@@ -67,6 +67,8 @@ const LoginPage: React.FC = () => {
       const roleUpper = String(user?.role || '').toUpperCase();
       if (roleUpper === 'SUPERADMIN') {
         navigate('/admin');
+      } else if (roleUpper === 'ACCOUNTING') {
+        navigate('/accounting');
       } else {
         navigate('/dashboard');
       }
@@ -335,6 +337,8 @@ const LoginPage: React.FC = () => {
                       const roleUpper = String(result.user?.role || '').toUpperCase();
                       if (roleUpper === 'SUPERADMIN') {
                         navigate('/admin');
+                      } else if (roleUpper === 'ACCOUNTING') {
+                        navigate('/accounting');
                       } else {
                         navigate('/dashboard');
                       }

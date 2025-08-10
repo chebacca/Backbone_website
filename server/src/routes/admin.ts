@@ -27,6 +27,31 @@ const router: Router = Router();
 router.use(addRequestInfo);
 router.use(authenticateToken);
 router.use(requireSuperAdmin);
+/**
+ * Company filing profile (persist company defaults for filings)
+ */
+router.get('/settings/company-filing', asyncHandler(async (req: Request, res: Response) => {
+  const data = await firestoreService.getSystemSetting<any>('company_filing_profile');
+  res.json({ success: true, data: { company: data || null } });
+}));
+
+router.post('/settings/company-filing', [
+  body('legalName').optional().trim().isLength({ min: 2 }).withMessage('Legal name required'),
+  body('taxId').optional().trim(),
+  body('addressLine1').optional().trim(),
+  body('addressLine2').optional().trim(),
+  body('city').optional().trim(),
+  body('region').optional().trim(),
+  body('postalCode').optional().trim(),
+  body('country').optional().isLength({ min: 2, max: 2 }).withMessage('Country must be ISO alpha-2'),
+  body('contactEmail').optional().isEmail().withMessage('Valid contact email required'),
+], asyncHandler(async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
+  const data = req.body;
+  await firestoreService.setSystemSetting('company_filing_profile', data);
+  res.json({ success: true, message: 'Company filing profile saved', data: { company: data } });
+}));
 
 /**
  * Get admin dashboard statistics

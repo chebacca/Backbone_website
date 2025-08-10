@@ -21,6 +21,7 @@ import {
   useTheme,
   useMediaQuery,
 } from '@mui/material';
+import { Alert } from '@mui/material';
 import {
   Menu as MenuIcon,
   Dashboard,
@@ -80,6 +81,13 @@ export const DashboardLayout: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [dismissedKycBanner, setDismissedKycBanner] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dismiss_kyc_banner') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -101,6 +109,9 @@ export const DashboardLayout: React.FC = () => {
   const isEnterprise = String(user?.subscription?.plan || '').toUpperCase() === 'ENTERPRISE';
   const roleUpper = String(user?.role || '').toUpperCase();
   const isEnterpriseAdminRole = roleUpper === 'ENTERPRISE_ADMIN';
+  const kycStatus = String((user as any)?.kycStatus || '').toUpperCase();
+  const needsKyc = kycStatus !== 'COMPLETED';
+  const showKycBanner = needsKyc && !dismissedKycBanner;
 
   // Compute navigation, hiding Billing for SUPERADMIN only
   const navigationItems: NavigationItem[] = React.useMemo(() => {
@@ -409,7 +420,7 @@ export const DashboardLayout: React.FC = () => {
             color="inherit"
             sx={{ mr: 1 }}
           >
-            <Badge badgeContent={2} color="primary">
+            <Badge badgeContent={needsKyc ? 1 : 0} color="primary">
               <Notifications />
             </Badge>
           </IconButton>
@@ -520,6 +531,35 @@ export const DashboardLayout: React.FC = () => {
       >
         <Toolbar />
         <Box sx={{ p: 3 }}>
+          {showKycBanner && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 2 }}
+              action={
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={() => navigate('/dashboard/settings#compliance')}
+                    sx={{ color: '#000' }}
+                  >
+                    Complete KYC
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      try { localStorage.setItem('dismiss_kyc_banner', '1'); } catch {}
+                      setDismissedKycBanner(true);
+                    }}
+                  >
+                    Dismiss
+                  </Button>
+                </Box>
+              }
+            >
+              Your account requires identity verification (KYC). Complete it in Settings to unlock all features.
+            </Alert>
+          )}
           <Outlet />
         </Box>
       </Box>

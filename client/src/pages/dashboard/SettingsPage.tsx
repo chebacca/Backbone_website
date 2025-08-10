@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
@@ -40,6 +40,8 @@ import {
 import { useSnackbar } from 'notistack';
 import { useAuth } from '@/context/AuthContext';
 import { authService } from '@/services/authService';
+import api, { endpoints, apiUtils } from '@/services/api';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 interface SecuritySetting {
   id: string;
@@ -88,6 +90,8 @@ const securitySettings: SecuritySetting[] = [
 const SettingsPage: React.FC = () => {
   const { user } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
+  const location = useLocation();
+  const navigate = useNavigate();
   
   const [profile, setProfile] = useState({
     firstName: (user as any)?.firstName || '',
@@ -113,6 +117,35 @@ const SettingsPage: React.FC = () => {
   const [showPasswords, setShowPasswords] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
+  // KYC form state
+  const [kyc, setKyc] = useState({
+    firstName: '',
+    lastName: '',
+    dateOfBirth: '',
+    nationality: '',
+    countryOfResidence: '',
+    phoneNumber: '',
+    governmentIdType: '',
+    governmentIdNumber: '',
+    governmentIdCountry: '',
+    governmentIdExpiry: '',
+  });
+  const kycStatus = String((user as any)?.kycStatus || '').toUpperCase();
+
+  // Sync tab with URL hash (e.g., #compliance)
+  useEffect(() => {
+    const hash = (location.hash || '').replace('#', '').toLowerCase();
+    if (hash && ['profile','security','notifications','privacy','compliance','danger'].includes(hash)) {
+      setActiveTab(hash);
+    }
+  }, [location.hash]);
+
+  // When user clicks tab, update hash for deep-linkability
+  const selectTab = (id: string) => {
+    setActiveTab(id);
+    const url = `${location.pathname}#${id}`;
+    navigate(url, { replace: true });
+  };
 
   const handleProfileUpdate = () => {
     enqueueSnackbar('Profile updated successfully', { variant: 'success' });
@@ -179,7 +212,7 @@ const SettingsPage: React.FC = () => {
   const TabButton = ({ id, label, isActive }: { id: string; label: string; isActive: boolean }) => (
     <Button
       variant={isActive ? 'contained' : 'outlined'}
-      onClick={() => setActiveTab(id)}
+      onClick={() => selectTab(id)}
       sx={{
         mr: 1,
         mb: 1,
@@ -222,6 +255,7 @@ const SettingsPage: React.FC = () => {
           <TabButton id="security" label="Security" isActive={activeTab === 'security'} />
           <TabButton id="notifications" label="Notifications" isActive={activeTab === 'notifications'} />
           <TabButton id="privacy" label="Privacy" isActive={activeTab === 'privacy'} />
+          <TabButton id="compliance" label="Compliance" isActive={activeTab === 'compliance'} />
           <TabButton id="danger" label="Danger Zone" isActive={activeTab === 'danger'} />
         </Box>
       </Box>
@@ -628,6 +662,80 @@ const SettingsPage: React.FC = () => {
         </Box>
       )}
 
+      {/* Compliance Tab (KYC) */}
+      {activeTab === 'compliance' && (
+        <Box>
+          <Paper
+            sx={{
+              p: 4,
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              mb: 3,
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+              Identity Verification (KYC)
+            </Typography>
+            <Alert severity={kycStatus === 'COMPLETED' ? 'success' : 'warning'} sx={{ mb: 2 }}>
+              Status: {kycStatus || 'PENDING'}
+            </Alert>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="First Name" value={kyc.firstName} onChange={(e) => setKyc({ ...kyc, firstName: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Last Name" value={kyc.lastName} onChange={(e) => setKyc({ ...kyc, lastName: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth type="date" label="Date of Birth" InputLabelProps={{ shrink: true }} value={kyc.dateOfBirth} onChange={(e) => setKyc({ ...kyc, dateOfBirth: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Nationality (ISO alpha-2)" placeholder="US" value={kyc.nationality} onChange={(e) => setKyc({ ...kyc, nationality: e.target.value.toUpperCase() })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Country of Residence (ISO alpha-2)" placeholder="US" value={kyc.countryOfResidence} onChange={(e) => setKyc({ ...kyc, countryOfResidence: e.target.value.toUpperCase() })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Phone Number" value={kyc.phoneNumber} onChange={(e) => setKyc({ ...kyc, phoneNumber: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Government ID Type (optional)" value={kyc.governmentIdType} onChange={(e) => setKyc({ ...kyc, governmentIdType: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Government ID Number (optional)" value={kyc.governmentIdNumber} onChange={(e) => setKyc({ ...kyc, governmentIdNumber: e.target.value })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth label="Government ID Country (ISO alpha-2)" value={kyc.governmentIdCountry} onChange={(e) => setKyc({ ...kyc, governmentIdCountry: e.target.value.toUpperCase() })} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField fullWidth type="date" label="Government ID Expiry (optional)" InputLabelProps={{ shrink: true }} value={kyc.governmentIdExpiry} onChange={(e) => setKyc({ ...kyc, governmentIdExpiry: e.target.value })} />
+              </Grid>
+            </Grid>
+
+            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+              <Button
+                variant="contained"
+                onClick={async () => {
+                  try {
+                    await apiUtils.withLoading(async () => api.post(endpoints.users.kycVerify(), kyc));
+                    enqueueSnackbar('KYC submitted successfully', { variant: 'success' });
+                  } catch (e: any) {
+                    enqueueSnackbar(e.message || 'Failed to submit KYC', { variant: 'error' });
+                  }
+                }}
+                sx={{ background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)', color: '#000' }}
+              >
+                Submit Verification
+              </Button>
+              <Button variant="outlined" onClick={() => setKyc({
+                firstName: '', lastName: '', dateOfBirth: '', nationality: '', countryOfResidence: '', phoneNumber: '', governmentIdType: '', governmentIdNumber: '', governmentIdCountry: '', governmentIdExpiry: ''
+              })}>Clear</Button>
+            </Box>
+          </Paper>
+        </Box>
+      )}
+
       {/* Danger Zone Tab */}
       {activeTab === 'danger' && (
         <Box
@@ -748,11 +856,11 @@ const SettingsPage: React.FC = () => {
           <Typography variant="body2" sx={{ mb: 2 }}>
             Scan the QR code with Google Authenticator, Authy, or another TOTP app. Then enter the 6-digit code to confirm.
           </Typography>
-          {twoFA.qr && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-              <img src={twoFA.qr} alt="2FA QR Code" style={{ width: 200, height: 200 }} />
-            </Box>
-          )}
+            {twoFA.qr && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <img src={twoFA.qr} alt="2FA QR Code" width={200} height={200} />
+              </Box>
+            )}
           {twoFA.secret && (
             <Alert severity="info" sx={{ mb: 2 }}>
               Secret: {twoFA.secret}

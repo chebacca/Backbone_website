@@ -306,12 +306,14 @@ export class PaymentService {
   }
 
   /**
-   * Process webhook events from Stripe
+   * Process webhook events from Stripe with verified signature
    */
-  static async handleWebhook(event: Stripe.Event, signature: string) {
+  static async handleWebhook(rawBody: Buffer | string, signature: string) {
     try {
-      // Verify webhook signature
+      // Verify webhook signature and construct event
       const webhookSecret = config.stripe.webhookSecret;
+      const payload = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
+      const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
       
       // Log webhook event
       await db.createWebhookEvent({
@@ -356,13 +358,17 @@ export class PaymentService {
       logger.error('Webhook processing failed', error);
       
       // Update webhook with error
-      const existing = await db.getWebhookEventByStripeId(event.id);
-      if (existing) {
-        await db.updateWebhookEvent(existing.id, {
-          processed: false,
-          error: (error as Error).message,
-          retryCount: 1,
-        });
+      try {
+        const message = (error as Error)?.message || 'unknown error';
+        // We may not have a valid event at this point; attempt to parse ID from signature context is not possible.
+        // So we record a generic failure entry.
+        await db.createWebhookEvent({
+          type: 'unknown',
+          stripeId: `unverified_${Date.now()}`,
+          data: { error: message },
+        } as any);
+      } catch (_) {
+        // swallow secondary logging errors
       }
 
       throw error;

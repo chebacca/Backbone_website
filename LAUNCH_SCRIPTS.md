@@ -163,11 +163,13 @@ cd client && npx vite --port 3002 --host
 ## Development vs Production
 
 - **Development**: Use the scripts as described above
-- **Production**: Use the build and start commands:
+- **Production**: Deploy to Firebase:
   ```bash
   pnpm build
-  pnpm start
+  pnpm deploy
   ```
+
+> **Note**: The application is fully deployed on Firebase (Hosting for frontend, Functions for backend API) and doesn't use local server ports in production.
 
 ## File Structure
 

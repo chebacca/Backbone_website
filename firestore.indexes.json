@@ -42,6 +42,14 @@
       ]
     },
     {
+      "collectionGroup": "usage_analytics",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "sdk_versions",
       "queryScope": "COLLECTION",
       "fields": [

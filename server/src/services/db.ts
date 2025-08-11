@@ -207,5 +207,18 @@ export const db = {
   async ping() {
     return await firestoreService.ping();
   },
+
+  // Organization operations
+  async createOrganization(data: any) {
+    return await firestoreService.createOrganization(data);
+  },
+
+  async getOrganizationsOwnedByUser(userId: string) {
+    return await firestoreService.getOrganizationsOwnedByUser(userId);
+  },
+
+  async createOrgMember(data: any) {
+    return await firestoreService.createOrgMember(data);
+  },
 };
 

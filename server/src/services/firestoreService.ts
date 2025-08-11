@@ -187,6 +187,45 @@ export interface FirestoreEmailLog {
   updatedAt?: Date;
 }
 
+// Organization and team management (for Pro/Enterprise)
+export interface FirestoreOrganization {
+  id: string;
+  name: string;
+  ownerUserId: string;
+  domain?: string;
+  tier?: 'PRO' | 'ENTERPRISE';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FirestoreOrgMember {
+  id: string;
+  orgId: string;
+  email: string;
+  userId?: string;
+  role: 'OWNER' | 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER';
+  status: 'INVITED' | 'ACTIVE' | 'REMOVED';
+  seatReserved: boolean;
+  invitedByUserId?: string;
+  invitedAt?: Date;
+  joinedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FirestoreOrgInvitation {
+  id: string;
+  orgId: string;
+  email: string;
+  role: 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER';
+  invitedByUserId: string;
+  token: string;
+  status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface FirestorePrivacyConsent {
   id: string;
   userId: string;
@@ -279,6 +318,11 @@ export class FirestoreService {
     return snapshot.docs.map(doc => doc.data() as FirestoreSubscription);
   }
 
+  async getSubscriptionsByOrganizationId(organizationId: string): Promise<FirestoreSubscription[]> {
+    const snapshot = await db.collection('subscriptions').where('organizationId', '==', organizationId).get();
+    return snapshot.docs.map(doc => doc.data() as FirestoreSubscription);
+  }
+
   async updateSubscription(id: string, updates: Partial<FirestoreSubscription>): Promise<void> {
     await db.collection('subscriptions').doc(id).update({
       ...updates,
@@ -336,6 +380,80 @@ export class FirestoreService {
 
   async deleteLicense(id: string): Promise<void> {
     await db.collection('licenses').doc(id).delete();
+  }
+
+  // Organization operations
+  async createOrganization(data: Omit<FirestoreOrganization, 'id' | 'createdAt' | 'updatedAt'>): Promise<FirestoreOrganization> {
+    const orgRef = db.collection('organizations').doc();
+    const now = new Date();
+    const org: FirestoreOrganization = { id: orgRef.id, ...data, createdAt: now, updatedAt: now };
+    await orgRef.set(org);
+    return org;
+  }
+
+  async getOrganizationById(id: string): Promise<FirestoreOrganization | null> {
+    const doc = await db.collection('organizations').doc(id).get();
+    return doc.exists ? (doc.data() as FirestoreOrganization) : null;
+  }
+
+  async getOrganizationsOwnedByUser(userId: string): Promise<FirestoreOrganization[]> {
+    const snap = await db.collection('organizations').where('ownerUserId', '==', userId).get();
+    return snap.docs.map(d => d.data() as FirestoreOrganization);
+  }
+
+  async getOrganizationsForMemberUser(userId: string): Promise<FirestoreOrganization[]> {
+    const memberSnap = await db.collection('org_members').where('userId', '==', userId).where('status', '==', 'ACTIVE').get();
+    const orgIds = memberSnap.docs.map(d => (d.data() as FirestoreOrgMember).orgId);
+    if (orgIds.length === 0) return [];
+    const results: FirestoreOrganization[] = [];
+    for (const orgId of orgIds) {
+      const org = await this.getOrganizationById(orgId);
+      if (org) results.push(org);
+    }
+    return results;
+  }
+
+  // Member operations
+  async createOrgMember(data: Omit<FirestoreOrgMember, 'id' | 'createdAt' | 'updatedAt'>): Promise<FirestoreOrgMember> {
+    const ref = db.collection('org_members').doc();
+    const now = new Date();
+    const record: FirestoreOrgMember = { id: ref.id, ...data, createdAt: now, updatedAt: now };
+    await ref.set(record);
+    return record;
+  }
+
+  async updateOrgMember(id: string, updates: Partial<FirestoreOrgMember>): Promise<void> {
+    await db.collection('org_members').doc(id).update({ ...updates, updatedAt: new Date() });
+  }
+
+  async getOrgMembers(orgId: string): Promise<FirestoreOrgMember[]> {
+    const snap = await db.collection('org_members').where('orgId', '==', orgId).get();
+    return snap.docs.map(d => d.data() as FirestoreOrgMember);
+  }
+
+  async getOrgMemberByEmail(orgId: string, email: string): Promise<FirestoreOrgMember | null> {
+    const snap = await db.collection('org_members').where('orgId', '==', orgId).where('email', '==', email).limit(1).get();
+    if (snap.empty) return null;
+    return snap.docs[0].data() as FirestoreOrgMember;
+  }
+
+  // Invitations
+  async createInvitation(data: Omit<FirestoreOrgInvitation, 'id' | 'createdAt' | 'updatedAt'>): Promise<FirestoreOrgInvitation> {
+    const ref = db.collection('org_invitations').doc();
+    const now = new Date();
+    const record: FirestoreOrgInvitation = { id: ref.id, ...data, createdAt: now, updatedAt: now };
+    await ref.set(record);
+    return record;
+  }
+
+  async getInvitationByToken(token: string): Promise<FirestoreOrgInvitation | null> {
+    const snap = await db.collection('org_invitations').where('token', '==', token).limit(1).get();
+    if (snap.empty) return null;
+    return snap.docs[0].data() as FirestoreOrgInvitation;
+  }
+
+  async updateInvitation(id: string, updates: Partial<FirestoreOrgInvitation>): Promise<void> {
+    await db.collection('org_invitations').doc(id).update({ ...updates, updatedAt: new Date() });
   }
 
   // Payment operations

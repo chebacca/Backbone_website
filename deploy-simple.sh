@@ -25,6 +25,48 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+# Function to check Firebase CLI version
+check_firebase_version() {
+    print_status "Checking Firebase CLI version..."
+    FIREBASE_VERSION=$(firebase --version)
+    print_success "Firebase CLI version: $FIREBASE_VERSION"
+    
+    # Check if version is recent enough
+    if [[ "$FIREBASE_VERSION" == *"13."* ]] || [[ "$FIREBASE_VERSION" == *"14."* ]] || [[ "$FIREBASE_VERSION" == *"15."* ]]; then
+        print_success "Firebase CLI version is compatible"
+    else
+        print_warning "Consider updating Firebase CLI to version 13+ for better compatibility"
+    fi
+}
+
+# Function to deploy functions with retry logic
+deploy_functions_with_retry() {
+    local max_attempts=3
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        print_status "Deploying functions (attempt $attempt/$max_attempts)..."
+        
+        if firebase deploy --only functions; then
+            print_success "Functions deployed successfully"
+            return 0
+        else
+            if [ $attempt -eq $max_attempts ]; then
+                print_error "Functions deployment failed after $max_attempts attempts"
+                return 1
+            fi
+            
+            print_warning "Functions deployment failed, retrying in 10 seconds..."
+            sleep 10
+            attempt=$((attempt + 1))
+        fi
+    done
+}
+
 echo -e "${BLUE}================================${NC}"
 echo -e "${BLUE}  Dashboard v14 Quick Deploy${NC}"
 echo -e "${BLUE}================================${NC}"
@@ -38,6 +80,9 @@ if [ ! -f "package.json" ] || [ ! -f "firebase.json" ]; then
 fi
 
 print_success "Project directory confirmed"
+
+# Check Firebase CLI version
+check_firebase_version
 
 # Build all components
 print_status "Building all components..."
@@ -64,8 +109,11 @@ firebase deploy --only hosting
 print_success "Hosting deployed"
 
 print_status "Deploying functions..."
-firebase deploy --only functions
-print_success "Functions deployed"
+deploy_functions_with_retry
+if [ $? -ne 0 ]; then
+    print_error "Functions deployment failed. Please check the error and try again."
+    exit 1
+fi
 
 print_status "Deploying Firestore rules and indexes..."
 firebase deploy --only firestore

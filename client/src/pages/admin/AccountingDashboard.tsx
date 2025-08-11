@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Stack, TextField, Tabs, Tab, Grid, Chip, Divider, Alert, FormControl, InputLabel, Select, MenuItem, ButtonGroup, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import api, { endpoints } from '@/services/api';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Print, PictureAsPdf, Refresh, Download, Save, Restore, Public, Map, Launch } from '@mui/icons-material';
 
 interface PaymentRow {
@@ -32,9 +33,54 @@ interface PaymentRow {
 
 const AccountingDashboard: React.FC = () => {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
   const [tab, setTab] = useState<number>(0);
+  const hashToTabIndex: Record<string, number> = useMemo(() => ({
+    '#overview': 0,
+    '#payments': 1,
+    '#tax': 2,
+    '#filings': 3,
+    '#kyc': 4,
+    '#compliance': 5,
+    '#terms': 6,
+  }), []);
+  const tabIndexToHash: Record<number, string> = useMemo(() => ({
+    0: 'overview',
+    1: 'payments',
+    2: 'tax',
+    3: 'filings',
+    4: 'kyc',
+    5: 'compliance',
+    6: 'terms',
+  }), []);
+
+  // Sync tab with URL hash
+  useEffect(() => {
+    const h = (location.hash || '').toLowerCase();
+    if (h && Object.prototype.hasOwnProperty.call(hashToTabIndex, h)) {
+      const idx = hashToTabIndex[h];
+      if (idx !== tab) setTab(idx);
+    } else if (!h) {
+      // Default to overview if no hash
+      if (tab !== 0) setTab(0);
+      if (location.pathname.startsWith('/accounting')) {
+        navigate('/accounting#overview', { replace: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.hash]);
+
+  const handleTabChange = (_: any, newValue: number) => {
+    setTab(newValue);
+    const nextHash = tabIndexToHash[newValue];
+    const desired = `#${nextHash}`;
+    if ((location.hash || '').toLowerCase() !== desired) {
+      navigate(`/accounting${desired}`, { replace: true });
+    }
+  };
   const [overview, setOverview] = useState<any>(null);
   const [taxSummary, setTaxSummary] = useState<any>(null);
   const [kyc, setKyc] = useState<any[]>([]);
@@ -470,7 +516,7 @@ const AccountingDashboard: React.FC = () => {
         </Alert>
       )}
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+      <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }}>
         <Tab label="Overview" />
         <Tab label="Payments" />
         <Tab label="Tax" />

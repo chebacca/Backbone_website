@@ -113,7 +113,36 @@ export class PaymentService {
         }),
       });
 
-      // 11. Create subscription record in database
+      // 11. For PRO/ENTERPRISE, ensure an organization exists and seed OWNER member
+      let organizationId: string | undefined = undefined;
+      if (subscriptionData.tier === 'PRO' || subscriptionData.tier === 'ENTERPRISE') {
+        // Try to find existing org owned by user; else create
+        const owned = await db.getOrganizationsOwnedByUser(user.id).catch(() => [] as any[]);
+        if (owned && owned.length > 0) {
+          organizationId = owned[0].id;
+        } else {
+          const org = await db.createOrganization({
+            name: `${user.name || user.email}'s Organization`,
+            ownerUserId: user.id,
+            tier: subscriptionData.tier,
+          } as any);
+          organizationId = org.id;
+          // Seed owner member
+          await db.createOrgMember({
+            orgId: organizationId,
+            email: user.email,
+            userId: user.id,
+            role: 'OWNER',
+            status: 'ACTIVE',
+            seatReserved: true,
+            invitedByUserId: user.id,
+            invitedAt: new Date(),
+            joinedAt: new Date(),
+          } as any);
+        }
+      }
+
+      // 12. Create subscription record in database
       const subscription = await db.createSubscription({
         userId,
         tier: subscriptionData.tier,
@@ -125,10 +154,11 @@ export class PaymentService {
         pricePerSeat: pricing.pricePerSeat,
         currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
         currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+        organizationId,
         cancelAtPeriodEnd: false,
       });
 
-      // 12. Create payment record
+      // 13. Create payment record
       const latestInvoice = stripeSubscription.latest_invoice as Stripe.Invoice;
       const paymentIntent = latestInvoice.payment_intent as Stripe.PaymentIntent;
 
@@ -159,14 +189,14 @@ export class PaymentService {
         pciCompliant: true,
       });
 
-      // 13. Perform AML screening
+      // 14. Perform AML screening
       await ComplianceService.performAMLScreening(payment.id, {
         userId,
         amount: taxCalculation.totalAmount,
         country: subscriptionData.billingAddress.country,
       });
 
-      // 14. Create audit log
+      // 15. Create audit log
       await ComplianceService.createAuditLog(
         userId,
         'SUBSCRIPTION_CREATE',
@@ -181,7 +211,7 @@ export class PaymentService {
         requestInfo
       );
 
-      // 15. Check payment status and process accordingly
+      // 16. Check payment status and process accordingly
       if (paymentIntent.status === 'succeeded') {
         await this.handleSuccessfulPayment(subscription, payment, user);
       }

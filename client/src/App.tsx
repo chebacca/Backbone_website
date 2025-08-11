@@ -28,6 +28,7 @@ const TeamPage = React.lazy(() => import('@/pages/dashboard/TeamPage'));
 const DownloadsPage = React.lazy(() => import('@/pages/dashboard/DownloadsPage'));
 const DocumentationPage = React.lazy(() => import('@/pages/dashboard/DocumentationPage'));
 const SupportPage = React.lazy(() => import('@/pages/dashboard/SupportPage'));
+const InviteAcceptPage = React.lazy(() => import('@/pages/dashboard/InviteAcceptPage'));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
 const AccountingDashboard = React.lazy(() => import('@/pages/admin/AccountingDashboard'));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
@@ -176,6 +177,16 @@ function App() {
               } 
             />
 
+            {/* Invitation acceptance (requires auth to bind user) */}
+            <Route
+              path="/invite/accept"
+              element={
+                <ProtectedRoute>
+                  <InviteAcceptPage />
+                </ProtectedRoute>
+              }
+            />
+
             {/* Documentation and Support Routes (public access) */}
             <Route 
               path="/documentation" 
@@ -219,25 +230,29 @@ function App() {
 
             {/* Keep public support route for non-dashboard access */}
 
-            {/* Admin Routes (protected) */}
+            {/* Admin Routes (protected, use DashboardLayout for consistent shell) */}
             <Route 
-              path="/admin/*" 
+              path="/admin" 
               element={
                 <ProtectedRoute requireAdmin>
-                  <AdminDashboard />
+                  <DashboardLayout />
                 </ProtectedRoute>
               }
-            />
+            >
+              <Route index element={<AdminDashboard />} />
+            </Route>
 
-            {/* Accounting Routes (protected) */}
+            {/* Accounting Routes (protected, use DashboardLayout for consistent shell) */}
             <Route 
               path="/accounting" 
               element={
                 <ProtectedRoute requireAccounting>
-                  <AccountingDashboard />
+                  <DashboardLayout />
                 </ProtectedRoute>
               }
-            />
+            >
+              <Route index element={<AccountingDashboard />} />
+            </Route>
 
             {/* 404 Route */}
             <Route path="*" element={<NotFoundPage />} />

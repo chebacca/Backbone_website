@@ -11,6 +11,7 @@ import { subscriptionsRouter } from './routes/subscriptions.js';
 import { licensesRouter } from './routes/licenses.js';
 import { paymentsRouter } from './routes/payments.js';
 import { adminRouter } from './routes/admin.js';
+import { organizationsRouter } from './routes/organizations.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { accountingRouter } from './routes/accounting.js';
 import invoicesRouter from './routes/invoices.js';
@@ -112,6 +113,7 @@ app.get(['/health', '/api/health'], async (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
+app.use('/api/organizations', organizationsRouter);
 app.use('/api/licenses', licensesRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/invoices', invoicesRouter);

@@ -215,10 +215,35 @@ export const requireEnterpriseAdminStrict = async (req: Request, res: Response, 
       return;
     }
 
-    if (req.user.role !== 'ENTERPRISE_ADMIN') {
-      res.status(403).json({ success: false, error: 'Enterprise admin role required' });
+    // Allow global admins automatically
+    if (req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN') {
+      next();
       return;
     }
+
+    // For legacy installations or org-scoped checks, allow ENTERPRISE_ADMIN role
+    if (req.user.role === 'ENTERPRISE_ADMIN') {
+      next();
+      return;
+    }
+
+    // If an orgId is present, verify the user is an ENTERPRISE_ADMIN of that org
+    const orgId = (req.params as any).orgId || (req.body as any).orgId || (req.query as any).orgId;
+    if (orgId) {
+      try {
+        const members = await firestoreService.getOrgMembers(orgId);
+        const isOrgEnterpriseAdmin = members.some((m: any) => m.userId === req.user!.id && String(m.role).toUpperCase() === 'ENTERPRISE_ADMIN' && (m.status === 'ACTIVE' || m.seatReserved));
+        if (isOrgEnterpriseAdmin) {
+          next();
+          return;
+        }
+      } catch (err) {
+        // Fall through to forbidden below on errors
+      }
+    }
+
+    res.status(403).json({ success: false, error: 'Enterprise admin role required' });
+    return;
 
     // Determine enterprise context from request
     const subscriptionId = (req.params as any).subscriptionId || (req.body as any).subscriptionId || (req.query as any).subscriptionId;
@@ -226,26 +251,29 @@ export const requireEnterpriseAdminStrict = async (req: Request, res: Response, 
     const licenseId = (req.params as any).licenseId || (req.body as any).licenseId;
 
     if (subscriptionId) {
-      const sub = await firestoreService.getSubscriptionById(subscriptionId);
-      if (!sub) {
+      const subResult = await firestoreService.getSubscriptionById(subscriptionId);
+      if (!subResult) {
         res.status(404).json({ success: false, error: 'Subscription not found' });
         return;
       }
-      if (String(sub.tier).toUpperCase() !== 'ENTERPRISE') {
+      const subTier = String((subResult as any).tier || '').toUpperCase();
+      if (subTier !== 'ENTERPRISE') {
         res.status(403).json({ success: false, error: 'Enterprise subscription required' });
         return;
       }
     } else if (licenseKey || licenseId) {
-      const license = licenseId
+      const licenseResult = licenseId
         ? await firestoreService.getLicenseById(licenseId)
         : await firestoreService.getLicenseByKey(licenseKey);
-      if (!license) {
+      if (!licenseResult) {
         res.status(404).json({ success: false, error: 'License not found' });
         return;
       }
-      if (license.subscriptionId) {
-        const sub = await firestoreService.getSubscriptionById(license.subscriptionId);
-        if (!sub || String(sub.tier).toUpperCase() !== 'ENTERPRISE') {
+      const lic = licenseResult as any;
+      if (lic.subscriptionId) {
+        const subCheck = await firestoreService.getSubscriptionById(lic.subscriptionId);
+        const tierCheck = String((subCheck as any)?.tier || '').toUpperCase();
+        if (!subCheck || tierCheck !== 'ENTERPRISE') {
           res.status(403).json({ success: false, error: 'Enterprise subscription required' });
           return;
         }

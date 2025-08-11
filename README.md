@@ -266,28 +266,28 @@ cd client && pnpm run dev
 
 ## 🚀 Production Deployment
 
-### **Build for Production**
+### **Firebase Deployment**
 ```bash
-# Build all packages
-pnpm run build
+# Build all packages and deploy to Firebase
+pnpm run deploy
 
-# Test production build locally
-pnpm run start
-```
-
-### **Database Migration**
-```bash
-cd server
-pnpm prisma migrate deploy
+# Or deploy specific parts:
+pnpm run deploy:hosting    # Deploy frontend only
+pnpm run deploy:functions  # Deploy backend functions only
+pnpm run deploy:firestore  # Deploy Firestore rules only
 ```
 
 ### **Environment Variables**
-Ensure all production environment variables are set:
-- Database connection strings
+Ensure all Firebase environment variables are set:
+- Firebase project configuration
 - Stripe production keys
 - Email service configuration
 - JWT secrets
 - CORS origins
+
+### **Firebase Functions Configuration**
+The backend is deployed as Firebase Functions with the API endpoint accessible at:
+- `/api/*` - All API routes
 
 ## 📊 Database Schema
 

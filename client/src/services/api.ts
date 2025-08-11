@@ -376,6 +376,16 @@ export const endpoints = {
     addSeats: (subscriptionId: string) => `subscriptions/${subscriptionId}/add-seats`,
   },
 
+  // Organization endpoints (Pro/Enterprise team management)
+  organizations: {
+    my: () => 'organizations/my',
+    invite: (orgId: string) => `organizations/${orgId}/invitations`,
+    acceptInvitation: () => 'organizations/invitations/accept',
+    removeMember: (orgId: string, memberId: string) => `organizations/${orgId}/members/${memberId}/remove`,
+    updateMember: (orgId: string, memberId: string) => `organizations/${orgId}/members/${memberId}`,
+    setMemberPassword: (orgId: string, memberId: string) => `organizations/${orgId}/members/${memberId}/password`,
+  },
+
   // User endpoints
   users: {
     updateBillingAddress: () => 'users/billing-address',

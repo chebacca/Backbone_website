@@ -58,8 +58,7 @@ import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Navigation } from '@/components/layout/Navigation';
-import { Footer } from '@/components/layout/Footer';
+import { useLocation } from 'react-router-dom';
 
 interface AdminStats {
   totalUsers: number;
@@ -151,6 +150,7 @@ const AdminDashboard: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState(0);
   const [stats, setStats] = useState<AdminStats>({
     totalUsers: 0,
@@ -588,10 +588,39 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Sync tabs with URL hash for left nav integration
+  useEffect(() => {
+    const hash = (location.hash || '').toLowerCase();
+    const map: Record<string, number> = {
+      '#users': 0,
+      '#licenses': 1,
+      '#invoices': 2,
+      '#system': 3,
+      '#system-health': 3,
+    };
+    if (hash && map[hash] != null && map[hash] !== activeTab) {
+      setActiveTab(map[hash]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.hash]);
+
+  const handleTabChange = (_: any, newValue: number) => {
+    setActiveTab(newValue);
+    const reverseMap: Record<number, string> = {
+      0: 'users',
+      1: 'licenses',
+      2: 'invoices',
+      3: 'system',
+    };
+    const next = reverseMap[newValue] || 'users';
+    if ((location.hash || '').toLowerCase() !== `#${next}`) {
+      navigate(`/admin#${next}`, { replace: true });
+    }
+  };
+
   return (
     <>
-      <Navigation />
-      <Box sx={{ pt: 8, pb: 4 }}>
+      <Box sx={{ pb: 4 }}>
         <Container maxWidth="xl">
           <Box
             sx={{
@@ -746,7 +775,7 @@ const AdminDashboard: React.FC = () => {
         <Paper sx={{ mb: 3 }}>
           <Tabs
             value={activeTab}
-            onChange={(_, newValue) => setActiveTab(newValue)}
+            onChange={handleTabChange}
             sx={{
               borderBottom: 1,
               borderColor: 'divider',
@@ -1590,7 +1619,6 @@ const AdminDashboard: React.FC = () => {
       </Dialog>
         </Container>
       </Box>
-      <Footer />
     </>
   );
 };

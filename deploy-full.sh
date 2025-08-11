@@ -116,13 +116,11 @@ build_all() {
     print_success "Shared build completed"
     
     print_status "Building client..."
-    cd ..
     pnpm build:client
     if [ $? -ne 0 ]; then
         print_error "Client build failed"
         exit 1
     fi
-    cd - >/dev/null
     print_success "Client build completed"
     
     print_status "Building server..."

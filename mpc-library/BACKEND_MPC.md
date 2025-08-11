@@ -85,10 +85,11 @@ Configured in Firebase Functions:
 
 ## Development
 ```bash
-pnpm dev:server           # Start with tsx watch
+pnpm dev:server           # Start with tsx watch (local development only)
 pnpm build:server         # Build TypeScript
-pnpm start                # Run compiled server
 ```
+
+> **Note**: The server is deployed as Firebase Functions in production and doesn't require a separate start command.
 
 ## Deployment
 - Functions deployed via `pnpm deploy` (Firebase Hosting + Functions)

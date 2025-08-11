@@ -74,9 +74,23 @@ const enterpriseItems: NavigationItem[] = [
   { text: 'Compliance', icon: <Security />, path: '/dashboard/compliance' },
 ];
 
-// Accounting-specific navigation items
+// Accounting-specific navigation items (mirror Accounting tabs via hashes)
 const accountingNavigationItems: NavigationItem[] = [
-  { text: 'Accounting Dashboard', icon: <AccountBalance />, path: '/accounting' },
+  { text: 'Overview', icon: <Dashboard />, path: '/accounting#overview' },
+  { text: 'Payments', icon: <Payment />, path: '/accounting#payments' },
+  { text: 'Tax', icon: <Analytics />, path: '/accounting#tax' },
+  { text: 'Filings', icon: <AccountBalance />, path: '/accounting#filings' },
+  { text: 'KYC', icon: <Security />, path: '/accounting#kyc' },
+  { text: 'Compliance', icon: <Security />, path: '/accounting#compliance' },
+  { text: 'Terms', icon: <Description />, path: '/accounting#terms' },
+];
+
+// Admin-specific navigation items (mirror Admin tabs via hashes)
+const adminNavigationItems: NavigationItem[] = [
+  { text: 'Users', icon: <Group />, path: '/admin#users' },
+  { text: 'Licenses', icon: <CardMembership />, path: '/admin#licenses' },
+  { text: 'Invoices', icon: <Payment />, path: '/admin#invoices' },
+  { text: 'System Health', icon: <Security />, path: '/admin#system' },
 ];
 
 export const DashboardLayout: React.FC = () => {
@@ -105,9 +119,10 @@ export const DashboardLayout: React.FC = () => {
     }
   }, [isAccountingUser, location.pathname, navigate]);
 
-  // If user is accounting user, don't render the dashboard layout
-  if (isAccountingUser) {
-    return null; // This will trigger the redirect in useEffect
+  // Allow accounting users to render the layout when on /accounting routes.
+  // We still redirect them away from /dashboard to /accounting above.
+  if (isAccountingUser && !location.pathname.startsWith('/accounting')) {
+    return null;
   }
 
   const handleDrawerToggle = () => {
@@ -134,18 +149,22 @@ export const DashboardLayout: React.FC = () => {
   const needsKyc = kycStatus !== 'COMPLETED';
   const showKycBanner = needsKyc && !dismissedKycBanner;
 
-  // Compute navigation, hiding Billing for SUPERADMIN only
+  // Compute navigation items based on current section (dashboard vs accounting)
+  // and hide Billing for SUPERADMIN only on the user dashboard.
   const navigationItems: NavigationItem[] = React.useMemo(() => {
+    const inAccountingSection = location.pathname.startsWith('/accounting');
+    const inAdminSection = location.pathname.startsWith('/admin');
+    if (inAccountingSection) return [...accountingNavigationItems];
+    if (inAdminSection) return [...adminNavigationItems];
+
     const items = [...baseNavigationItems];
     const roleUpper = String(user?.role || '').toUpperCase();
     const isSuperAdmin = roleUpper === 'SUPERADMIN';
-    
-    // Only hide Billing for SUPERADMIN (they use Admin dashboard instead)
     if (isSuperAdmin) {
       return items.filter((item) => item.path !== '/dashboard/billing');
     }
     return items;
-  }, [user?.role]);
+  }, [location.pathname, user?.role]);
 
   const NavigationList = () => (
     <Box sx={{ width: drawerWidth, height: '100%', backgroundColor: 'background.paper' }}>
@@ -211,7 +230,11 @@ export const DashboardLayout: React.FC = () => {
       {/* Navigation Items */}
       <List sx={{ px: 2, py: 1 }}>
         {navigationItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const [itemBasePath, itemHash] = String(item.path || '').split('#');
+          const isHashLink = Boolean(itemHash);
+          const isActive = isHashLink
+            ? (location.pathname === itemBasePath && location.hash === `#${itemHash}`)
+            : (location.pathname === item.path);
           return (
             <Box
               key={item.text}

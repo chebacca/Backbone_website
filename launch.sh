@@ -72,7 +72,7 @@ start_dev() {
     
     print_success "Development environment started!"
     print_status "Frontend: http://localhost:3002"
-    print_status "Backend: http://localhost:3003"
+    print_status "Backend: http://localhost:3003 (development only, production uses Firebase Functions)"
     print_status "Press Ctrl+C to stop"
     
     # Wait for user to stop
@@ -91,11 +91,14 @@ deploy_firebase() {
     pnpm build
     
     # Deploy to Firebase
-    print_status "Deploying to Firebase..."
+    print_status "Deploying to Firebase (hosting, functions, firestore, storage)..."
     firebase deploy
     
     print_success "Deployment completed!"
     print_status "Your app is now live on Firebase!"
+    print_status "Frontend: Firebase Hosting"
+    print_status "Backend API: Firebase Functions (/api/* endpoints)"
+    print_status "Database: Firestore"
 }
 
 # Function to show help
@@ -106,13 +109,16 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  dev, development    Start development environment (default)"
-    echo "  deploy              Deploy to Firebase"
+    echo "  deploy              Deploy to Firebase (hosting, functions, firestore, storage)"
     echo "  help                Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0                  # Start development environment"
     echo "  $0 dev              # Start development environment"
     echo "  $0 deploy           # Deploy to Firebase"
+    echo ""
+    echo "Note: Production deployment is handled entirely through Firebase."
+    echo "      The local development server is for development purposes only."
     echo ""
 }
 

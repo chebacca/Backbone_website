@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
     "test:invoices": "echo 'invoice tests disabled (Firestore migration)' && exit 0",
     "seed": "npx tsx scripts/seed-database.ts seed",
     "seed:clear": "npx tsx scripts/seed-database.ts clear",
@@ -18,6 +17,8 @@
     "seed:all": "npx tsx scripts/seed-all.ts",
     "seed:enterprise-multi": "npx tsx scripts/seed-enterprise-multi.ts",
     "seed:chris-mole": "npx tsx scripts/seed-chris-mole.ts",
+    "seed:enterprise-test": "npx tsx scripts/seed-enterprise-test-user.ts",
+    "list:enterprise-users": "npx tsx scripts/list-enterprise-users.ts",
     "db:init": "npx tsx scripts/init-database.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -25,7 +26,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "backfill:enterprise-org-links": "npx tsx scripts/backfill-enterprise-org-links.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.1",

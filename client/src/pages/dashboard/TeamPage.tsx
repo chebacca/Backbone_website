@@ -21,6 +21,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  InputAdornment,
   Alert,
   Table,
   TableBody,
@@ -47,6 +48,8 @@ import {
   AdminPanelSettings,
   Work,
   Star,
+  Visibility,
+  VisibilityOff,
 } from '@mui/icons-material';
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
@@ -58,8 +61,8 @@ interface TeamMember {
   firstName: string;
   lastName: string;
   email: string;
-  role: 'admin' | 'member' | 'viewer';
-  status: 'active' | 'pending' | 'suspended';
+  role: 'admin' | 'member' | 'viewer' | 'owner' | 'manager';
+  status: 'active' | 'pending' | 'suspended' | 'removed';
   joinedAt: string;
   lastActive: string;
   licenseAssigned?: string;
@@ -137,6 +140,8 @@ type ChipColor = ChipProps['color'];
 const getRoleColor = (role: TeamMember['role']): ChipColor => {
   switch (role) {
     case 'admin': return 'secondary';
+    case 'owner': return 'secondary';
+    case 'manager': return 'info';
     case 'member': return 'success';
     case 'viewer': return 'default';
     default: return 'default';
@@ -148,6 +153,7 @@ const getStatusColor = (status: TeamMember['status']) => {
     case 'active': return 'success';
     case 'pending': return 'warning';
     case 'suspended': return 'error';
+    case 'removed': return 'default';
     default: return 'default';
   }
 };
@@ -173,50 +179,113 @@ const TeamPage: React.FC = () => {
     availableSeats: 0,
     totalSeats: 0,
   });
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [orgName, setOrgName] = useState<string>('');
 
-  // Fetch live data tied to the logged-in account
+  // Normalize server date values (string | number | Firestore Timestamp-like)
+  const toIsoDate = (value: any, { includeTime = false }: { includeTime?: boolean } = {}): string => {
+    try {
+      if (!value) {
+        const d = new Date();
+        return includeTime ? d.toISOString() : d.toISOString().slice(0, 10);
+      }
+      if (typeof value === 'string' || typeof value === 'number') {
+        const d = new Date(value);
+        if (!Number.isNaN(d.getTime())) {
+          return includeTime ? d.toISOString() : d.toISOString().slice(0, 10);
+        }
+      }
+      if (typeof value === 'object') {
+        // Firestore Timestamp serialized by Admin SDK: { _seconds, _nanoseconds }
+        const seconds = (value as any)._seconds;
+        const nanos = (value as any)._nanoseconds ?? 0;
+        if (typeof seconds === 'number') {
+          const ms = seconds * 1000 + Math.floor(nanos / 1_000_000);
+          const d = new Date(ms);
+          return includeTime ? d.toISOString() : d.toISOString().slice(0, 10);
+        }
+      }
+    } catch {}
+    const d = new Date();
+    return includeTime ? d.toISOString() : d.toISOString().slice(0, 10);
+  };
+
+  // Fetch organizations, members, and seat usage
   useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
-        // Fetch subscriptions → seats and licenses
+        // Load orgs
+        const orgRes = await api.get(endpoints.organizations.my());
+        const owned = orgRes?.data?.data?.owned ?? [];
+        const memberOf = orgRes?.data?.data?.memberOf ?? [];
+        const primaryOrg = (owned[0] || memberOf[0]) || null;
+
+        if (!primaryOrg) {
+          if (isMounted) {
+            setOrgId(null);
+            setOrgName('');
+            setTeamMembers([]);
+            setStats({ totalMembers: 0, activeMembers: 0, pendingInvites: 0, availableSeats: 0, totalSeats: 0 });
+          }
+          return;
+        }
+
+        const members = (primaryOrg.members || []) as any[];
+        const pendingInvites = members.filter(m => m.status === 'INVITED').length;
+        const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
+
+        // Load subscriptions and filter to org
         const subsRes = await api.get(endpoints.subscriptions.mySubscriptions());
-        const subscriptions = subsRes.data?.data?.subscriptions ?? [];
+        const subscriptions = (subsRes.data?.data?.subscriptions ?? []) as any[];
+        const orgSubs = subscriptions.filter(s => s.organizationId === primaryOrg.id && s.status === 'ACTIVE');
+        const totalSeats = orgSubs.reduce((sum, s) => sum + (s.seats || 0), 0);
+        const availableSeats = Math.max(0, totalSeats - (activeMembers + pendingInvites));
 
-        const totalSeats = subscriptions.reduce((sum: number, s: any) => sum + (s.seats ?? 0), 0);
-        const allLicenses: any[] = subscriptions.flatMap((s: any) => s.licenses ?? []);
-        const activeMembers = allLicenses.filter(l => l.status === 'ACTIVE').length;
-        const availableSeats = Math.max(0, totalSeats - activeMembers);
-
-        // Fetch license details list for table rows
-        const licRes = await api.get(endpoints.licenses.myLicenses());
-        const licenses: any[] = licRes.data?.data?.licenses ?? [];
-
-        const derivedMembers: TeamMember[] = licenses.map((lic, idx) => ({
-          id: lic.id,
-          firstName: 'Seat',
-          lastName: String(idx + 1),
-          email: `${user?.email ?? 'seat'}+${idx + 1}`,
-          role: 'member',
-          status: (lic.status === 'ACTIVE' ? 'active' : lic.status === 'PENDING' ? 'pending' : 'suspended') as TeamMember['status'],
-          joinedAt: new Date(lic.createdAt ?? Date.now()).toISOString().slice(0, 10),
-          lastActive: new Date(lic.activatedAt ?? lic.updatedAt ?? Date.now()).toISOString(),
-          licenseAssigned: lic.key?.slice(0, 8) + '-…',
-          department: undefined,
-        }));
+        // Map members to display
+        const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
+          .filter((m: any) => m && m.status !== 'REMOVED')
+          .map((m: any) => {
+            const email: string = String(m.email || 'user@example.com');
+            const username = email.split('@')[0] || 'User';
+            const roleMap: Record<string, TeamMember['role']> = {
+              OWNER: 'owner',
+              ENTERPRISE_ADMIN: 'admin',
+              MANAGER: 'manager',
+              MEMBER: 'member',
+            };
+            const statusMap: Record<string, TeamMember['status']> = {
+              INVITED: 'pending',
+              ACTIVE: 'active',
+              REMOVED: 'removed',
+            };
+            return {
+              id: String(m.id || `${email}-${Math.random().toString(36).slice(2)}`),
+              firstName: username.charAt(0).toUpperCase() + username.slice(1),
+              lastName: '',
+              email,
+              role: roleMap[String(m.role)] || 'member',
+              status: statusMap[String(m.status)] || 'active',
+              joinedAt: toIsoDate(m.joinedAt),
+              lastActive: toIsoDate(m.updatedAt || m.joinedAt || new Date(), { includeTime: true }),
+            } as TeamMember;
+          });
 
         if (!isMounted) return;
+        setOrgId(primaryOrg.id);
+        setOrgName(primaryOrg.name || 'Organization');
         setTeamMembers(derivedMembers);
         setStats({
-          totalMembers: activeMembers, // Treat active license holders as active members
+          totalMembers: derivedMembers.length,
           activeMembers,
-          pendingInvites: 0, // No invites feature yet
+          pendingInvites,
           availableSeats,
           totalSeats,
         });
       } catch (error) {
         if (!isMounted) return;
-        // Fall back to zeros to avoid UI break
+        // Fall back to empty state but surface the cause for debugging
+        console.error('[TeamPage] Failed to load team data:', error);
         setTeamMembers([]);
         setStats({ totalMembers: 0, activeMembers: 0, pendingInvites: 0, availableSeats: 0, totalSeats: 0 });
       }
@@ -228,6 +297,10 @@ const TeamPage: React.FC = () => {
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [editForm, setEditForm] = useState<{ newPassword: string; confirmPassword: string; email: string; role: TeamMember['role']; status: TeamMember['status'] }>({ newPassword: '', confirmPassword: '', email: '', role: 'member', status: 'active' });
   
   const [inviteForm, setInviteForm] = useState({
     email: '',
@@ -243,13 +316,68 @@ const TeamPage: React.FC = () => {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
-    setSelectedMember(null);
   };
 
-  const handleInviteMember = () => {
-    enqueueSnackbar(`Invitation sent to ${inviteForm.email}`, { variant: 'success' });
-    setInviteDialogOpen(false);
-    setInviteForm({ email: '', role: 'member', department: '', message: '' });
+  const handleInviteMember = async () => {
+    if (!orgId) return;
+    try {
+      const roleMap: Record<TeamMember['role'], 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER'> = {
+        admin: 'ENTERPRISE_ADMIN',
+        owner: 'ENTERPRISE_ADMIN',
+        manager: 'MANAGER',
+        member: 'MEMBER',
+        viewer: 'MEMBER',
+      };
+      await api.post(endpoints.organizations.invite(orgId), {
+        email: inviteForm.email,
+        role: roleMap[inviteForm.role] || 'MEMBER',
+      });
+      enqueueSnackbar(`Invitation sent to ${inviteForm.email}`, { variant: 'success' });
+      setInviteDialogOpen(false);
+      setInviteForm({ email: '', role: 'member', department: '', message: '' });
+      // Quick refresh
+      const orgRes = await api.get(endpoints.organizations.my());
+      const owned = orgRes?.data?.data?.owned ?? [];
+      const memberOf = orgRes?.data?.data?.memberOf ?? [];
+      const primaryOrg = [...owned, ...memberOf].find((o: any) => o.id === orgId) || owned[0] || memberOf[0];
+      if (primaryOrg) {
+        const members = (primaryOrg.members || []) as any[];
+        const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
+          .filter((m: any) => m && m.status !== 'REMOVED')
+          .map((m: any) => {
+            const email: string = String(m.email || 'user@example.com');
+            const username = email.split('@')[0] || 'User';
+            const roleMapDisplay: Record<string, TeamMember['role']> = {
+              OWNER: 'owner',
+              ENTERPRISE_ADMIN: 'admin',
+              MANAGER: 'manager',
+              MEMBER: 'member',
+            };
+            const statusMapDisplay: Record<string, TeamMember['status']> = {
+              INVITED: 'pending',
+              ACTIVE: 'active',
+              REMOVED: 'removed',
+            };
+            return {
+              id: String(m.id || `${email}-${Math.random().toString(36).slice(2)}`),
+              firstName: username.charAt(0).toUpperCase() + username.slice(1),
+              lastName: '',
+              email,
+              role: roleMapDisplay[String(m.role)] || 'member',
+              status: statusMapDisplay[String(m.status)] || 'active',
+              joinedAt: toIsoDate(m.joinedAt),
+              lastActive: toIsoDate(m.updatedAt || m.joinedAt || new Date(), { includeTime: true }),
+            } as TeamMember;
+          });
+        const pendingInvites = members.filter(m => m.status === 'INVITED').length;
+        const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
+        setTeamMembers(derivedMembers);
+        setStats((s) => ({ ...s, totalMembers: derivedMembers.length, pendingInvites, activeMembers, availableSeats: Math.max(0, s.totalSeats - (activeMembers + pendingInvites)) }));
+      }
+    } catch (err: any) {
+      console.error('[TeamPage] Invite failed:', err);
+      enqueueSnackbar(err?.message || 'Failed to send invitation', { variant: 'error' });
+    }
   };
 
   const handleResendInvite = () => {
@@ -259,13 +387,201 @@ const TeamPage: React.FC = () => {
     handleMenuClose();
   };
 
-  const handleRemoveMember = () => {
-    if (selectedMember) {
-      enqueueSnackbar(`${selectedMember.firstName} ${selectedMember.lastName} removed from team`, { 
-        variant: 'warning' 
-      });
+  const openEditDialog = () => {
+    setEditForm({
+      newPassword: '',
+      confirmPassword: '',
+      email: selectedMember?.email || '',
+      role: selectedMember?.role || 'member',
+      status: selectedMember?.status || 'active',
+    });
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    setEditDialogOpen(true);
+  };
+
+  const handleSavePassword = async () => {
+    if (!selectedMember) return;
+    if (selectedMember.status !== 'active') {
+      enqueueSnackbar('Password can only be set after the member has joined (status Active).', { variant: 'warning' });
+      return;
     }
-    handleMenuClose();
+    const email = selectedMember.email;
+    const { newPassword, confirmPassword } = editForm;
+    if (!newPassword || newPassword.length < 8) {
+      enqueueSnackbar('Password must be at least 8 characters.', { variant: 'warning' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      enqueueSnackbar('Passwords do not match.', { variant: 'warning' });
+      return;
+    }
+    try {
+      setIsSavingEdit(true);
+      // Prefer org-scoped endpoint using memberId
+      if (!orgId) {
+        enqueueSnackbar('Organization context not found.', { variant: 'error' });
+        return;
+      }
+      await api.put(endpoints.organizations.setMemberPassword(orgId, selectedMember.id), { password: newPassword });
+      enqueueSnackbar(`Password set for ${email}`, { variant: 'success' });
+      setEditDialogOpen(false);
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to set password';
+      enqueueSnackbar(message, { variant: 'error' });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    if (!selectedMember || !orgId) return;
+    try {
+      setIsSavingEdit(true);
+      
+      // Update member metadata first
+      const roleMap: Record<TeamMember['role'], 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER'> = {
+        admin: 'ENTERPRISE_ADMIN',
+        owner: 'ENTERPRISE_ADMIN',
+        manager: 'MANAGER',
+        member: 'MEMBER',
+        viewer: 'MEMBER',
+      };
+      const statusMap: Record<TeamMember['status'], 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REMOVED'> = {
+        pending: 'INVITED',
+        active: 'ACTIVE',
+        suspended: 'SUSPENDED',
+        removed: 'REMOVED',
+      };
+      
+      console.log('Updating member:', {
+        memberId: selectedMember.id,
+        email: editForm.email,
+        role: roleMap[editForm.role],
+        status: statusMap[editForm.status],
+      });
+      
+      await api.patch(endpoints.organizations.updateMember(orgId, selectedMember.id), {
+        email: editForm.email,
+        role: roleMap[editForm.role],
+        status: statusMap[editForm.status],
+      });
+
+      // If password provided, set it
+      if (editForm.newPassword && editForm.confirmPassword && editForm.newPassword === editForm.confirmPassword) {
+        await api.put(endpoints.organizations.setMemberPassword(orgId, selectedMember.id), { password: editForm.newPassword });
+      }
+
+      enqueueSnackbar('Member updated successfully', { variant: 'success' });
+      setEditDialogOpen(false);
+
+      // Refresh organization data to get updated stats and member list
+      const orgRes = await api.get(endpoints.organizations.my());
+      const owned = orgRes?.data?.data?.owned ?? [];
+      const memberOf = orgRes?.data?.data?.memberOf ?? [];
+      const primaryOrg = [...owned, ...memberOf].find((o: any) => o.id === orgId) || owned[0] || memberOf[0];
+      
+      if (primaryOrg) {
+        const members = (primaryOrg.members || []) as any[];
+        const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
+          .filter((m: any) => m && m.status !== 'REMOVED')
+          .map((m: any) => {
+            const email: string = String(m.email || 'user@example.com');
+            const username = email.split('@')[0] || 'User';
+            const roleMapDisplay: Record<string, TeamMember['role']> = {
+              OWNER: 'owner',
+              ENTERPRISE_ADMIN: 'admin',
+              MANAGER: 'manager',
+              MEMBER: 'member',
+            };
+            const statusMapDisplay: Record<string, TeamMember['status']> = {
+              INVITED: 'pending',
+              ACTIVE: 'active',
+              REMOVED: 'removed',
+            };
+            return {
+              id: String(m.id || `${email}-${Math.random().toString(36).slice(2)}`),
+              firstName: username.charAt(0).toUpperCase() + username.slice(1),
+              lastName: '',
+              email,
+              role: roleMapDisplay[String(m.role)] || 'member',
+              status: statusMapDisplay[String(m.status)] || 'active',
+              joinedAt: toIsoDate(m.joinedAt),
+              lastActive: toIsoDate(m.updatedAt || m.joinedAt || new Date(), { includeTime: true }),
+            } as TeamMember;
+          });
+        
+        const pendingInvites = members.filter(m => m.status === 'INVITED').length;
+        const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
+        
+        setTeamMembers(derivedMembers);
+        setStats((s) => ({ 
+          ...s, 
+          totalMembers: derivedMembers.length, 
+          pendingInvites, 
+          activeMembers, 
+          availableSeats: Math.max(0, s.totalSeats - (activeMembers + pendingInvites)) 
+        }));
+      }
+    } catch (err: any) {
+      console.error('[TeamPage] Update member failed:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update member';
+      enqueueSnackbar(msg, { variant: 'error' });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!selectedMember || !orgId) return;
+    try {
+      await api.post(endpoints.organizations.removeMember(orgId, selectedMember.id));
+      enqueueSnackbar(`${selectedMember.email} removed from team`, { variant: 'warning' });
+      // Refresh
+      const orgRes = await api.get(endpoints.organizations.my());
+      const owned = orgRes?.data?.data?.owned ?? [];
+      const memberOf = orgRes?.data?.data?.memberOf ?? [];
+      const primaryOrg = [...owned, ...memberOf].find((o: any) => o.id === orgId) || owned[0] || memberOf[0];
+      if (primaryOrg) {
+        const members = (primaryOrg.members || []) as any[];
+        const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
+          .filter((m: any) => m && m.status !== 'REMOVED')
+          .map((m: any) => {
+            const email: string = String(m.email || 'user@example.com');
+            const username = email.split('@')[0] || 'User';
+            const roleMapDisplay: Record<string, TeamMember['role']> = {
+              OWNER: 'owner',
+              ENTERPRISE_ADMIN: 'admin',
+              MANAGER: 'manager',
+              MEMBER: 'member',
+            };
+            const statusMapDisplay: Record<string, TeamMember['status']> = {
+              INVITED: 'pending',
+              ACTIVE: 'active',
+              REMOVED: 'removed',
+            };
+            return {
+              id: String(m.id || `${email}-${Math.random().toString(36).slice(2)}`),
+              firstName: username.charAt(0).toUpperCase() + username.slice(1),
+              lastName: '',
+              email,
+              role: roleMapDisplay[String(m.role)] || 'member',
+              status: statusMapDisplay[String(m.status)] || 'active',
+              joinedAt: toIsoDate(m.joinedAt),
+              lastActive: toIsoDate(m.updatedAt || m.joinedAt || new Date(), { includeTime: true }),
+            } as TeamMember;
+          });
+        const pendingInvites = members.filter(m => m.status === 'INVITED').length;
+        const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
+        setTeamMembers(derivedMembers);
+        setStats((s) => ({ ...s, totalMembers: derivedMembers.length, pendingInvites, activeMembers, availableSeats: Math.max(0, s.totalSeats - (activeMembers + pendingInvites)) }));
+      }
+    } catch (err: any) {
+      console.error('[TeamPage] Remove member failed:', err);
+      enqueueSnackbar(err?.message || 'Failed to remove member', { variant: 'error' });
+    } finally {
+      handleMenuClose();
+    }
   };
 
   const utilization = useMemo(() => {
@@ -276,11 +592,7 @@ const TeamPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
+      <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
@@ -308,11 +620,7 @@ const TeamPage: React.FC = () => {
       {/* Team Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-          >
+          <Box>
             <Card
               sx={{
                 background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)',
@@ -337,11 +645,7 @@ const TeamPage: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
+          <Box>
             <Card
               sx={{
                 background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%)',
@@ -366,11 +670,7 @@ const TeamPage: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
+          <Box>
             <Card
               sx={{
                 background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(255, 152, 0, 0.05) 100%)',
@@ -395,11 +695,7 @@ const TeamPage: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
+          <Box>
             <Card
               sx={{
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
@@ -441,11 +737,7 @@ const TeamPage: React.FC = () => {
       </Grid>
 
       {/* Team Members Table */}
-      <Box
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.5 }}
-      >
+      <Box>
         <TableContainer
           component={Paper}
           sx={{
@@ -583,7 +875,7 @@ const TeamPage: React.FC = () => {
           },
         }}
       >
-        <MenuItem onClick={() => setEditDialogOpen(true)}>
+        <MenuItem onClick={() => { handleMenuClose(); openEditDialog(); }}>
           <ListItemIcon>
             <Edit fontSize="small" />
           </ListItemIcon>
@@ -682,6 +974,126 @@ const TeamPage: React.FC = () => {
             disabled={!inviteForm.email}
           >
             Send Invitation
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Member Dialog - Set Password */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setSelectedMember(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'background.paper',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+          },
+        }}
+      >
+      <DialogTitle>Edit Member</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Email"
+              value={editForm.email}
+              onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </Grid>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Role</InputLabel>
+              <Select
+                value={editForm.role}
+                label="Role"
+                onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as TeamMember['role'] }))}
+              >
+                <MenuItem value="viewer">Viewer</MenuItem>
+                <MenuItem value="member">Member</MenuItem>
+                <MenuItem value="manager">Manager</MenuItem>
+                <MenuItem value="admin">Admin</MenuItem>
+                <MenuItem value="owner">Owner</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={editForm.status}
+                label="Status"
+                onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value as TeamMember['status'] }))}
+              >
+                <MenuItem value="pending">Pending</MenuItem>
+                <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="suspended">Suspended</MenuItem>
+                <MenuItem value="removed">Removed</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+            <Grid item xs={12}>
+              {editForm.status !== 'active' ? (
+                <Alert severity="warning">This member has not joined yet (Pending/Suspended/Removed). You can only set a password for Active members.</Alert>
+              ) : (
+                <Alert severity="info">Set a temporary password for this user to log into Backbone. They can change it later.</Alert>
+              )}
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="New Password"
+                type={showPassword ? 'text' : 'password'}
+                value={editForm.newPassword}
+                onChange={(e) => setEditForm((f) => ({ ...f, newPassword: e.target.value }))}
+                inputProps={{ minLength: 8 }}
+                helperText="Minimum 8 characters"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword((v) => !v)} edge="end" aria-label="toggle password visibility">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Confirm Password"
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={editForm.confirmPassword}
+                onChange={(e) => setEditForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowConfirmPassword((v) => !v)} edge="end" aria-label="toggle password visibility">
+                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)} disabled={isSavingEdit}>Cancel</Button>
+          <Button
+            onClick={handleSaveChanges}
+            variant="outlined"
+            disabled={isSavingEdit}
+          >
+            {isSavingEdit ? 'Saving…' : 'Save Changes'}
+          </Button>
+          <Button onClick={handleSavePassword} variant="contained" disabled={isSavingEdit || !editForm.newPassword || !editForm.confirmPassword || editForm.status !== 'active'}>
+            {isSavingEdit ? 'Saving…' : 'Save Password Only'}
           </Button>
         </DialogActions>
       </Dialog>

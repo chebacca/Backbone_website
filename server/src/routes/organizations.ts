@@ -54,8 +54,79 @@ router.get('/my', asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
+// GET /organizations/my/context
+// Returns the primary organization context for the current user (owned if any, else first membership)
+router.get('/my/context', asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const [owned, memberOf] = await Promise.all([
+    firestoreService.getOrganizationsOwnedByUser(userId),
+    firestoreService.getOrganizationsForMemberUser(userId),
+  ]);
+
+  let primaryOrg: any = null;
+  let primaryRole: 'OWNER' | 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER' | undefined = undefined;
+  let members: any[] = [];
+  let activeSubscription: any = null;
+
+  if (owned && owned.length > 0) {
+    primaryOrg = owned[0];
+    members = await firestoreService.getOrgMembers(primaryOrg.id);
+    primaryRole = 'OWNER';
+  } else if (memberOf && memberOf.length > 0) {
+    primaryOrg = memberOf[0];
+    members = await firestoreService.getOrgMembers(primaryOrg.id);
+    const me = members.find(m => m.userId === userId);
+    primaryRole = me?.role;
+  }
+
+  if (primaryOrg) {
+    const subs = await firestoreService.getSubscriptionsByOrganizationId(primaryOrg.id);
+    activeSubscription = subs.find(s => s.status === 'ACTIVE') || null;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      primaryOrgId: primaryOrg?.id || null,
+      primaryRole: primaryRole || null,
+      organization: primaryOrg,
+      members,
+      activeSubscription,
+    },
+  });
+}));
+
+// POST /organizations/authorize-member
+// Validates that the provided email belongs to an ACTIVE member of the caller's primary organization
+router.post('/authorize-member', requireEnterpriseAdminStrict, [
+  body('email').isEmail().withMessage('Valid email required'),
+], asyncHandler(async (req: Request, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
+
+  const userId = req.user!.id;
+  const { email } = req.body as { email: string };
+
+  const owned = await firestoreService.getOrganizationsOwnedByUser(userId);
+  if (!owned || owned.length === 0) {
+    throw createApiError('No owned organization found for caller', 400);
+  }
+  const orgId = owned[0].id;
+
+  const member = await firestoreService.getOrgMemberByEmail(orgId, email);
+  if (!member) {
+    return res.json({ success: true, data: { allowed: false, reason: 'NOT_A_MEMBER' } });
+  }
+  if (member.status !== 'ACTIVE') {
+    return res.json({ success: true, data: { allowed: false, reason: member.status } });
+  }
+
+  return res.json({ success: true, data: { allowed: true, role: member.role, memberId: member.id, orgId } });
+}));
+
 // POST /organizations/:orgId/invitations
-router.post('/:orgId/invitations', [
+router.post('/:orgId/invitations', requireEnterpriseAdminStrict, [
   body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
   body('role').isIn(['ENTERPRISE_ADMIN', 'MANAGER', 'MEMBER']).withMessage('Valid role required'),
 ], asyncHandler(async (req: Request, res: Response) => {
@@ -160,7 +231,7 @@ router.post('/invitations/accept', [
 }));
 
 // POST /organizations/:orgId/members/:memberId/remove (optional)
-router.post('/:orgId/members/:memberId/remove', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:orgId/members/:memberId/remove', requireEnterpriseAdminStrict, asyncHandler(async (req: Request, res: Response) => {
   const { orgId, memberId } = req.params;
 
   const member = (await firestoreService.getOrgMembers(orgId)).find(m => m.id === memberId);

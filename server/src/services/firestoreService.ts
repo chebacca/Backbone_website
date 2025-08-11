@@ -763,6 +763,378 @@ export class FirestoreService {
   async setSystemSetting<T = any>(key: string, data: T): Promise<void> {
     await db.collection('system_settings').doc(key).set({ ...data, updatedAt: new Date() }, { merge: true });
   }
+
+  // ================================
+  // Projects (Cloud) - Firestore-backed
+  // ================================
+  async userHasActiveLicense(userId: string): Promise<boolean> {
+    const now = new Date();
+    const snap = await db
+      .collection('licenses')
+      .where('userId', '==', userId)
+      .where('status', 'in', ['ACTIVE', 'PENDING'])
+      .get();
+    if (snap.empty) return false;
+    return snap.docs.some(d => {
+      const lic = d.data() as any;
+      const exp = lic.expiresAt ? new Date(lic.expiresAt) : null;
+      return !exp || exp > now;
+    });
+  }
+
+  async verifyOrgMembership(userId: string, orgId: string, allowedRoles: string[]): Promise<boolean> {
+    const snap = await db
+      .collection('org_members')
+      .where('orgId', '==', orgId)
+      .where('userId', '==', userId)
+      .where('status', '==', 'ACTIVE')
+      .limit(1)
+      .get();
+    if (snap.empty) return false;
+    const role = String((snap.docs[0].data() as any).role || '').toUpperCase();
+    return allowedRoles.map(r => r.toUpperCase()).includes(role);
+  }
+
+  async createProject(data: any): Promise<any> {
+    const ref = db.collection('projects').doc();
+    const now = new Date();
+    const payload = {
+      id: ref.id,
+      name: data.name,
+      description: data.description || '',
+      type: data.type,
+      applicationMode: data.applicationMode || (data.type === 'standalone' ? 'standalone' : 'shared_network'),
+      visibility: data.visibility || 'private',
+      ownerId: data.ownerId,
+      organizationId: data.organizationId || null,
+      metadata: data.metadata || {},
+      settings: data.settings || {},
+      isActive: true,
+      isArchived: false,
+      archivedAt: null,
+      archivedBy: null,
+      createdAt: now,
+      updatedAt: now,
+      lastAccessedAt: now,
+      // storage
+      storageBackend: data.storageBackend || 'firestore',
+      gcsBucket: data.gcsBucket || null,
+      gcsPrefix: data.gcsPrefix || null,
+      // standalone
+      filePath: data.filePath || null,
+      fileSize: data.fileSize || null,
+      lastSyncedAt: null,
+      offlineMode: !!data.offlineMode,
+      autoSave: data.autoSave ?? true,
+      backupEnabled: !!data.backupEnabled,
+      encryptionEnabled: !!data.encryptionEnabled,
+      // network
+      allowCollaboration: !!data.allowCollaboration,
+      maxCollaborators: data.maxCollaborators ?? 10,
+      realTimeEnabled: !!data.realTimeEnabled,
+      autoSync: !!data.autoSync,
+      syncInterval: data.syncInterval ?? 300,
+      conflictResolution: data.conflictResolution || 'manual',
+      enableOfflineMode: !!data.enableOfflineMode,
+      allowRealTimeEditing: !!data.allowRealTimeEditing,
+      enableComments: !!data.enableComments,
+      enableChat: !!data.enableChat,
+      enablePresenceIndicators: !!data.enablePresenceIndicators,
+      enableActivityLog: data.enableActivityLog ?? true,
+      allowGuestUsers: !!data.allowGuestUsers,
+    };
+    await ref.set(payload);
+    // Owner participant
+    await this.addParticipant(ref.id, {
+      userId: data.ownerId,
+      role: 'owner',
+      isActive: true,
+    });
+    return payload;
+  }
+
+  async listPublicProjects(opts: { type?: string; applicationMode?: string; limit?: number; offset?: number; sortBy?: string; sortOrder?: 'asc' | 'desc' }): Promise<any[]> {
+    const { type, applicationMode, limit = 50, offset = 0, sortBy = 'lastAccessedAt', sortOrder = 'desc' } = opts || {} as any;
+    let query: FirebaseFirestore.Query = db.collection('projects')
+      .where('visibility', '==', 'public')
+      .where('isActive', '==', true)
+      .where('isArchived', '==', false);
+    if (type && type !== 'all') {
+      // legacy: 'network' should include 'networked'
+      if (type === 'network') {
+        // Firestore has no IN on strings across two fields; we store a single type, so treat as equality with either at write-time
+        query = query.where('type', 'in', ['network', 'networked']);
+      } else {
+        query = query.where('type', '==', type);
+      }
+    }
+    if (applicationMode && applicationMode !== 'all') {
+      query = query.where('applicationMode', '==', applicationMode);
+    }
+    // order & limit
+    query = query.orderBy(sortBy as any, sortOrder).limit(limit);
+    const snap = await query.get();
+    return snap.docs.slice(offset).map(d => d.data());
+  }
+
+  async listUserProjects(userId: string, q: any): Promise<any[]> {
+    const { query, type, applicationMode, visibility, organizationId, isArchived, limit = 50, sortBy = 'lastAccessedAt', sortOrder = 'desc' } = q || {};
+
+    // Owner projects
+    let baseQuery: FirebaseFirestore.Query = db.collection('projects')
+      .where('isActive', '==', true);
+    if (typeof isArchived !== 'undefined') {
+      baseQuery = baseQuery.where('isArchived', '==', String(isArchived) === 'true');
+    }
+    // Firestore requires an equality filter before orderBy; ensure sortBy is indexed with the filters
+    // We'll fetch multiple slices: owner, participant, and role-based public fallbacks, then merge unique
+
+    const results: Map<string, any> = new Map();
+
+    // Owner
+    let ownerQuery = baseQuery.where('ownerId', '==', userId);
+    ownerQuery = this.applyProjectFilters(ownerQuery, { type, applicationMode, visibility, organizationId });
+    ownerQuery = ownerQuery.orderBy(sortBy as any, sortOrder).limit(Number(limit));
+    const ownerSnap = await ownerQuery.get();
+    ownerSnap.forEach(d => results.set(d.id, d.data()));
+
+    // Participant
+    const partSnap = await db.collection('project_participants').where('userId', '==', userId).where('isActive', '==', true).get();
+    const projectIds = partSnap.docs.map(d => (d.data() as any).projectId);
+    if (projectIds.length) {
+      const chunks: string[][] = [];
+      for (let i = 0; i < projectIds.length; i += 10) chunks.push(projectIds.slice(i, i + 10));
+      for (const chunk of chunks) {
+        let pQuery: FirebaseFirestore.Query = db.collection('projects').where('id', 'in', chunk);
+        pQuery = this.applyProjectFilters(pQuery, { type, applicationMode, visibility, organizationId });
+        const pSnap = await pQuery.get();
+        pSnap.forEach(d => results.set(d.id, d.data()));
+      }
+    }
+
+    // Role-based: show public network projects as a fallback
+    let publicQuery: FirebaseFirestore.Query = db.collection('projects')
+      .where('visibility', '==', 'public')
+      .where('isActive', '==', true)
+      .where('isArchived', '==', false);
+    publicQuery = this.applyProjectFilters(publicQuery, { type: type || 'network', applicationMode, organizationId });
+    publicQuery = publicQuery.orderBy(sortBy as any, sortOrder).limit(Number(limit));
+    const publicSnap = await publicQuery.get();
+    publicSnap.forEach(d => results.set(d.id, d.data()));
+
+    // Text search (client-side contains)
+    let items = Array.from(results.values());
+    if (query) {
+      const qstr = String(query).toLowerCase();
+      items = items.filter((p: any) => String(p.name || '').toLowerCase().includes(qstr) || String(p.description || '').toLowerCase().includes(qstr));
+    }
+    // Sort client-side to reflect orderBy
+    items.sort((a: any, b: any) => {
+      const av = a[sortBy] || a.updatedAt;
+      const bv = b[sortBy] || b.updatedAt;
+      const an = typeof av === 'string' ? Date.parse(av) : (av?.toMillis?.() ? av.toMillis() : +new Date(av));
+      const bn = typeof bv === 'string' ? Date.parse(bv) : (bv?.toMillis?.() ? bv.toMillis() : +new Date(bv));
+      return sortOrder === 'asc' ? an - bn : bn - an;
+    });
+    return items.slice(0, Number(limit));
+  }
+
+  private applyProjectFilters(query: FirebaseFirestore.Query, f: { type?: string; applicationMode?: string; visibility?: string; organizationId?: string }): FirebaseFirestore.Query {
+    const { type, applicationMode, visibility, organizationId } = f || {};
+    let q = query;
+    if (type && type !== 'all') {
+      if (type === 'network') {
+        q = q.where('type', 'in', ['network', 'networked']);
+      } else {
+        q = q.where('type', '==', type);
+      }
+    }
+    if (applicationMode && applicationMode !== 'all') {
+      q = q.where('applicationMode', '==', applicationMode);
+    }
+    if (visibility && visibility !== 'all') {
+      q = q.where('visibility', '==', visibility);
+    }
+    if (organizationId) {
+      q = q.where('organizationId', '==', organizationId);
+    }
+    return q;
+  }
+
+  async getParticipantsForProjects(projectIds: string[]): Promise<Map<string, any[]>> {
+    const result = new Map<string, any[]>();
+    const chunks: string[][] = [];
+    for (let i = 0; i < projectIds.length; i += 10) chunks.push(projectIds.slice(i, i + 10));
+    for (const chunk of chunks) {
+      const snap = await db.collection('project_participants').where('projectId', 'in', chunk).get();
+      snap.forEach(d => {
+        const x = d.data() as any;
+        const list = result.get(x.projectId) || [];
+        list.push(x);
+        result.set(x.projectId, list);
+      });
+    }
+    return result;
+  }
+
+  async listParticipants(projectId: string): Promise<any[]> {
+    const snap = await db.collection('project_participants').where('projectId', '==', projectId).get();
+    return snap.docs.map(d => d.data());
+  }
+
+  async getProjectByIdAuthorized(projectId: string, userId: string): Promise<any | null> {
+    const doc = await db.collection('projects').doc(projectId).get();
+    if (!doc.exists) return null;
+    const p = doc.data() as any;
+    if (p.ownerId === userId) return p;
+    // participant check
+    const snap = await db.collection('project_participants').where('projectId', '==', projectId).where('userId', '==', userId).limit(1).get();
+    if (!snap.empty) return p;
+    // public visibility (networked only)
+    if (p.visibility === 'public' && p.isActive && !p.isArchived) return p;
+    return null;
+  }
+
+  async updateProjectAuthorized(projectId: string, userId: string, updates: any): Promise<any> {
+    const existing = await this.getProjectByIdAuthorized(projectId, userId);
+    if (!existing) {
+      const err: any = new Error('Project not found or access denied');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    // Only owner or admin participant can update
+    let isAdmin = existing.ownerId === userId;
+    if (!isAdmin) {
+      const snap = await db.collection('project_participants').where('projectId', '==', projectId).where('userId', '==', userId).limit(1).get();
+      if (!snap.empty) {
+        const role = (snap.docs[0].data() as any).role;
+        isAdmin = ['admin', 'owner'].includes(String(role).toLowerCase());
+      }
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    const payload = { ...updates, updatedAt: new Date() };
+    await db.collection('projects').doc(projectId).update(payload);
+    const after = await db.collection('projects').doc(projectId).get();
+    return after.data();
+  }
+
+  async deleteProjectAuthorized(projectId: string, userId: string, permanent: boolean): Promise<void> {
+    const existing = await this.getProjectByIdAuthorized(projectId, userId);
+    if (!existing) {
+      const err: any = new Error('Project not found or access denied');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    // Only owner or admin participant can delete
+    let isAdmin = existing.ownerId === userId;
+    if (!isAdmin) {
+      const snap = await db.collection('project_participants').where('projectId', '==', projectId).where('userId', '==', userId).limit(1).get();
+      if (!snap.empty) {
+        const role = (snap.docs[0].data() as any).role;
+        isAdmin = ['admin', 'owner'].includes(String(role).toLowerCase());
+      }
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    if (permanent) {
+      // Delete participants then project
+      const partSnap = await db.collection('project_participants').where('projectId', '==', projectId).get();
+      const batch = db.batch();
+      partSnap.docs.forEach(d => batch.delete(d.ref));
+      batch.delete(db.collection('projects').doc(projectId));
+      await batch.commit();
+    } else {
+      await db.collection('projects').doc(projectId).update({ isArchived: true, archivedAt: new Date(), archivedBy: userId });
+    }
+  }
+
+  async addParticipant(projectId: string, data: { userId: string; role?: string; isActive?: boolean }): Promise<any> {
+    const user = await this.getUserById(data.userId);
+    const ref = db.collection('project_participants').doc();
+    const now = new Date();
+    const record = {
+      id: ref.id,
+      projectId,
+      userId: data.userId,
+      userEmail: user?.email || '',
+      userName: user?.name || '',
+      role: data.role || 'viewer',
+      permissions: [],
+      joinedAt: now.toISOString(),
+      lastActiveAt: now.toISOString(),
+      isActive: data.isActive !== false
+    };
+    await ref.set(record);
+    return record;
+  }
+
+  async inviteParticipantsByEmail(projectId: string, emails: string[], role: string): Promise<void> {
+    for (const email of emails) {
+      const user = await this.getUserByEmail(email);
+      if (user) {
+        await this.addParticipant(projectId, { userId: user.id, role, isActive: true });
+      }
+    }
+  }
+
+  async addParticipantAuthorized(projectId: string, actingUserId: string, input: { userEmail: string; role: string }): Promise<any> {
+    // Only owner/admin can add
+    const project = await this.getProjectByIdAuthorized(projectId, actingUserId);
+    if (!project) {
+      const err: any = new Error('Project not found or access denied');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    let isAdmin = project.ownerId === actingUserId;
+    if (!isAdmin) {
+      const snap = await db.collection('project_participants').where('projectId', '==', projectId).where('userId', '==', actingUserId).limit(1).get();
+      if (!snap.empty) {
+        const role = (snap.docs[0].data() as any).role;
+        isAdmin = ['admin', 'owner'].includes(String(role).toLowerCase());
+      }
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    const user = await this.getUserByEmail(input.userEmail);
+    if (!user) throw new Error('User not found');
+    return this.addParticipant(projectId, { userId: user.id, role: input.role, isActive: true });
+  }
+
+  async removeParticipantAuthorized(projectId: string, actingUserId: string, participantId: string): Promise<void> {
+    // Only owner/admin can remove
+    const project = await this.getProjectByIdAuthorized(projectId, actingUserId);
+    if (!project) {
+      const err: any = new Error('Project not found or access denied');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    let isAdmin = project.ownerId === actingUserId;
+    if (!isAdmin) {
+      const snap = await db.collection('project_participants').where('projectId', '==', projectId).where('userId', '==', actingUserId).limit(1).get();
+      if (!snap.empty) {
+        const role = (snap.docs[0].data() as any).role;
+        isAdmin = ['admin', 'owner'].includes(String(role).toLowerCase());
+      }
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    const snap = await db.collection('project_participants').where('id', '==', participantId).limit(1).get();
+    if (snap.empty) return;
+    await db.collection('project_participants').doc(snap.docs[0].id).delete();
+  }
 }
 
 export const firestoreService = new FirestoreService();

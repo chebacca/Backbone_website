@@ -14,6 +14,7 @@ import { adminRouter } from './routes/admin.js';
 import { organizationsRouter } from './routes/organizations.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { accountingRouter } from './routes/accounting.js';
+import { projectsRouter } from './routes/projects.js';
 import invoicesRouter from './routes/invoices.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
@@ -119,6 +120,7 @@ app.use('/api/payments', paymentsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/accounting', accountingRouter);
+app.use('/api/projects', projectsRouter);
 
 // Setup endpoint: place BEFORE error handlers so it's reachable
 app.post('/api/setup/seed-superadmin', async (req, res) => {

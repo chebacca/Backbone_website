@@ -146,10 +146,20 @@ check_firebase() {
         exit 1
     fi
     
-    # Check current project
-    CURRENT_PROJECT=$(firebase use --only | grep "Active Project:" | awk '{print $3}')
+    # Determine current project (read from .firebaserc first)
+    if [ -f ".firebaserc" ]; then
+        # Parse JSON with sed to avoid Node ESM/CJS issues
+        CURRENT_PROJECT=$(sed -nE 's/.*"default"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' .firebaserc | head -n1)
+    fi
+
+    # Fallback: parse from firebase use output if not found
     if [ -z "$CURRENT_PROJECT" ]; then
-        print_error "No Firebase project selected. Please run 'firebase use [project-id]' first."
+        # Try to grab the first projectId from projects:list as a last resort
+        CURRENT_PROJECT=$(firebase projects:list --json 2>/dev/null | sed -nE 's/.*"projectId"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1)
+    fi
+
+    if [ -z "$CURRENT_PROJECT" ]; then
+        print_error "No Firebase project selected. Please run 'firebase use [project-id]' (or 'firebase use --add') first."
         exit 1
     fi
     
@@ -165,7 +175,7 @@ deploy_to_firebase() {
     print_status "Deploying to Firebase..."
     
     print_status "Deploying hosting..."
-    firebase deploy --only hosting
+    firebase deploy --only hosting --project "$CURRENT_PROJECT"
     if [ $? -ne 0 ]; then
         print_error "Hosting deployment failed"
         exit 1
@@ -173,7 +183,7 @@ deploy_to_firebase() {
     print_success "Hosting deployed"
     
     print_status "Deploying functions..."
-    firebase deploy --only functions
+    firebase deploy --only functions --project "$CURRENT_PROJECT"
     if [ $? -ne 0 ]; then
         print_error "Functions deployment failed"
         exit 1
@@ -181,7 +191,7 @@ deploy_to_firebase() {
     print_success "Functions deployed"
     
     print_status "Deploying Firestore rules and indexes..."
-    firebase deploy --only firestore
+    firebase deploy --only firestore --project "$CURRENT_PROJECT"
     if [ $? -ne 0 ]; then
         print_error "Firestore deployment failed"
         exit 1
@@ -189,7 +199,7 @@ deploy_to_firebase() {
     print_success "Firestore deployed"
     
     print_status "Deploying storage rules..."
-    firebase deploy --only storage
+    firebase deploy --only storage --project "$CURRENT_PROJECT"
     if [ $? -ne 0 ]; then
         print_error "Storage deployment failed"
         exit 1

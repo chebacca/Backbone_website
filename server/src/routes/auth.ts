@@ -276,6 +276,23 @@ router.post('/login', [
 
   const requiresLegalAcceptance = (user.termsVersionAccepted !== config.legal.termsVersion) || (user.privacyPolicyVersionAccepted !== config.legal.privacyVersion);
 
+  // Add hybrid context for desktop/web routing: org and active license summary
+  const [ownedOrgs, memberOrgs] = await Promise.all([
+    firestoreService.getOrganizationsOwnedByUser(user.id),
+    firestoreService.getOrganizationsForMemberUser(user.id),
+  ]);
+  let primaryOrgId: string | null = null;
+  let activeOrgSubscription: any = null;
+  if (ownedOrgs && ownedOrgs.length > 0) {
+    primaryOrgId = ownedOrgs[0].id;
+  } else if (memberOrgs && memberOrgs.length > 0) {
+    primaryOrgId = memberOrgs[0].id;
+  }
+  if (primaryOrgId) {
+    const subs = await firestoreService.getSubscriptionsByOrganizationId(primaryOrgId);
+    activeOrgSubscription = subs.find(s => s.status === 'ACTIVE') || null;
+  }
+
   res.json({
     success: true,
     message: 'Login successful',
@@ -284,6 +301,7 @@ router.post('/login', [
       tokens,
       requiresLegalAcceptance,
       requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },
+      orgContext: { primaryOrgId, activeOrgSubscription },
     }
   });
   return;

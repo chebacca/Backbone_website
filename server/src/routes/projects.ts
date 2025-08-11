@@ -52,7 +52,7 @@ function transformProject(p: any, participants: any[] = []) {
     organizationId: p.organizationId,
     metadata: p.metadata || {},
     settings: p.settings || {},
-    isActive: p.isActive !== false,
+    isActive: p.isArchived ? false : (p.isActive !== false),
     isArchived: !!p.isArchived,
     archivedAt: p.archivedAt || null,
     archivedBy: p.archivedBy || null,
@@ -211,6 +211,21 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
   } catch (e: any) {
     const code = e?.code === 'FORBIDDEN' ? 403 : e?.code === 'NOT_FOUND' ? 404 : 500;
     res.status(code).json({ success: false, error: e?.message || 'Failed to delete project' });
+  }
+});
+
+// Soft archive a project (alias, easier for UI): PATCH /:id/archive { isArchived: true|false }
+router.patch('/:id/archive', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const projectId = req.params.id;
+    const { isArchived } = req.body || {};
+    const updated = await firestoreService.updateProjectAuthorized(projectId, userId, { isArchived: Boolean(isArchived) });
+    const participants = await firestoreService.listParticipants(projectId);
+    res.json({ success: true, data: transformProject(updated, participants) });
+  } catch (e: any) {
+    const code = e?.code === 'FORBIDDEN' ? 403 : e?.code === 'NOT_FOUND' ? 404 : 500;
+    res.status(code).json({ success: false, error: e?.message || 'Failed to archive project' });
   }
 });
 

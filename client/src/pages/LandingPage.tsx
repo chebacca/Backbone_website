@@ -218,6 +218,26 @@ const LandingPage: React.FC = () => {
                       >
                         View Pricing
                       </Button>
+                      
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        onClick={() => navigate('/startup-demo')}
+                        sx={{
+                          px: 4,
+                          py: 1.5,
+                          fontSize: '1.1rem',
+                          borderRadius: 2,
+                          borderColor: 'rgba(255, 255, 255, 0.3)',
+                          color: 'white',
+                          '&:hover': {
+                            borderColor: 'secondary.main',
+                            backgroundColor: 'rgba(118, 75, 162, 0.1)',
+                          },
+                        }}
+                      >
+                        🚀 Startup Demo
+                      </Button>
                     </Stack>
                   )}
                 </Box>

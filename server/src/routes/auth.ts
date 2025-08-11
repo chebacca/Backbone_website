@@ -77,6 +77,25 @@ router.post('/register', [
   await firestoreService.updateUser(user.id, { emailVerifyToken: verificationToken });
   try { await EmailService.sendWelcomeEmail(user, verificationToken); } catch {}
 
+  // Create a default empty cloud project for the new user
+  try {
+    await firestoreService.createProject({
+      ownerId: user.id,
+      name: 'My Cloud Project',
+      description: '',
+      type: 'networked',
+      applicationMode: 'shared_network',
+      visibility: 'private',
+      storageBackend: 'firestore',
+      allowCollaboration: false,
+      maxCollaborators: 10,
+      realTimeEnabled: false,
+    });
+  } catch (e) {
+    // Non-blocking: project can be created later if this fails
+    logger.warn('Default project creation failed for new user', { userId: user.id, error: (e as any)?.message });
+  }
+
   await ComplianceService.createAuditLog(user.id, 'REGISTER', 'User registered successfully', { email, name }, requestInfo);
   logger.info(`User registered successfully: ${email}`, { userId: user.id });
 
@@ -142,6 +161,24 @@ router.post('/oauth/google', [body('idToken').notEmpty()], asyncHandler(async (r
       kycStatus: 'PENDING',
       registrationSource: 'google-oauth',
     });
+
+    // Create a default empty cloud project for the new Google user
+    try {
+      await firestoreService.createProject({
+        ownerId: user.id,
+        name: 'My Cloud Project',
+        description: '',
+        type: 'networked',
+        applicationMode: 'shared_network',
+        visibility: 'private',
+        storageBackend: 'firestore',
+        allowCollaboration: false,
+        maxCollaborators: 10,
+        realTimeEnabled: false,
+      });
+    } catch (e) {
+      logger.warn('Default project creation failed for Google user', { userId: user.id, error: (e as any)?.message });
+    }
   } else {
     // Update verification if Google says verified and we aren't yet
     if (emailVerified && !user.isEmailVerified) {
@@ -226,6 +263,24 @@ router.post('/oauth/apple', asyncHandler(async (req: Request, res: Response): Pr
       kycStatus: 'PENDING',
       registrationSource: 'apple-oauth',
     });
+
+    // Create a default empty cloud project for the new Apple user
+    try {
+      await firestoreService.createProject({
+        ownerId: user.id,
+        name: 'My Cloud Project',
+        description: '',
+        type: 'networked',
+        applicationMode: 'shared_network',
+        visibility: 'private',
+        storageBackend: 'firestore',
+        allowCollaboration: false,
+        maxCollaborators: 10,
+        realTimeEnabled: false,
+      });
+    } catch (e) {
+      logger.warn('Default project creation failed for Apple user', { userId: user.id, error: (e as any)?.message });
+    }
   }
 
   const tokens = JwtUtil.generateTokens({ userId: user.id, email: user.email, role: user.role });

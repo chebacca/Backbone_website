@@ -1050,6 +1050,18 @@ export class FirestoreService {
       throw err;
     }
     const payload = { ...updates, updatedAt: new Date() };
+    // Normalize archive flags
+    if (typeof (updates as any).isArchived !== 'undefined') {
+      if ((updates as any).isArchived) {
+        (payload as any).isActive = false;
+        (payload as any).archivedAt = new Date();
+        (payload as any).archivedBy = userId;
+      } else {
+        (payload as any).isActive = true;
+        (payload as any).archivedAt = null;
+        (payload as any).archivedBy = null;
+      }
+    }
     await db.collection('projects').doc(projectId).update(payload);
     const after = await db.collection('projects').doc(projectId).get();
     return after.data();

@@ -30,7 +30,8 @@ import {
     ListItem,
     ListItemIcon,
     ListItemText,
-    Divider
+    Divider,
+    useTheme
 } from '@mui/material';
 import {
     Computer as ComputerIcon,
@@ -58,63 +59,46 @@ interface ModeOption {
     description: string;
     icon: React.ReactNode;
     benefits: string[];
-    requirements: string[];
     recommendedFor: string[];
-    defaultStorageMode: StorageMode;
+    requirements: string[];
     availableStorageModes: StorageMode[];
+    defaultStorageMode: StorageMode;
 }
 
 const MODE_OPTIONS: ModeOption[] = [
     {
         mode: 'standalone',
         title: 'Standalone Mode',
-        description: 'Work on projects individually with full control over your data and setup.',
-        icon: <ComputerIcon sx={{ fontSize: 48 }} />,
+        description: 'Work offline with local projects and data storage',
+        icon: <ComputerIcon fontSize="large" />,
         benefits: [
-            'Work offline without internet connection',
-            'Full control over project files and data',
-            'No authentication required for local projects',
-            'Perfect for individual work and prototyping',
-            'Can optionally share via local network'
+            'No internet connection required',
+            'Maximum privacy and data control',
+            'Fast local performance',
+            'No subscription fees',
+            'Complete offline capability'
         ],
-        requirements: [
-            'Local storage space for project files',
-            'Sufficient system resources'
-        ],
-        recommendedFor: [
-            'Individual developers and designers',
-            'Prototype and proof-of-concept work',
-            'Offline or limited connectivity environments',
-            'Maximum privacy and data control'
-        ],
-        defaultStorageMode: 'local',
-        availableStorageModes: ['local', 'cloud', 'hybrid']
+        recommendedFor: ['Individual users', 'Offline work', 'Privacy-focused', 'Local development'],
+        requirements: [],
+        availableStorageModes: ['local'],
+        defaultStorageMode: 'local'
     },
     {
         mode: 'shared_network',
         title: 'Network Mode',
-        description: 'Collaborate with team members in real-time with shared projects and resources.',
-        icon: <NetworkIcon sx={{ fontSize: 48 }} />,
+        description: 'Collaborate with teams and access cloud projects',
+        icon: <NetworkIcon fontSize="large" />,
         benefits: [
-            'Real-time collaboration with team members',
-            'Shared project access and permissions',
-            'Centralized data and asset management',
-            'Built-in version control and conflict resolution',
-            'Cross-platform synchronization'
+            'Real-time collaboration',
+            'Cloud backup and sync',
+            'Team project sharing',
+            'Cross-device access',
+            'Advanced features and integrations'
         ],
-        requirements: [
-            'Stable internet connection',
-            'User authentication and account',
-            'Team organization setup'
-        ],
-        recommendedFor: [
-            'Teams and collaborative projects',
-            'Professional production environments',
-            'Multi-user content management',
-            'Organizations requiring shared workflows'
-        ],
-        defaultStorageMode: 'cloud',
-        availableStorageModes: ['cloud', 'hybrid']
+        recommendedFor: ['Teams', 'Collaboration', 'Cloud-first', 'Enterprise'],
+        requirements: ['Active subscription', 'Internet connection'],
+        availableStorageModes: ['cloud', 'hybrid'],
+        defaultStorageMode: 'cloud'
     }
 ];
 
@@ -125,6 +109,7 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
     const [selectedStorageMode, setSelectedStorageMode] = useState<StorageMode>('local');
     const [showStorageDialog, setShowStorageDialog] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const theme = useTheme();
 
     const handleModeSelect = (modeOption: ModeOption) => {
         setSelectedMode(modeOption.mode);
@@ -164,38 +149,40 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
         }
     };
 
-    const getStorageIcon = (storageMode: StorageMode) => {
-        switch (storageMode) {
-            case 'local':
-                return <ComputerIcon />;
-            case 'cloud':
-                return <CloudIcon />;
-            case 'hybrid':
-                return <StorageIcon />;
-        }
-    };
-
-    const selectedModeOption = MODE_OPTIONS.find(option => option.mode === selectedMode);
-
     return (
         <Container maxWidth="lg" sx={{ py: 4 }}>
-            <Box sx={{ textAlign: 'center', mb: 4 }}>
-                <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
+            {/* Header */}
+            <Box sx={{ textAlign: 'center', mb: 6 }}>
+                <Typography 
+                    variant="h3" 
+                    component="h1" 
+                    gutterBottom
+                    sx={{ 
+                        fontWeight: 700,
+                        background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                        backgroundClip: 'text',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        mb: 2
+                    }}
+                >
                     Choose Your Workspace Mode
                 </Typography>
-                <Typography variant="h6" color="text.secondary" sx={{ maxWidth: '600px', mx: 'auto' }}>
-                    Select how you want to work with your projects. You can change this later.
+                <Typography 
+                    variant="h6" 
+                    color="text.secondary" 
+                    sx={{ 
+                        maxWidth: '600px', 
+                        mx: 'auto',
+                        opacity: 0.8
+                    }}
+                >
+                    Select how you want to work with your projects. You can change this later in settings.
                 </Typography>
             </Box>
 
-            <Alert severity="info" sx={{ mb: 4 }}>
-                <Typography variant="body2">
-                    <strong>New to the Dashboard?</strong> Standalone mode is perfect for getting started individually, 
-                    while Network mode is ideal for team collaboration.
-                </Typography>
-            </Alert>
-
-            <Grid container spacing={4} justifyContent="center">
+            {/* Mode Selection Cards */}
+            <Grid container spacing={4} sx={{ mb: 6 }}>
                 {MODE_OPTIONS.map((option, index) => (
                     <Grid item xs={12} md={6} key={option.mode}>
                         <motion.div
@@ -210,42 +197,71 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
                                     transition: 'all 0.3s ease',
                                     border: selectedMode === option.mode ? 2 : 1,
                                     borderColor: selectedMode === option.mode ? 'primary.main' : 'divider',
+                                    backgroundColor: selectedMode === option.mode ? 'background.elevated' : 'background.paper',
                                     '&:hover': {
                                         borderColor: 'primary.main',
                                         transform: 'translateY(-4px)',
-                                        boxShadow: (theme) => theme.shadows[8]
+                                        boxShadow: (theme) => theme.shadows[8],
+                                        backgroundColor: 'background.elevated'
                                     }
                                 }}
                                 onClick={() => handleModeSelect(option)}
                             >
                                 <CardContent sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                        <Box sx={{ color: 'primary.main', mr: 2 }}>
+                                        <Box sx={{ 
+                                            color: 'primary.main', 
+                                            mr: 2,
+                                            p: 1,
+                                            borderRadius: 2,
+                                            backgroundColor: 'rgba(0, 212, 255, 0.1)'
+                                        }}>
                                             {option.icon}
                                         </Box>
                                         <Box>
-                                            <Typography variant="h5" component="h2" fontWeight="bold">
+                                            <Typography 
+                                                variant="h5" 
+                                                component="h2" 
+                                                fontWeight="bold"
+                                                color="text.primary"
+                                            >
                                                 {option.title}
                                             </Typography>
-                                            <Typography variant="body2" color="text.secondary">
+                                            <Typography 
+                                                variant="body2" 
+                                                color="text.secondary"
+                                                sx={{ opacity: 0.8 }}
+                                            >
                                                 {option.description}
                                             </Typography>
                                         </Box>
                                     </Box>
 
                                     <Box sx={{ mb: 3, flexGrow: 1 }}>
-                                        <Typography variant="subtitle2" gutterBottom color="primary">
+                                        <Typography 
+                                            variant="subtitle2" 
+                                            gutterBottom 
+                                            color="primary"
+                                            sx={{ fontWeight: 600 }}
+                                        >
                                             Benefits:
                                         </Typography>
                                         <List dense sx={{ py: 0 }}>
                                             {option.benefits.map((benefit, idx) => (
                                                 <ListItem key={idx} sx={{ py: 0.5, px: 0 }}>
                                                     <ListItemIcon sx={{ minWidth: 32 }}>
-                                                        <CheckCircleIcon color="success" fontSize="small" />
+                                                        <CheckCircleIcon 
+                                                            color="success" 
+                                                            fontSize="small"
+                                                            sx={{ color: 'success.main' }}
+                                                        />
                                                     </ListItemIcon>
                                                     <ListItemText
                                                         primary={benefit}
-                                                        primaryTypographyProps={{ variant: 'body2' }}
+                                                        primaryTypographyProps={{ 
+                                                            variant: 'body2',
+                                                            color: 'text.primary'
+                                                        }}
                                                     />
                                                 </ListItem>
                                             ))}
@@ -253,7 +269,12 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
                                     </Box>
 
                                     <Box sx={{ mb: 2 }}>
-                                        <Typography variant="subtitle2" gutterBottom>
+                                        <Typography 
+                                            variant="subtitle2" 
+                                            gutterBottom
+                                            color="text.primary"
+                                            sx={{ fontWeight: 600 }}
+                                        >
                                             Perfect for:
                                         </Typography>
                                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -264,6 +285,14 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
                                                     size="small"
                                                     variant="outlined"
                                                     color="primary"
+                                                    sx={{
+                                                        borderColor: 'primary.main',
+                                                        color: 'primary.main',
+                                                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(0, 212, 255, 0.2)'
+                                                        }
+                                                    }}
                                                 />
                                             ))}
                                         </Box>
@@ -271,12 +300,22 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
 
                                     {option.requirements.length > 0 && (
                                         <Box sx={{ mb: 2 }}>
-                                            <Typography variant="subtitle2" gutterBottom color="warning.main">
+                                            <Typography 
+                                                variant="subtitle2" 
+                                                gutterBottom 
+                                                color="warning.main"
+                                                sx={{ fontWeight: 600 }}
+                                            >
                                                 Requirements:
                                             </Typography>
                                             <Box component="ul" sx={{ m: 0, pl: 2 }}>
                                                 {option.requirements.map((req, idx) => (
-                                                    <Typography key={idx} component="li" variant="body2" color="text.secondary">
+                                                    <Typography 
+                                                        key={idx} 
+                                                        component="li" 
+                                                        variant="body2" 
+                                                        color="text.secondary"
+                                                    >
                                                         {req}
                                                     </Typography>
                                                 ))}
@@ -292,6 +331,33 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
                                         size="large"
                                         startIcon={selectedMode === option.mode ? <CheckCircleIcon /> : undefined}
                                         disabled={isLoading}
+                                        sx={{
+                                            height: 48,
+                                            fontSize: '1rem',
+                                            fontWeight: 600,
+                                            textTransform: 'none',
+                                            borderRadius: 2,
+                                            ...(selectedMode === option.mode ? {
+                                                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                                                color: '#000000',
+                                                boxShadow: '0 4px 12px rgba(0, 212, 255, 0.3)',
+                                                '&:hover': {
+                                                    background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.secondary.light} 100%)`,
+                                                    boxShadow: '0 6px 20px rgba(0, 212, 255, 0.4)',
+                                                    transform: 'translateY(-1px)'
+                                                }
+                                            } : {
+                                                borderColor: 'primary.main',
+                                                color: 'primary.main',
+                                                borderWidth: 2,
+                                                '&:hover': {
+                                                    borderColor: 'primary.light',
+                                                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                                    boxShadow: '0 4px 12px rgba(0, 212, 255, 0.2)',
+                                                    transform: 'translateY(-1px)'
+                                                }
+                                            })
+                                        }}
                                     >
                                         {selectedMode === option.mode ? 'Selected' : `Choose ${option.title}`}
                                     </Button>
@@ -303,87 +369,120 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
             </Grid>
 
             {/* Storage Mode Selection Dialog */}
-            <Dialog
-                open={showStorageDialog}
+            <Dialog 
+                open={showStorageDialog} 
                 onClose={() => setShowStorageDialog(false)}
                 maxWidth="sm"
                 fullWidth
+                PaperProps={{
+                    sx: {
+                        backgroundColor: 'background.paper',
+                        borderRadius: 3,
+                        border: 1,
+                        borderColor: 'divider'
+                    }
+                }}
             >
-                <DialogTitle>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <StorageIcon />
-                        Choose Storage Mode
-                    </Box>
+                <DialogTitle sx={{ 
+                    pb: 1,
+                    color: 'text.primary',
+                    fontWeight: 600
+                }}>
+                    Choose Storage Mode
                 </DialogTitle>
-                
                 <DialogContent>
-                    <Typography variant="body1" paragraph>
-                        How would you like to store your project data for <strong>{selectedModeOption?.title}</strong>?
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        Select how you want to store your project data for {selectedMode === 'standalone' ? 'Standalone' : 'Network'} mode.
                     </Typography>
-
+                    
                     <FormControl component="fieldset" fullWidth>
+                        <FormLabel component="legend" sx={{ color: 'text.primary', mb: 2 }}>
+                            Storage Options
+                        </FormLabel>
                         <RadioGroup
                             value={selectedStorageMode}
                             onChange={(e) => setSelectedStorageMode(e.target.value as StorageMode)}
                         >
-                            {selectedModeOption?.availableStorageModes.map((storageMode) => (
+                            {MODE_OPTIONS.find(o => o.mode === selectedMode)?.availableStorageModes.map((storageMode) => (
                                 <FormControlLabel
                                     key={storageMode}
                                     value={storageMode}
-                                    control={<Radio />}
+                                    control={<Radio sx={{ color: 'primary.main' }} />}
                                     label={
-                                        <Box sx={{ py: 1 }}>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                                                {getStorageIcon(storageMode)}
-                                                <Typography variant="subtitle1" fontWeight="medium">
-                                                    {storageMode.charAt(0).toUpperCase() + storageMode.slice(1)} Storage
-                                                </Typography>
-                                            </Box>
+                                        <Box>
+                                            <Typography variant="body1" color="text.primary" sx={{ fontWeight: 500 }}>
+                                                {storageMode.charAt(0).toUpperCase() + storageMode.slice(1)} Storage
+                                            </Typography>
                                             <Typography variant="body2" color="text.secondary">
                                                 {getStorageDescription(storageMode)}
                                             </Typography>
                                         </Box>
                                     }
-                                    sx={{ alignItems: 'flex-start', mx: 0, mb: 1 }}
+                                    sx={{ 
+                                        mb: 2,
+                                        p: 2,
+                                        borderRadius: 2,
+                                        border: 1,
+                                        borderColor: selectedStorageMode === storageMode ? 'primary.main' : 'divider',
+                                        backgroundColor: selectedStorageMode === storageMode ? 'rgba(0, 212, 255, 0.05)' : 'transparent',
+                                        '&:hover': {
+                                            backgroundColor: 'rgba(0, 212, 255, 0.05)'
+                                        }
+                                    }}
                                 />
                             ))}
                         </RadioGroup>
                     </FormControl>
-
-                    {selectedStorageMode === 'cloud' && (
-                        <Alert severity="info" sx={{ mt: 2 }}>
-                            <Typography variant="body2">
-                                Cloud storage requires authentication and an active internet connection.
-                            </Typography>
-                        </Alert>
-                    )}
-
-                    {selectedStorageMode === 'hybrid' && (
-                        <Alert severity="warning" sx={{ mt: 2 }}>
-                            <Typography variant="body2">
-                                Hybrid storage provides the best of both worlds but requires careful sync management.
-                            </Typography>
-                        </Alert>
-                    )}
                 </DialogContent>
-
-                <DialogActions sx={{ p: 3 }}>
-                    <Button
+                <DialogActions sx={{ p: 3, pt: 1 }}>
+                    <Button 
                         onClick={() => setShowStorageDialog(false)}
-                        disabled={isLoading}
+                        sx={{
+                            color: 'text.secondary',
+                            '&:hover': {
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }}
                     >
-                        Back
+                        Cancel
                     </Button>
                     <Button
                         onClick={() => handleProceed(selectedMode!, selectedStorageMode)}
                         variant="contained"
                         disabled={isLoading}
-                        startIcon={<CheckCircleIcon />}
+                        sx={{
+                            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                            color: '#000000',
+                            fontWeight: 600,
+                            px: 3,
+                            '&:hover': {
+                                background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.secondary.light} 100%)`,
+                                boxShadow: '0 4px 12px rgba(0, 212, 255, 0.3)'
+                            }
+                        }}
                     >
-                        {isLoading ? 'Setting up...' : 'Continue'}
+                        {isLoading ? 'Processing...' : 'Continue'}
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Help Text */}
+            <Box sx={{ textAlign: 'center', mt: 4 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ opacity: 0.7 }}>
+                    Need help choosing? <Button 
+                        color="primary" 
+                        sx={{ 
+                            textTransform: 'none',
+                            fontWeight: 500,
+                            '&:hover': {
+                                backgroundColor: 'rgba(0, 212, 255, 0.1)'
+                            }
+                        }}
+                    >
+                        Learn more about modes
+                    </Button>
+                </Typography>
+            </Box>
         </Container>
     );
 };

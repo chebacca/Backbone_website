@@ -371,6 +371,15 @@ export class FirestoreService {
     return snapshot.docs.map(doc => doc.data() as FirestoreLicense);
   }
 
+  async getLicensesByUserAndSubscription(userId: string, subscriptionId: string): Promise<FirestoreLicense[]> {
+    const snapshot = await db
+      .collection('licenses')
+      .where('userId', '==', userId)
+      .where('subscriptionId', '==', subscriptionId)
+      .get();
+    return snapshot.docs.map(doc => doc.data() as FirestoreLicense);
+  }
+
   async updateLicense(id: string, updates: Partial<FirestoreLicense>): Promise<void> {
     await db.collection('licenses').doc(id).update({
       ...updates,

@@ -3,6 +3,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { z } from 'zod';
+import { getStorage } from 'firebase-admin/storage';
 
 const router = Router();
 
@@ -246,6 +247,48 @@ router.delete('/:id/participants/:participantId', authenticateToken, async (req,
     logger.error('remove participant error', e);
     const code = e?.code === 'FORBIDDEN' ? 403 : 500;
     res.status(code).json({ success: false, error: e?.message || 'Failed to remove participant' });
+    return;
+  }
+});
+
+// Optional: create a signed URL pair for GCS upload/download for a project asset
+router.post('/:id/storage/signed-url', authenticateToken, async (req, res): Promise<void> => {
+  try {
+    const userId = (req as any).user?.id as string;
+    const { filename, contentType = 'application/octet-stream', operation = 'upload' } = req.body as { filename: string; contentType?: string; operation?: 'upload' | 'download' };
+
+    if (!filename) { res.status(400).json({ success: false, error: 'filename required' }); return; }
+
+    const project = await firestoreService.getProjectByIdAuthorized(req.params.id, userId);
+    if (!project) { res.status(404).json({ success: false, error: 'Project not found' }); return; }
+
+    if (project.storageBackend !== 'gcs') { res.status(400).json({ success: false, error: 'Project is not configured for GCS storage' }); return; }
+    const bucketName = project.gcsBucket;
+    const prefix = project.gcsPrefix || `projects/${project.id}`;
+
+    const storage = getStorage();
+    const bucket = storage.bucket(bucketName);
+    const filePath = `${prefix}/${filename}`;
+    const file = bucket.file(filePath);
+
+    const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    if (operation === 'upload') {
+      const [signedUrl] = await file.getSignedUrl({
+        action: 'write',
+        expires,
+        contentType,
+      });
+      res.json({ success: true, data: { url: signedUrl, method: 'PUT', headers: { 'Content-Type': contentType }, path: filePath, bucket: bucketName, expires } });
+      return;
+    } else {
+      const [signedUrl] = await file.getSignedUrl({ action: 'read', expires });
+      res.json({ success: true, data: { url: signedUrl, method: 'GET', path: filePath, bucket: bucketName, expires } });
+      return;
+    }
+  } catch (e: any) {
+    logger.error('signed-url error', e);
+    res.status(500).json({ success: false, error: 'Failed to generate signed URL' });
     return;
   }
 });

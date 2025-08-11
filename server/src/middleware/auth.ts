@@ -162,6 +162,35 @@ export const authMiddleware = authenticateToken;
  */
 // Deprecated: enterprise admin role removed. Keep alias to ADMIN for backward compatibility
 export const requireEnterpriseAdmin = requireRole(['ADMIN']);
+export const requireOrgManager = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Authentication required' });
+      return;
+    }
+    // Global admins pass
+    if (req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN') {
+      next();
+      return;
+    }
+    const orgId = (req.params as any).orgId || (req.body as any).orgId || (req.query as any).orgId;
+    if (!orgId) {
+      res.status(400).json({ success: false, error: 'orgId required' });
+      return;
+    }
+    const members = await firestoreService.getOrgMembers(orgId);
+    const role = members.find((m: any) => m.userId === req.user!.id)?.role;
+    const allowed = ['ENTERPRISE_ADMIN', 'OWNER', 'MANAGER'];
+    if (role && allowed.includes(String(role).toUpperCase())) {
+      next();
+      return;
+    }
+    res.status(403).json({ success: false, error: 'Manager or admin role required' });
+  } catch (err) {
+    logger.error('Org manager check failed', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
 
 /**
  * Middleware to require superadmin role
@@ -221,18 +250,13 @@ export const requireEnterpriseAdminStrict = async (req: Request, res: Response, 
       return;
     }
 
-    // For legacy installations or org-scoped checks, allow ENTERPRISE_ADMIN role
-    if (req.user.role === 'ENTERPRISE_ADMIN') {
-      next();
-      return;
-    }
-
-    // If an orgId is present, verify the user is an ENTERPRISE_ADMIN of that org
+    // If an orgId is present, verify the user is an ENTERPRISE_ADMIN (or OWNER) of that org
     const orgId = (req.params as any).orgId || (req.body as any).orgId || (req.query as any).orgId;
     if (orgId) {
       try {
         const members = await firestoreService.getOrgMembers(orgId);
-        const isOrgEnterpriseAdmin = members.some((m: any) => m.userId === req.user!.id && String(m.role).toUpperCase() === 'ENTERPRISE_ADMIN' && (m.status === 'ACTIVE' || m.seatReserved));
+        const role = (r: string) => String(r || '').toUpperCase();
+        const isOrgEnterpriseAdmin = members.some((m: any) => m.userId === req.user!.id && ['ENTERPRISE_ADMIN','OWNER'].includes(role(m.role)) && (m.status === 'ACTIVE' || m.seatReserved));
         if (isOrgEnterpriseAdmin) {
           next();
           return;

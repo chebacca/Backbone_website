@@ -258,13 +258,20 @@ export class PaymentService {
       // 2. Update subscription status
       await db.updateSubscription(subscription.id, { status: 'ACTIVE' });
 
-      // 3. Generate licenses based on seats
-      const licenses = await LicenseService.generateLicenses(
-        user.id,
-        subscription.id,
-        subscription.tier,
-        subscription.seats
-      );
+      // 3. For ENTERPRISE: do not mass-issue licenses here; licenses are issued JIT on member invite/accept
+      //    For BASIC/PRO: maintain current behavior
+      let licenses: any[] = [];
+      if (String(subscription.tier).toUpperCase() === 'ENTERPRISE') {
+        // No immediate license creation; audit only
+        licenses = [];
+      } else {
+        licenses = await LicenseService.generateLicenses(
+          user.id,
+          subscription.id,
+          subscription.tier,
+          subscription.seats
+        );
+      }
 
       // 4. Create license delivery logs
       for (const license of licenses) {
@@ -305,12 +312,14 @@ export class PaymentService {
         }
       );
 
-      // 8. Update license delivery status
-      await db.updateLicenseDeliveryLogsForPayment(payment.id, {
-        deliveryStatus: 'SENT',
-        emailSent: true,
-        lastAttemptAt: new Date(),
-      } as any);
+      // 8. Update license delivery status (only if any were created in this flow)
+      if (licenses.length > 0) {
+        await db.updateLicenseDeliveryLogsForPayment(payment.id, {
+          deliveryStatus: 'SENT',
+          emailSent: true,
+          lastAttemptAt: new Date(),
+        } as any);
+      }
 
       logger.info(`Successfully processed payment for subscription ${subscription.id}`, {
         licenseCount: licenses.length,
@@ -716,7 +725,7 @@ export class PaymentService {
     let updatedSubscription = subscription;
 
     // Update in Stripe if needed
-    if (subscription.stripeSubscriptionId && updates.seats) {
+    if (subscription.stripeSubscriptionId && typeof updates.seats === 'number' && updates.seats !== subscription.seats) {
       const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
       
       await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
@@ -730,19 +739,22 @@ export class PaymentService {
 
     // Update in database
     await db.updateSubscription(subscriptionId, {
-      seats: updates.seats || subscription.seats,
+      seats: typeof updates.seats === 'number' ? updates.seats : subscription.seats,
     });
     updatedSubscription = (await db.getSubscriptionById(subscriptionId))!;
 
     // Generate additional licenses if seats increased
-    if (updates.seats && updates.seats > subscription.seats) {
+    if (typeof updates.seats === 'number' && updates.seats > subscription.seats) {
       const additionalSeats = updates.seats - subscription.seats;
-      await LicenseService.generateLicenses(
-        userId,
-        subscriptionId,
-        subscription.tier,
-        additionalSeats
-      );
+      // For ENTERPRISE, do not auto-issue licenses on seat increase; issuance is JIT via org flow
+      if (String(subscription.tier).toUpperCase() !== 'ENTERPRISE') {
+        await LicenseService.generateLicenses(
+          userId,
+          subscriptionId,
+          subscription.tier,
+          additionalSeats
+        );
+      }
     }
 
     // Create audit log

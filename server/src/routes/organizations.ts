@@ -211,18 +211,24 @@ router.post('/invitations/accept', [
   // Ensure the user's account reflects their organization membership
   await firestoreService.updateUser(userId, { organizationId: invite.orgId } as any);
 
-  // Assign license (JIT) against active org subscription
+  // Assign license (JIT) against active org subscription, avoiding duplicates per user+subscription
   const subs = await firestoreService.getSubscriptionsByOrganizationId(invite.orgId);
   const activeSub = subs.find(s => s.status === 'ACTIVE');
   if (!activeSub) throw createApiError('No active subscription for organization', 400);
 
-  await LicenseService.generateLicenses(
-    userId,
-    activeSub.id,
-    activeSub.tier as any,
-    1,
-    'PENDING'
-  );
+  const existingLicenses = await firestoreService.getLicensesByUserAndSubscription(userId, activeSub.id);
+  const hasNonRevoked = existingLicenses.some(l => l.status !== 'REVOKED' && l.status !== 'EXPIRED');
+  if (!hasNonRevoked) {
+    await LicenseService.generateLicenses(
+      userId,
+      activeSub.id,
+      activeSub.tier as any,
+      1,
+      'PENDING',
+      12,
+      invite.orgId
+    );
+  }
 
   // Mark invitation accepted
   await firestoreService.updateInvitation(invite.id, { status: 'ACCEPTED' });

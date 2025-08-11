@@ -15,7 +15,8 @@ export class LicenseService {
     tier: SubscriptionTier,
     seatCount: number,
     licenseStatus: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'REVOKED' = 'PENDING',
-    expiryMonths: number = 12
+    expiryMonths: number = 12,
+    organizationId?: string
   ) {
     try {
       logger.info(`Generating ${seatCount} licenses for subscription ${subscriptionId}`);
@@ -23,6 +24,13 @@ export class LicenseService {
       const licenses: any[] = [];
 
       for (let i = 0; i < seatCount; i++) {
+        // Enforce one license per user per subscription: if a non-revoked license exists, reuse/skip
+        const existing = await firestoreService.getLicensesByUserAndSubscription(userId, subscriptionId);
+        const activeOrPending = existing.find(l => l.status !== 'REVOKED' && l.status !== 'EXPIRED');
+        if (activeOrPending) {
+          licenses.push(activeOrPending);
+          continue;
+        }
         // Generate secure license key
         const licenseKey = LicenseKeyUtil.generateSecureLicenseKey(userId, tier);
         
@@ -44,6 +52,7 @@ export class LicenseService {
           features,
           activationCount: licenseStatus === 'ACTIVE' ? Math.floor(Math.random() * 2) : 0,
           maxActivations: tier === 'ENTERPRISE' ? 5 : tier === 'PRO' ? 3 : 1,
+          ...(organizationId ? { organizationId } : {}),
         });
 
         licenses.push(license);

@@ -67,6 +67,24 @@ server/src/
 - `/api/invoices/*` - Invoice system
  - `/api/accounting/*` - Accounting & compliance review (payments, tax summary, KYC, consent snapshots)
 
+## Licensing and Enterprise Seats
+
+- One-seat-one-license: a user can hold at most one non-revoked license per subscription.
+- PRO/ENTERPRISE subscriptions do not mass-issue licenses upon purchase or seat increase. Licenses are issued JIT on org invitation acceptance or explicit seat assignment.
+- Org invitation acceptance links the user to `org_members` and issues exactly one license if none exists for that subscription. The license includes `organizationId`.
+- Removing an org member revokes licenses tied to that organization’s subscription.
+- Permissions: `OWNER` and `ENTERPRISE_ADMIN` manage billing and seats; `MANAGER` can manage members and seat assignment within the seat pool.
+
+### Duplicate License Prevention
+
+- Before any issuance, the backend checks for existing licenses by `(userId, subscriptionId)` and avoids creating duplicates.
+
+### Cleanup Runbook
+
+- Command: `pnpm -C server cleanup:licenses <email>`
+- Description: Revokes duplicate licenses per subscription, keeping the most recent valid one.
+- Requirements: Firebase Admin credentials in env or `gcloud auth application-default login`.
+
 ## Database
 - **Authoritative**: Firestore collections (see `services/firestoreService.ts` types)
 - **Seeding**: Setup endpoints guarded by `x-setup-token` (disabled in production)

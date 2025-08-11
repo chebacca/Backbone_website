@@ -20,6 +20,7 @@ const CookiePolicyPage = React.lazy(() => import('@/pages/legal/CookiePolicyPage
 const CheckoutPage = React.lazy(() => import('@/pages/checkout/CheckoutPage'));
 const DashboardLayout = React.lazy(() => import('@/components/layout/DashboardLayout'));
 const DashboardOverview = React.lazy(() => import('@/pages/dashboard/DashboardOverview'));
+const DashboardCloudProjectsBridge = React.lazy(() => import('@/components/DashboardCloudProjectsBridge'));
 const LicensesPage = React.lazy(() => import('@/pages/dashboard/LicensesPage'));
 const AnalyticsPage = React.lazy(() => import('@/pages/dashboard/AnalyticsPage'));
 const BillingPage = React.lazy(() => import('@/pages/dashboard/BillingPage'));
@@ -221,6 +222,7 @@ function App() {
               <Route path="downloads" element={<DownloadsPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="licenses" element={<LicensesPage />} />
+              <Route path="cloud-projects" element={<DashboardCloudProjectsBridge />} />
               <Route path="documentation" element={<DocumentationPage />} />
               <Route path="support" element={<SupportPage />} />
               <Route path="organization" element={<div>Organization (Coming Soon)</div>} />

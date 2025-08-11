@@ -15,7 +15,7 @@ import {
   optionalAuth,
   requireEnterpriseAdminStrict 
 } from '../middleware/auth.js';
-import { db } from '../services/db.js';
+import { firestoreService } from '../services/firestoreService.js';
 
 const router: Router = Router();
 
@@ -33,9 +33,70 @@ router.get('/my-licenses', [
 
   const licenses = await LicenseService.getUserLicenses(userId);
 
-  res.json({
+  return res.json({
     success: true,
     data: { licenses },
+  });
+}));
+
+/**
+ * Cleanup duplicate licenses for the current user by DELETING extras
+ * Keeps exactly one ACTIVE license (or newest if none active), deletes others
+ */
+router.post('/cleanup-my-duplicates', [
+  authenticateToken,
+  requireEmailVerification,
+], asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const email = req.user!.email;
+
+  const licenses = await LicenseService.getUserLicenses(userId);
+  if (!licenses || licenses.length <= 1) {
+    return res.json({ 
+      success: true, 
+      message: 'No duplicates found', 
+      data: { kept: licenses?.[0] || null, deleted: 0 } 
+    });
+  }
+
+  const now = new Date();
+  const toDate = (exp: any): Date | null => {
+    if (!exp) return null;
+    try { 
+      return typeof (exp as any).toDate === 'function' ? (exp as any).toDate() : new Date(exp); 
+    } catch { 
+      return null; 
+    }
+  };
+
+  const sorted = [...licenses].sort((a: any, b: any) => 
+    new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+  );
+  
+  const keeper = sorted.find((l: any) => 
+    l.status === 'ACTIVE' && ((toDate((l as any).expiresAt) || new Date(now.getTime()+1)).getTime() > now.getTime())
+  ) || sorted[0];
+
+  // Ensure keeper is ACTIVE with future expiry
+  const exp = toDate((keeper as any).expiresAt);
+  const updates: any = { status: 'ACTIVE' };
+  if (!exp || Number.isNaN(exp.getTime()) || exp <= now) {
+    updates.expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+  }
+  await firestoreService.updateLicense((keeper as any).id, updates);
+
+  // Delete all other license docs
+  let deleted = 0;
+  for (const lic of sorted) {
+    if ((lic as any).id === (keeper as any).id) continue;
+    await firestoreService.deleteLicense((lic as any).id);
+    deleted++;
+  }
+
+  return res.json({ 
+    success: true, 
+    message: 'Duplicate licenses cleaned up', 
+    data: { kept: keeper, deleted } 
   });
 }));
 
@@ -65,7 +126,7 @@ router.post('/activate', [
     requestInfo
   );
 
-  res.json({
+  return res.json({
     success: true,
     message: result.message,
     data: {
@@ -94,7 +155,7 @@ router.post('/deactivate', [
     reason
   );
 
-  res.json({
+  return res.json({
     success: true,
     message: result.message,
   });
@@ -127,14 +188,11 @@ router.post('/validate', [
     );
   }
 
-  res.json({
+  return res.json({
     success: true,
     data: result,
   });
 }));
-
-// NOTE: Route for `/:licenseId` MUST remain at the bottom to avoid catching
-// more specific routes like `/analytics`, `/sdk/versions`, etc.
 
 /**
  * Get SDK downloads for a license
@@ -148,7 +206,7 @@ router.get('/download-sdk/:licenseKey', [
   try {
     const downloads = await LicenseService.generateSDKDownloads(licenseKey);
 
-    res.json({
+    return res.json({
       success: true,
       data: { downloads },
     });
@@ -210,7 +268,7 @@ router.get('/download-sdk/:sdkId/:licenseKey', [
 
   // In production, this would redirect to a secure download URL
   // For now, return the download information
-  res.json({
+  return res.json({
     success: true,
     data: {
       downloadUrl: sdkVersion.downloadUrl,
@@ -237,13 +295,13 @@ router.get('/analytics', [
   try {
     const analytics = await LicenseService.getLicenseAnalytics(userId);
     
-    res.json({
+    return res.json({
       success: true,
       data: analytics,
     });
   } catch (error) {
     console.error('Analytics error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: (error as Error).message || 'Internal server error',
     });
@@ -265,13 +323,13 @@ router.get('/analytics/:licenseId', [
   try {
     const analytics = await LicenseService.getLicenseAnalytics(userId, licenseId);
     
-    res.json({
+    return res.json({
       success: true,
       data: analytics,
     });
   } catch (error) {
     console.error('Analytics error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: (error as Error).message || 'Internal server error',
     });
@@ -302,7 +360,7 @@ router.post('/transfer', [
     requestInfo
   );
 
-  res.json({
+  return res.json({
     success: true,
     message: 'License transfer initiated',
     data: { transferId: result.transferId },
@@ -331,7 +389,7 @@ router.post('/bulk/create', [
     userEmails
   );
 
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
     message: result.message,
     data: {
@@ -349,7 +407,7 @@ router.get('/sdk/versions', asyncHandler(async (req: Request, res: Response) => 
 
   const versions = await LicenseService.getAvailableSDKVersions(platform);
 
-  res.json({
+  return res.json({
     success: true,
     data: { versions },
   });
@@ -381,7 +439,7 @@ router.post('/report-issue', [
     requestInfo
   );
 
-  res.json({
+  return res.json({
     success: true,
     message: 'Issue reported successfully',
     data: { ticketId: result.ticketId },
@@ -401,7 +459,7 @@ router.get('/usage/:licenseKey', [
 
   const usage = await LicenseService.getLicenseUsage(licenseKey, userId);
 
-  res.json({
+  return res.json({
     success: true,
     data: { usage },
   });
@@ -423,7 +481,7 @@ router.get('/:licenseId', [
     throw createApiError('License not found', 404);
   }
 
-  res.json({
+  return res.json({
     success: true,
     data: { license },
   });

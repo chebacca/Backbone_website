@@ -86,6 +86,15 @@
 2. **Resend Webhooks**: Email delivery tracking
 3. **External APIs**: Third-party service integrations
 4. **Webhook Retry**: Failed webhook processing
+5. **Desktop Application Integration**: Unified startup and project management with desktop app
+
+### Desktop Application Integration Workflow
+1. **Application Launch**: Desktop app starts with simplified AppLaunchManager
+2. **Authentication Bridge**: WebsiteLoginBridge connects to licensing website API
+3. **License Validation**: Real-time license status verification via Firestore
+4. **Mode Selection**: User chooses Standalone or Network mode
+5. **Project Selection**: Unified project creation/selection using web components
+6. **Application Ready**: Main app launches with user context and project data
 
 ## Compliance Workflows
 

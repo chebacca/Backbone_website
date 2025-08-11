@@ -40,6 +40,7 @@ Base URL: `${VITE_API_BASE_URL || /api}` (Firebase hosting)
 - POST /subscriptions/:subscriptionId/preview-changes
 - GET  /subscriptions/:subscriptionId/renewal
 - POST /subscriptions/:subscriptionId/add-seats
+  - Note: For PRO/ENTERPRISE, seat increases do not auto-issue licenses; issuance occurs on org invite acceptance or explicit seat assignment.
 
 ## Licenses
 - GET  /licenses/my-licenses
@@ -52,6 +53,7 @@ Base URL: `${VITE_API_BASE_URL || /api}` (Firebase hosting)
 - GET  /licenses/analytics/:licenseId?
 - POST /licenses/transfer
 - POST /licenses/bulk/create
+  - Enterprise: Bulk create respects one-seat-one-license per user+subscription and will not create duplicates.
 - GET  /licenses/sdk/versions?platform=win|mac|linux
 - POST /licenses/report-issue
 - GET  /licenses/usage/:licenseKey

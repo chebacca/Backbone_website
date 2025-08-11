@@ -45,9 +45,25 @@ Client Integration
 - `client/src/services/api.ts` provides `api` instance, `endpoints`, `apiUtils`
 - Set `VITE_API_BASE_URL` to `/api` for Firebase hosting (default)
 
+Desktop Application Integration
+- Simplified startup system replacing complex ApplicationStartupSequencer (1,517 lines → 400 lines)
+- Direct authentication bridge with licensing website API
+- Unified project creation dialog reused from web interface
+- Seamless mode switching between Standalone and Network modes
+- Full integration with Firestore/GCS project metadata
+- JWT token synchronization and license validation
+
 Package Management
 - pnpm workspace with client, server, shared packages
 - Node >= 18, pnpm >= 8.15.3
 - TypeScript 5.3.3, Vite 5.0.8
 
-See also: API_ENDPOINTS_MPC.md, PAYMENTS_STRIPE_MPC.md, LICENSE_MANAGEMENT_MPC.md, COMPLIANCE_SECURITY_MPC.md
+See also: API_ENDPOINTS_MPC.md, PAYMENTS_STRIPE_MPC.md, LICENSE_MANAGEMENT_MPC.md, COMPLIANCE_SECURITY_MPC.md, DESKTOP_INTEGRATION_MPC.md
+
+## Enterprise Architecture
+
+- Organizations: `organizations`, `org_members`, `org_invitations`
+- Seats tracked on `subscriptions.seats`
+- Licenses tied to subscriptions and `organizationId` for enterprise flows
+- Seat-to-license policy: one seat equals one license per user per subscription (no duplicates)
+- Issuance policy: PRO/ENTERPRISE licenses are issued JIT on invite acceptance; not mass-issued on purchase or seat increases

@@ -26,6 +26,13 @@ Webhooks
 - All webhook events persisted to `webhook_events`; failures retried with capped attempts
 - Mount `/api/webhooks` before global JSON body parser to preserve raw body
 
+## Enterprise Seat Governance
+
+- Enforce one-seat-one-license per user per subscription; prevent duplicate active licenses.
+- Issue licenses JIT when org invitations are accepted; include `organizationId` on licenses issued via enterprise flows.
+- Revoke licenses upon member removal to free seats and maintain compliance alignment with billing.
+- Remediation: `pnpm -C server cleanup:licenses <email>` to revoke duplicates and keep a single valid license per subscription.
+
 2FA Security
 - Interim tokens expire in 5 minutes with `twofaPending` flag
 - TOTP window set to 1 step skew for time tolerance

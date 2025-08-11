@@ -11,10 +11,10 @@ import { subscriptionsRouter } from './routes/subscriptions.js';
 import { licensesRouter } from './routes/licenses.js';
 import { paymentsRouter } from './routes/payments.js';
 import { adminRouter } from './routes/admin.js';
+import { projectsRouter } from './routes/projects.js';
 import { organizationsRouter } from './routes/organizations.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { accountingRouter } from './routes/accounting.js';
-import { projectsRouter } from './routes/projects.js';
 import invoicesRouter from './routes/invoices.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
@@ -105,7 +105,7 @@ app.get(['/health', '/api/health'], async (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     environment: config.nodeEnv,
-    version: '1.0.0',
+    version: '1.0.1',
     database: dbPing.ok ? 'healthy' : 'degraded',
   });
 });
@@ -120,6 +120,7 @@ app.use('/api/payments', paymentsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/accounting', accountingRouter);
+// Prefer named export to satisfy TS named typing if needed, but default remains for compatibility
 app.use('/api/projects', projectsRouter);
 
 // Setup endpoint: place BEFORE error handlers so it's reachable

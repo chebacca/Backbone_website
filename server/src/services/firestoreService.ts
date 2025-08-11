@@ -786,8 +786,20 @@ export class FirestoreService {
     if (snap.empty) return false;
     return snap.docs.some(d => {
       const lic = d.data() as any;
-      const exp = lic.expiresAt ? new Date(lic.expiresAt) : null;
-      return !exp || exp > now;
+      const rawExp = lic.expiresAt;
+      let exp: Date | null = null;
+      if (rawExp) {
+        // Firestore Timestamp compatibility and fallbacks
+        if (typeof rawExp.toDate === 'function') {
+          exp = rawExp.toDate();
+        } else if (typeof rawExp.toMillis === 'function') {
+          exp = new Date(rawExp.toMillis());
+        } else {
+          exp = new Date(rawExp);
+        }
+      }
+      // If no expiry is set, treat as active; otherwise ensure valid and in the future
+      return !exp || (!Number.isNaN(exp.getTime()) && exp > now);
     });
   }
 
@@ -880,10 +892,18 @@ export class FirestoreService {
     if (applicationMode && applicationMode !== 'all') {
       query = query.where('applicationMode', '==', applicationMode);
     }
-    // order & limit
-    query = query.orderBy(sortBy as any, sortOrder).limit(limit);
+    // Avoid Firestore composite index requirements by not ordering at query time
     const snap = await query.get();
-    return snap.docs.slice(offset).map(d => d.data());
+    const all = snap.docs.map(d => d.data());
+    // Client-side sort and pagination
+    const sorted = all.sort((a: any, b: any) => {
+      const av = a[sortBy] || a.updatedAt;
+      const bv = b[sortBy] || b.updatedAt;
+      const an = typeof av === 'string' ? Date.parse(av) : (av?.toMillis?.() ? av.toMillis() : +new Date(av));
+      const bn = typeof bv === 'string' ? Date.parse(bv) : (bv?.toMillis?.() ? bv.toMillis() : +new Date(bv));
+      return sortOrder === 'asc' ? an - bn : bn - an;
+    });
+    return sorted.slice(offset, offset + limit);
   }
 
   async listUserProjects(userId: string, q: any): Promise<any[]> {
@@ -903,7 +923,6 @@ export class FirestoreService {
     // Owner
     let ownerQuery = baseQuery.where('ownerId', '==', userId);
     ownerQuery = this.applyProjectFilters(ownerQuery, { type, applicationMode, visibility, organizationId });
-    ownerQuery = ownerQuery.orderBy(sortBy as any, sortOrder).limit(Number(limit));
     const ownerSnap = await ownerQuery.get();
     ownerSnap.forEach(d => results.set(d.id, d.data()));
 
@@ -927,7 +946,6 @@ export class FirestoreService {
       .where('isActive', '==', true)
       .where('isArchived', '==', false);
     publicQuery = this.applyProjectFilters(publicQuery, { type: type || 'network', applicationMode, organizationId });
-    publicQuery = publicQuery.orderBy(sortBy as any, sortOrder).limit(Number(limit));
     const publicSnap = await publicQuery.get();
     publicSnap.forEach(d => results.set(d.id, d.data()));
 
@@ -988,6 +1006,12 @@ export class FirestoreService {
 
   async listParticipants(projectId: string): Promise<any[]> {
     const snap = await db.collection('project_participants').where('projectId', '==', projectId).get();
+    return snap.docs.map(d => d.data());
+  }
+
+  // Extremely simple owner-only listing for fallback scenarios
+  async simpleListUserProjectsByOwner(userId: string): Promise<any[]> {
+    const snap = await db.collection('projects').where('ownerId', '==', userId).get();
     return snap.docs.map(d => d.data());
   }
 

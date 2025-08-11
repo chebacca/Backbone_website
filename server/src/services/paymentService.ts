@@ -258,10 +258,11 @@ export class PaymentService {
       // 2. Update subscription status
       await db.updateSubscription(subscription.id, { status: 'ACTIVE' });
 
-      // 3. For ENTERPRISE: do not mass-issue licenses here; licenses are issued JIT on member invite/accept
-      //    For BASIC/PRO: maintain current behavior
+      // 3. For PRO/ENTERPRISE: do not mass-issue licenses here; licenses are issued JIT on member invite/accept
+      //    For BASIC: maintain current behavior
       let licenses: any[] = [];
-      if (String(subscription.tier).toUpperCase() === 'ENTERPRISE') {
+      const tierUpper = String(subscription.tier).toUpperCase();
+      if (tierUpper === 'ENTERPRISE' || tierUpper === 'PRO') {
         // No immediate license creation; audit only
         licenses = [];
       } else {
@@ -746,8 +747,9 @@ export class PaymentService {
     // Generate additional licenses if seats increased
     if (typeof updates.seats === 'number' && updates.seats > subscription.seats) {
       const additionalSeats = updates.seats - subscription.seats;
-      // For ENTERPRISE, do not auto-issue licenses on seat increase; issuance is JIT via org flow
-      if (String(subscription.tier).toUpperCase() !== 'ENTERPRISE') {
+      // For PRO/ENTERPRISE, do not auto-issue licenses on seat increase; issuance is JIT via org flow
+      const tierUpper = String(subscription.tier).toUpperCase();
+      if (tierUpper === 'BASIC') {
         await LicenseService.generateLicenses(
           userId,
           subscriptionId,

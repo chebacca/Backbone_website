@@ -18,6 +18,7 @@
     "seed:enterprise-multi": "npx tsx scripts/seed-enterprise-multi.ts",
     "seed:chris-mole": "npx tsx scripts/seed-chris-mole.ts",
     "seed:enterprise-test": "npx tsx scripts/seed-enterprise-test-user.ts",
+    "cleanup:licenses": "npx tsx scripts/cleanup-duplicate-licenses.ts",
     "import:dashboard-users-team": "npx tsx scripts/import-dashboard-users-team.ts",
     "list:enterprise-users": "npx tsx scripts/list-enterprise-users.ts",
     "db:init": "npx tsx scripts/init-database.ts",

@@ -90,9 +90,18 @@ html, body {
 }
 
 /* Firefox scrollbar */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
+@supports (-moz-appearance: none) {
+  * {
+    /* Firefox-only scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Ensure webkit scrollbars work consistently */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
 /* Focus styles for accessibility */
@@ -288,4 +297,9 @@ select:focus {
     background: white !important;
     color: black !important;
   }
+}
+
+/* Bridge-specific utility */
+.dataset-search-input {
+  padding: 6px;
 }

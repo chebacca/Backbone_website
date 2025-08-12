@@ -566,19 +566,55 @@ class CloudProjectIntegrationService {
         }
     }
 
+    /**
+     * Restore (unarchive) a project
+     */
+    public async restoreProject(projectId: string): Promise<void> {
+        try {
+            await this.apiRequest(`projects/${projectId}/archive`, 'PATCH', { isArchived: false });
+        } catch (error) {
+            console.error('Failed to restore project:', error);
+            throw error;
+        }
+    }
+
     // ==========================
     // Datasets
     // ==========================
 
-    public async listDatasets(params?: { organizationId?: string; visibility?: 'private' | 'organization' | 'public' }): Promise<CloudDataset[]> {
+    public async listDatasets(params?: { organizationId?: string; visibility?: 'private' | 'organization' | 'public'; backend?: 'firestore' | 'gcs' | 's3' | 'local'; query?: string }): Promise<CloudDataset[]> {
         const qs = new URLSearchParams();
         if (params?.organizationId) qs.append('organizationId', params.organizationId);
         if (params?.visibility) qs.append('visibility', params.visibility);
+        if (params?.backend) qs.append('backend', params.backend);
+        if (params?.query) qs.append('query', params.query);
         return this.apiRequest<CloudDataset[]>(`datasets${qs.toString() ? `?${qs}` : ''}`);
     }
 
     public async createDataset(input: Omit<CloudDataset, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'> & { organizationId?: string | null }): Promise<CloudDataset> {
-        return this.apiRequest<CloudDataset>('datasets', 'POST', input);
+        // Sanitize payload to match server schema expectations (zod):
+        // - organizationId must be omitted if not a non-empty string
+        // - tags/schema/storage are optional
+        const payload: any = { ...input };
+        if (payload.organizationId == null || payload.organizationId === '') {
+            delete payload.organizationId;
+        }
+        if (Array.isArray(payload.tags) && payload.tags.length === 0) {
+            delete payload.tags;
+        }
+        if (payload.schema && typeof payload.schema === 'object' && Object.keys(payload.schema).length === 0) {
+            delete payload.schema;
+        }
+        if (payload.storage && typeof payload.storage === 'object') {
+            // Keep as-is; server will default backend to 'firestore' if not provided
+            if (!payload.storage.backend) delete payload.storage.backend;
+            // Remove empty GCS fields
+            if (!payload.storage.gcsBucket) delete payload.storage.gcsBucket;
+            if (!payload.storage.gcsPrefix) delete payload.storage.gcsPrefix;
+            if (!payload.storage.path) delete payload.storage.path;
+            if (Object.keys(payload.storage).length === 0) delete payload.storage;
+        }
+        return this.apiRequest<CloudDataset>('datasets', 'POST', payload);
     }
 
     public async getProjectDatasets(projectId: string): Promise<CloudDataset[]> {

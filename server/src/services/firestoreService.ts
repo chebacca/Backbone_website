@@ -1305,8 +1305,11 @@ export class FirestoreService {
     await batch.commit();
   }
 
-  async listUserDatasets(userId: string, filter: { organizationId?: string; visibility?: 'private' | 'organization' | 'public' } = {}): Promise<FirestoreDataset[]> {
-    const { organizationId, visibility } = filter;
+  async listUserDatasets(
+    userId: string,
+    filter: { organizationId?: string; visibility?: 'private' | 'organization' | 'public'; backend?: 'firestore' | 'gcs' | 's3' | 'local'; query?: string } = {}
+  ): Promise<FirestoreDataset[]> {
+    const { organizationId, visibility, backend, query } = filter;
     const results: Map<string, FirestoreDataset> = new Map();
     // Owned datasets
     let q: FirebaseFirestore.Query = db.collection('datasets').where('ownerId', '==', userId);
@@ -1326,7 +1329,16 @@ export class FirestoreService {
     // Public datasets
     const pub = await db.collection('datasets').where('visibility', '==', 'public').get();
     pub.docs.forEach(d => results.set(d.id, d.data() as FirestoreDataset));
-    return Array.from(results.values());
+    let all = Array.from(results.values());
+    // Optional filters (apply in-memory to avoid heavy composite indexes)
+    if (backend) {
+      all = all.filter(ds => (ds.storage?.backend || 'firestore') === backend);
+    }
+    if (query && query.trim().length > 0) {
+      const q = query.trim().toLowerCase();
+      all = all.filter(ds => (ds.name || '').toLowerCase().includes(q) || (ds.description || '').toLowerCase().includes(q));
+    }
+    return all;
   }
 
   async listProjectDatasetsAuthorized(projectId: string, userId: string): Promise<FirestoreDataset[]> {
@@ -1339,10 +1351,13 @@ export class FirestoreService {
     const links = await db.collection('project_datasets').where('projectId', '==', projectId).get();
     const datasetIds = links.docs.map(d => (d.data() as FirestoreProjectDataset).datasetId);
     if (datasetIds.length === 0) return [];
+    // Fetch in chunks using 'in' queries where possible
     const results: FirestoreDataset[] = [];
-    for (const did of datasetIds) {
-      const ds = await this.getDatasetById(did);
-      if (ds) results.push(ds);
+    const chunks: string[][] = [];
+    for (let i = 0; i < datasetIds.length; i += 10) chunks.push(datasetIds.slice(i, i + 10));
+    for (const chunk of chunks) {
+      const snap = await db.collection('datasets').where('id', 'in', chunk).get();
+      snap.docs.forEach(d => results.push(d.data() as FirestoreDataset));
     }
     return results;
   }

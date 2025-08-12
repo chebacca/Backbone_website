@@ -177,7 +177,7 @@ class SimplifiedStartupSequencer {
             });
 
             // Check if authentication is required
-            if (this.requiresAuthentication(mode, storageMode)) {
+            if (this.isAuthRequired(mode, storageMode)) {
                 if (this.state.isAuthenticated) {
                     // Already authenticated, proceed to project selection
                     this.updateState({
@@ -353,7 +353,7 @@ class SimplifiedStartupSequencer {
         }
     }
 
-    private requiresAuthentication(mode: ApplicationMode, storageMode: StorageMode): boolean {
+    private isAuthRequired(mode: ApplicationMode, storageMode: StorageMode): boolean {
         // Network mode always requires authentication
         if (mode === 'shared_network') {
             return true;
@@ -503,7 +503,7 @@ class SimplifiedStartupSequencer {
     }
 
     public requiresAuthentication(): boolean {
-        return this.requiresAuthentication(this.state.selectedMode!, this.state.storageMode);
+        return this.isAuthRequired(this.state.selectedMode!, this.state.storageMode);
     }
 
     public getSelectedMode(): ApplicationMode | null {

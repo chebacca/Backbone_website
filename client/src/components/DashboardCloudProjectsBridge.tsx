@@ -27,7 +27,12 @@ import {
     Dialog,
     DialogTitle,
     DialogContent,
-    DialogActions
+  DialogActions,
+  TextField,
+  FormControlLabel,
+  Switch,
+  MenuItem,
+  Menu
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -56,6 +61,12 @@ interface CloudProject {
     allowCollaboration?: boolean;
     maxCollaborators?: number;
     realTimeEnabled?: boolean;
+    settings?: {
+      preferredPorts?: {
+        website?: number;
+        api?: number;
+      };
+    };
 }
 
 interface DashboardCloudProjectsBridgeProps {
@@ -76,6 +87,64 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [datasetsLoading, setDatasetsLoading] = useState(false);
   const [availableDatasets, setAvailableDatasets] = useState<any[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
+  const [datasetBackendFilter, setDatasetBackendFilter] = useState<'all' | 'firestore' | 'gcs'>('all');
+  const [datasetSearch, setDatasetSearch] = useState<string>('');
+  const [launchMenuAnchorEl, setLaunchMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [launchMenuProject, setLaunchMenuProject] = useState<CloudProject | null>(null);
+  const [projectDatasetCounts, setProjectDatasetCounts] = useState<Record<string, number>>({});
+  const [launchPrefs, setLaunchPrefs] = useState<Record<string, 'web' | 'desktop'>>({});
+  const [showCreateDatasetDialog, setShowCreateDatasetDialog] = useState(false);
+  const [createDatasetLoading, setCreateDatasetLoading] = useState(false);
+  const [createDatasetError, setCreateDatasetError] = useState<string | null>(null);
+  const [createDatasetAssignToProject, setCreateDatasetAssignToProject] = useState(true);
+  const [createDatasetForm, setCreateDatasetForm] = useState<{
+    name: string;
+    description: string;
+    backend: 'firestore' | 'gcs';
+    gcsBucket: string;
+    gcsPrefix: string;
+  }>({ name: '', description: '', backend: 'firestore', gcsBucket: '', gcsPrefix: '' });
+
+  // Helper to load available + assigned datasets for selected project
+  const loadDatasetsForProject = async (project: CloudProject) => {
+    try {
+      setDatasetsLoading(true);
+      const items = await cloudProjectIntegration.getProjectDatasets(project.id);
+      setProjectDatasets(items);
+      setProjectDatasetCounts(prev => ({ ...prev, [project.id]: items.length }));
+      // Default backend filter to the project's backend if 'all'
+      const backend = datasetBackendFilter === 'all' ? (project.storageBackend as 'firestore' | 'gcs') : datasetBackendFilter;
+      if (datasetBackendFilter === 'all') setDatasetBackendFilter(backend);
+      const all = await cloudProjectIntegration.listDatasets({
+        backend,
+        query: datasetSearch || undefined,
+      });
+      const labeled = all.map((ds: any) => ({
+        ...ds,
+        __label: `${ds.name} ${ds.storage?.backend === 'gcs' ? '(GCS)' : '(Firestore)'}`,
+      }));
+      setAvailableDatasets(labeled);
+    } catch (e) {
+      console.error('Failed to load datasets for project', e);
+    } finally {
+      setDatasetsLoading(false);
+    }
+  };
+
+  // Auto-fetch datasets when opening project details or when filters change
+  useEffect(() => {
+    if (selectedProject) {
+      void loadDatasetsForProject(selectedProject);
+      // Prefill dataset create dialog defaults based on selected project
+      setCreateDatasetForm(prev => ({
+        ...prev,
+        backend: (selectedProject.storageBackend as 'firestore' | 'gcs') || 'firestore',
+        gcsBucket: selectedProject.gcsBucket || '',
+        gcsPrefix: selectedProject.gcsPrefix || ''
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject]);
 
     useEffect(() => {
         loadProjects();
@@ -94,6 +163,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             
             const cloudProjects = await cloudProjectIntegration.getUserProjects();
             setProjects(cloudProjects);
+        // Initialize launch preferences from localStorage
+        const prefs: Record<string, 'web' | 'desktop'> = {};
+        for (const p of cloudProjects) {
+          const key = `launch_pref_${p.id}`;
+          const val = (localStorage.getItem(key) as 'web' | 'desktop' | null) || 'web';
+          prefs[p.id] = val;
+        }
+        setLaunchPrefs(prefs);
         } catch (err: any) {
             setError(err?.message || 'Failed to load projects');
         } finally {
@@ -103,6 +180,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
 
     const handleLaunchProject = async (project: CloudProject) => {
         try {
+            // Ensure the startup sequencer has a mode set before selecting a project
+            await simplifiedStartupSequencer.selectMode(project.applicationMode as any, 'cloud');
             // Use the simplified startup sequencer to launch the project
             // This ensures consistency with the startup flow
             await simplifiedStartupSequencer.selectProject(project.id);
@@ -112,6 +191,91 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             console.error('Failed to launch project:', error);
             setError('Failed to launch project');
         }
+    };
+
+    const openLaunchMenu = (evt: React.MouseEvent<HTMLElement>, project: CloudProject) => {
+      setLaunchMenuAnchorEl(evt.currentTarget);
+      setLaunchMenuProject(project);
+    };
+
+    const closeLaunchMenu = () => {
+      setLaunchMenuAnchorEl(null);
+      setLaunchMenuProject(null);
+    };
+
+    const handleLaunchWeb = async () => {
+      if (!launchMenuProject) return;
+      try {
+        localStorage.setItem(`launch_pref_${launchMenuProject.id}`, 'web');
+        setLaunchPrefs(prev => ({ ...prev, [launchMenuProject.id]: 'web' }));
+        // Compute Backbone Web App base URL with project-preferred/local dev preference
+        let base = '';
+        try {
+          const projectPort = launchMenuProject.settings?.preferredPorts?.website;
+          const portPrefStr = localStorage.getItem('preferred_website_port');
+          const portPref = portPrefStr ? Number(portPrefStr) : 0;
+          const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+          if (projectPort && projectPort >= 1024 && projectPort <= 65535) {
+            base = `http://localhost:${projectPort}`;
+          } else if (portPref && portPref >= 1024 && portPref <= 65535) {
+            base = `http://localhost:${portPref}`;
+          } else if (isLocal) {
+            base = 'http://localhost:3002';
+          } else {
+            base = ((import.meta.env as any).VITE_WEB_APP_URL || window.location.origin) as string;
+          }
+        } catch {
+          base = ((import.meta.env as any).VITE_WEB_APP_URL || window.location.origin) as string;
+        }
+        base = String(base).replace(/\/$/, '');
+        // For localhost, use hash route to avoid history 404s; hosted uses root
+        const isLocalHost = /^http:\/\/localhost:\d+$/i.test(base);
+        const url = isLocalHost
+          ? `${base}/#/?projectId=${encodeURIComponent(launchMenuProject.id)}&mode=${encodeURIComponent(launchMenuProject.applicationMode)}`
+          : `${base}/?projectId=${encodeURIComponent(launchMenuProject.id)}&mode=${encodeURIComponent(launchMenuProject.applicationMode)}`;
+        // Open via anchor click (more reliable than window.open in some blockers)
+        let opened = false;
+        try {
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          opened = true;
+        } catch {}
+        if (!opened) {
+          // Fallback: same-tab navigation
+          window.location.href = url;
+        }
+        // Fire-and-forget: update startup sequencer for internal state
+        void (async () => {
+          try {
+            await simplifiedStartupSequencer.selectMode(launchMenuProject.applicationMode as any, 'cloud');
+            await simplifiedStartupSequencer.selectProject(launchMenuProject.id);
+          } catch {}
+        })();
+      } catch {}
+      closeLaunchMenu();
+    };
+
+    const handleLaunchDesktop = () => {
+      if (!launchMenuProject) return;
+      try {
+        localStorage.setItem(`launch_pref_${launchMenuProject.id}`, 'desktop');
+        setLaunchPrefs(prev => ({ ...prev, [launchMenuProject.id]: 'desktop' }));
+        const scheme = (import.meta.env as any).VITE_DESKTOP_DEEP_LINK_SCHEME || 'dashboardv14';
+        const action = (import.meta.env as any).VITE_DESKTOP_DEEP_LINK_ACTION || 'open-project';
+        const url = `${scheme}://${action}?id=${encodeURIComponent(launchMenuProject.id)}`;
+        // Attempt deep link
+        window.location.href = url;
+      } catch (e) {
+        console.error('Failed to open desktop deep link', e);
+        setError('Unable to open Desktop app. Please ensure it is installed.');
+      } finally {
+        closeLaunchMenu();
+      }
     };
 
     const handleCreateProject = () => {
@@ -260,6 +424,18 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 label={project.storageBackend}
                                                 variant="outlined"
                                             />
+                                           {typeof projectDatasetCounts[project.id] === 'number' && (
+                                             <Chip
+                                               size="small"
+                                               label={`Datasets: ${projectDatasetCounts[project.id]}`}
+                                               variant="outlined"
+                                             />
+                                           )}
+                                           <Chip
+                                             size="small"
+                                             label={`Launch: ${(launchPrefs[project.id] || 'web') === 'desktop' ? 'Desktop' : 'Web'}`}
+                                             variant="outlined"
+                                           />
                                             {project.allowCollaboration && (
                                                 <Chip
                                                     size="small"
@@ -274,15 +450,35 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                         </Typography>
                                     </CardContent>
 
-                                    <Box sx={{ p: 2, pt: 0 }}>
+                                    <Box sx={{ p: 2, pt: 0, display: 'flex', gap: 1 }}>
                                         <Button
                                             fullWidth
                                             variant="contained"
                                             startIcon={<LaunchIcon />}
-                                            onClick={() => handleLaunchProject(project)}
+                                            onClick={(e) => openLaunchMenu(e, project)}
                                             disabled={!project.isActive}
                                         >
-                                            {project.isActive ? 'Launch Project' : 'Archived'}
+                                            {project.isActive ? 'Launch' : 'Archived'}
+                                        </Button>
+                                        <Button
+                                            fullWidth
+                                            variant="outlined"
+                                            color={project.isActive ? 'warning' : 'success'}
+                                            onClick={async () => {
+                                                try {
+                                                    if (project.isActive) {
+                                                        await cloudProjectIntegration.archiveProject(project.id);
+                                                    } else {
+                                                        await cloudProjectIntegration.restoreProject(project.id);
+                                                    }
+                                                    await loadProjects();
+                                                } catch (e) {
+                                                    console.error('Failed to toggle archive', e);
+                                                    setError('Failed to update project');
+                                                }
+                                            }}
+                                        >
+                                            {project.isActive ? 'Archive' : 'Restore'}
                                         </Button>
                                     </Box>
                                 </Card>
@@ -409,8 +605,17 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                               setDatasetsLoading(true);
                               const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
                               setProjectDatasets(items);
-                              const all = await cloudProjectIntegration.listDatasets();
-                              setAvailableDatasets(all);
+                              // Fetch available datasets with optional filters
+                              const all = await cloudProjectIntegration.listDatasets({
+                                backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
+                                query: datasetSearch || undefined,
+                              });
+                              // Label with backend for clarity (GCS vs Firestore)
+                              const labeled = all.map((ds: any) => ({
+                                ...ds,
+                                __label: `${ds.name} ${ds.storage?.backend === 'gcs' ? '(GCS)' : '(Firestore)'}`,
+                              }));
+                              setAvailableDatasets(labeled);
                             } catch (e) {
                               console.error('Failed to load datasets', e);
                             } finally {
@@ -421,7 +626,38 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         >
                           {datasetsLoading ? 'Loading...' : 'Refresh'}
                         </Button>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="primary"
+                          onClick={() => {
+                            setCreateDatasetError(null);
+                            setShowCreateDatasetDialog(true);
+                          }}
+                          sx={{ mb: 1, ml: 1 }}
+                        >
+                          New Dataset
+                        </Button>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
+                          <label htmlFor="dataset-backend" className="visually-hidden">Backend</label>
+                          <select
+                            id="dataset-backend"
+                            aria-label="Backend filter"
+                            value={datasetBackendFilter}
+                            onChange={(e) => setDatasetBackendFilter(e.target.value as any)}
+                          >
+                            <option value="all">All backends</option>
+                            <option value="firestore">Firestore</option>
+                            <option value="gcs">GCS</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Search datasets…"
+                            value={datasetSearch}
+                            onChange={(e) => setDatasetSearch(e.target.value)}
+                            aria-label="Search datasets"
+                            className="dataset-search-input"
+                          />
                           <label htmlFor="dataset-select" className="visually-hidden">Select dataset</label>
                           <select
                             id="dataset-select"
@@ -432,7 +668,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                           >
                             <option value="">Select dataset…</option>
                             {availableDatasets.map((ds: any) => (
-                              <option key={ds.id} value={ds.id}>{ds.name}</option>
+                              <option key={ds.id} value={ds.id}>{ds.__label || ds.name}</option>
                             ))}
                           </select>
                           <Button
@@ -451,6 +687,31 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                               }
                             }}
                           >Assign</Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={async () => {
+                              if (!selectedProject) return;
+                              try {
+                                setDatasetsLoading(true);
+                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
+                                setProjectDatasets(items);
+                                const all = await cloudProjectIntegration.listDatasets({
+                                  backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
+                                  query: datasetSearch || undefined,
+                                });
+                                const labeled = all.map((ds: any) => ({
+                                  ...ds,
+                                  __label: `${ds.name} ${ds.storage?.backend === 'gcs' ? '(GCS)' : '(Firestore)'}`,
+                                }));
+                                setAvailableDatasets(labeled);
+                              } catch (e) {
+                                console.error('Failed to load datasets', e);
+                              } finally {
+                                setDatasetsLoading(false);
+                              }
+                            }}
+                          >Apply Filters</Button>
                         </Box>
                         {projectDatasets.length === 0 ? (
                           <Typography variant="body2" color="text.secondary">No datasets assigned</Typography>
@@ -462,6 +723,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                   try {
                                     await cloudProjectIntegration.unassignDatasetFromProject(selectedProject!.id, ds.id);
                                     setProjectDatasets(prev => prev.filter(x => x.id !== ds.id));
+                                       setProjectDatasetCounts(prev => ({ ...prev, [selectedProject!.id]: Math.max(0, (prev[selectedProject!.id] || 1) - 1) }));
                                   } catch (e) {
                                     console.error('Failed to unassign dataset', e);
                                   }
@@ -492,6 +754,129 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     )}
                 </DialogActions>
             </Dialog>
+
+            {/* Create Dataset Dialog */}
+            <Dialog open={showCreateDatasetDialog} onClose={() => setShowCreateDatasetDialog(false)} maxWidth="sm" fullWidth>
+              <DialogTitle>Create Dataset</DialogTitle>
+              <DialogContent>
+                {createDatasetError && (
+                  <Alert severity="error" sx={{ mb: 2 }}>{createDatasetError}</Alert>
+                )}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+                  <TextField
+                    label="Name"
+                    value={createDatasetForm.name}
+                    onChange={(e) => setCreateDatasetForm({ ...createDatasetForm, name: e.target.value })}
+                    required
+                    fullWidth
+                  />
+                  <TextField
+                    label="Description"
+                    value={createDatasetForm.description}
+                    onChange={(e) => setCreateDatasetForm({ ...createDatasetForm, description: e.target.value })}
+                    multiline
+                    minRows={2}
+                    fullWidth
+                  />
+                  <TextField
+                    select
+                    label="Storage Backend"
+                    value={createDatasetForm.backend}
+                    onChange={(e) => setCreateDatasetForm({ ...createDatasetForm, backend: e.target.value as 'firestore' | 'gcs' })}
+                    fullWidth
+                  >
+                    <MenuItem value="firestore">Firestore</MenuItem>
+                    <MenuItem value="gcs">Google Cloud Storage (GCS)</MenuItem>
+                  </TextField>
+                  {createDatasetForm.backend === 'gcs' && (
+                    <>
+                      <TextField
+                        label="GCS Bucket"
+                        placeholder="my-bucket"
+                        value={createDatasetForm.gcsBucket}
+                        onChange={(e) => setCreateDatasetForm({ ...createDatasetForm, gcsBucket: e.target.value })}
+                        fullWidth
+                      />
+                      <TextField
+                        label="GCS Prefix (optional)"
+                        placeholder="datasets/project-123/"
+                        value={createDatasetForm.gcsPrefix}
+                        onChange={(e) => setCreateDatasetForm({ ...createDatasetForm, gcsPrefix: e.target.value })}
+                        fullWidth
+                      />
+                    </>
+                  )}
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={createDatasetAssignToProject}
+                        onChange={(_, checked) => setCreateDatasetAssignToProject(checked)}
+                      />
+                    }
+                    label="Assign to this project after creation"
+                  />
+                </Box>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowCreateDatasetDialog(false)} disabled={createDatasetLoading}>Cancel</Button>
+                <Button
+                  variant="contained"
+                  disabled={createDatasetLoading || !createDatasetForm.name.trim()}
+                  onClick={async () => {
+                    if (!selectedProject) { setShowCreateDatasetDialog(false); return; }
+                    setCreateDatasetError(null);
+                    setCreateDatasetLoading(true);
+                    try {
+                      const storage: any = { backend: createDatasetForm.backend };
+                      if (createDatasetForm.backend === 'gcs') {
+                        if (createDatasetForm.gcsBucket) storage.gcsBucket = createDatasetForm.gcsBucket;
+                        if (createDatasetForm.gcsPrefix) storage.gcsPrefix = createDatasetForm.gcsPrefix;
+                      }
+                      const created = await cloudProjectIntegration.createDataset({
+                        name: createDatasetForm.name.trim(),
+                        description: createDatasetForm.description.trim() || undefined,
+                        visibility: 'private',
+                        organizationId: null,
+                        tags: [],
+                        schema: {},
+                        storage
+                      } as any);
+                      if (createDatasetAssignToProject) {
+                        await cloudProjectIntegration.assignDatasetToProject(selectedProject.id, created.id);
+                      }
+                      // Refresh datasets lists
+                      const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
+                      setProjectDatasets(items);
+                      setProjectDatasetCounts(prev => ({ ...prev, [selectedProject.id]: items.length }));
+                      const backend = datasetBackendFilter === 'all' ? (selectedProject.storageBackend as 'firestore' | 'gcs') : datasetBackendFilter;
+                      const all = await cloudProjectIntegration.listDatasets({ backend });
+                      const labeled = all.map((ds: any) => ({ ...ds, __label: `${ds.name} ${ds.storage?.backend === 'gcs' ? '(GCS)' : '(Firestore)'}` }));
+                      setAvailableDatasets(labeled);
+                      setShowCreateDatasetDialog(false);
+                      setCreateDatasetForm(f => ({ ...f, name: '', description: '' }));
+                    } catch (e: any) {
+                      setCreateDatasetError(e?.message || 'Failed to create dataset');
+                    } finally {
+                      setCreateDatasetLoading(false);
+                    }
+                  }}
+                >
+                  {createDatasetLoading ? 'Creating…' : 'Create Dataset'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+
+            {/* Launch Options Menu */}
+            <Menu
+              anchorEl={launchMenuAnchorEl}
+              open={Boolean(launchMenuAnchorEl)}
+              onClose={closeLaunchMenu}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+            >
+              <MenuItem onClick={handleLaunchWeb}>Launch (Web)</MenuItem>
+              <MenuItem onClick={handleLaunchDesktop}>Launch (Desktop)</MenuItem>
+            </Menu>
         </Container>
     );
 };

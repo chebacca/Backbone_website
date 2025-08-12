@@ -27,6 +27,8 @@ router.get('/', authenticateToken, async (req: any, res: Response) => {
     const items = await firestoreService.listUserDatasets(req.user.id, {
       organizationId: req.query.organizationId as string | undefined,
       visibility: (req.query.visibility as any) || undefined,
+      backend: (req.query.backend as any) || undefined,
+      query: (req.query.query as string | undefined) || undefined,
     });
     res.json({ success: true, data: items });
   } catch (e: any) {

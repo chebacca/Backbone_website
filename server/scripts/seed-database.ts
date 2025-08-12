@@ -28,6 +28,11 @@ async function main() {
         await DatabaseSeeder.seedDatabase();
         break;
 
+      case 'seed-minimal':
+        logger.info('🌱 Starting minimal database seeding...');
+        await DatabaseSeeder.seedMinimal();
+        break;
+
       case 'clear':
         logger.info('🧹 Clearing database...');
         await DatabaseSeeder.clearDatabase();
@@ -40,7 +45,7 @@ async function main() {
         break;
 
       default:
-        logger.error('Invalid command. Use: seed, clear, or reset');
+        logger.error('Invalid command. Use: seed, seed-minimal, clear, or reset');
         process.exit(1);
     }
 

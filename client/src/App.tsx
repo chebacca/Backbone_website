@@ -9,6 +9,7 @@ import { theme } from './theme/theme';
 // Lazy load pages for better performance
 const LandingPage = React.lazy(() => import('@/pages/LandingPage'));
 const LoginPage = React.lazy(() => import('@/pages/auth/LoginPage'));
+const BridgeAuthPage = React.lazy(() => import('@/pages/auth/BridgeAuthPage'));
 const RegisterPage = React.lazy(() => import('@/pages/auth/RegisterPage'));
 const ForgotPasswordPage = React.lazy(() => import('@/pages/auth/ForgotPasswordPage'));
 const ResetPasswordPage = React.lazy(() => import('@/pages/auth/ResetPasswordPage'));
@@ -142,6 +143,10 @@ function App() {
                     <LoginPage />
                   </PublicRoute>
                 } 
+              />
+              <Route 
+                path="/auth/bridge" 
+                element={<BridgeAuthPage />} 
               />
               <Route 
                 path="/register" 

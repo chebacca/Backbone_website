@@ -379,6 +379,7 @@ export const endpoints = {
   // Organization endpoints (Pro/Enterprise team management)
   organizations: {
     my: () => 'organizations/my',
+    context: () => 'organizations/my/context',
     invite: (orgId: string) => `organizations/${orgId}/invitations`,
     acceptInvitation: () => 'organizations/invitations/accept',
     removeMember: (orgId: string, memberId: string) => `organizations/${orgId}/members/${memberId}/remove`,
@@ -422,6 +423,18 @@ export const endpoints = {
     paymentDetails: (paymentId: string) => `admin/payments/${paymentId}`,
     companyFilingGet: () => 'admin/settings/company-filing',
     companyFilingSave: () => 'admin/settings/company-filing',
+  },
+
+  // Dataset endpoints
+  datasets: {
+    list: () => 'datasets',
+    create: () => 'datasets',
+    details: (datasetId: string) => `datasets/${datasetId}`,
+    update: (datasetId: string) => `datasets/${datasetId}`,
+    remove: (datasetId: string) => `datasets/${datasetId}`,
+    projectDatasets: (projectId: string) => `datasets/project/${projectId}`,
+    assignToProject: (projectId: string, datasetId: string) => `datasets/project/${projectId}/${datasetId}`,
+    unassignFromProject: (projectId: string, datasetId: string) => `datasets/project/${projectId}/${datasetId}`,
   },
 
   // Accounting endpoints

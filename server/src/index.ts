@@ -11,6 +11,7 @@ import { subscriptionsRouter } from './routes/subscriptions.js';
 import { licensesRouter } from './routes/licenses.js';
 import { paymentsRouter } from './routes/payments.js';
 import { adminRouter } from './routes/admin.js';
+import { datasetsRouter } from './routes/datasets.js';
 import { projectsRouter } from './routes/projects.js';
 import { organizationsRouter } from './routes/organizations.js';
 import { webhooksRouter } from './routes/webhooks.js';
@@ -22,6 +23,7 @@ import { logger } from './utils/logger.js';
 import { firestoreService } from './services/firestoreService.js';
 import { db } from './services/db.js';
 import { PasswordUtil } from './utils/password.js';
+import DatabaseSeeder from './seeds/index.js';
 import { LicenseService } from './services/licenseService.js';
 // Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
@@ -122,6 +124,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/accounting', accountingRouter);
 // Prefer named export to satisfy TS named typing if needed, but default remains for compatibility
 app.use('/api/projects', projectsRouter);
+app.use('/api/datasets', datasetsRouter);
 
 // Setup endpoint: place BEFORE error handlers so it's reachable
 app.post('/api/setup/seed-superadmin', async (req, res) => {
@@ -166,6 +169,27 @@ app.post('/api/setup/clear-test-data', async (req, res) => {
   }
   await clearTestData();
   res.json({ success: true });
+});
+
+// Minimal seed endpoint for focused demo
+app.post('/api/setup/seed-minimal', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({ success: false, error: 'Forbidden in production' });
+    return;
+  }
+  const token = req.headers['x-setup-token'] as string;
+  const expected = process.env.ADMIN_SETUP_TOKEN;
+  if (!expected || token !== expected) {
+    res.status(403).json({ success: false, error: 'Forbidden' });
+    return;
+  }
+  try {
+    await DatabaseSeeder.seedMinimal();
+    res.json({ success: true, message: 'Minimal dataset seeded successfully!' });
+  } catch (error) {
+    logger.error('Minimal seeding failed:', error);
+    res.status(500).json({ success: false, error: 'Minimal seeding failed', details: (error as any)?.message });
+  }
 });
 
 // Temporary debug endpoint to check database contents (remove after debugging)

@@ -48,11 +48,11 @@ client/src/
 ## Key Features
 - **Authentication**: Login, register, 2FA, email verification
 - **Dashboard**: User management, billing, analytics
-- **Admin Panel**: User management, compliance, system health
+- **Admin Panel**: Users/Licenses consolidated tab, Invoices, System Health
 - **Checkout**: Stripe payment integration
 - **Licensing**: License management and activation
 - **Responsive**: Mobile-first design with MUI
- - **Legal Pages**: `/terms`, `/privacy`, `/sla`, `/cookies` with versioned ToS labels in register/checkout
+- **Legal Pages**: `/terms`, `/privacy`, `/sla`, `/cookies` with versioned ToS labels in register/checkout
 
 ## Development
 ```bash
@@ -66,7 +66,26 @@ pnpm preview              # Preview production build
 - `VITE_STRIPE_PUBLISHABLE_KEY`: Stripe public key
  - `VITE_TERMS_VERSION`: Optional; surface version label in UI. If omitted, defaults to `1.0` while server remains authoritative via `TERMS_VERSION`.
 
+## Dev Port Auto-Discovery
+- The website publishes `health.json` at the app root during development (see `client/public/health.json`).
+- Desktop app detects the website and API ports automatically by probing `health.json` and `/health`.
+- Users can override detected ports locally; overrides are stored in `localStorage` and only affect their machine.
+- Projects may include optional hints under `settings.preferredPorts.website|api`, used only as fallback hints.
+
 ## Build Output
 - Production files built to `deploy/` directory
 - SPA routing with Firebase hosting rewrites
 - Static asset optimization and caching
+
+## Admin Panel UI
+
+Tabs
+- **Users/Licenses**: Consolidated user management with per-user license access.
+  - Each user row includes a license icon action that opens a popover listing that user’s active licenses (key, tier, expiry).
+  - The standalone Licenses tab has been removed to reduce tab count and avoid grouping complexity.
+  - Backward compatibility: URL hash `#licenses` routes to this tab.
+- **Invoices**: Payments and invoice history with filters and details dialog.
+- **System Health**: Subsystem health overview and recent activity.
+
+Notes
+- Per-user licenses are fetched on demand via `GET /admin/users/:userId` and displayed in the popover; only active licenses are shown by default.

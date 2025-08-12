@@ -171,7 +171,8 @@ router.post('/validate', [
   const { licenseKey, deviceInfo } = req.body;
   const requestInfo = (req as any).requestInfo;
 
-  const result = await LicenseService.validateLicense(licenseKey);
+  // Cast to allow passing deviceInfo without changing import resolution that uses .js extension
+  const result = await (LicenseService as any).validateLicense(licenseKey, deviceInfo);
 
   // Log validation attempt
   if (result.valid && result.license && result.license.user) {

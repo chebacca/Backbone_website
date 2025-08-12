@@ -7,6 +7,12 @@
 - Licenses issued through enterprise flows include `organizationId`.
 - Member removal revokes licenses tied to the organization’s subscription for that user.
 
+Seat/License rules:
+- Seats are a subscription-level capacity. For PRO/ENTERPRISE, licenses are issued Just-In-Time when an invited member accepts.
+- Inviting a member reserves a seat by creating an `org_member` in INVITED status (`seatReserved=true`).
+- Acceptance links the user to the member and activates status; a license is issued if the user lacks a non-revoked license for that subscription.
+- Removing a member marks REMOVED, clears seat reservation, and revokes licenses tied to that org’s subscription for the member’s userId.
+
 ## Duplicate Prevention
 
 - Backend checks for existing `(userId, subscriptionId)` licenses before issuing; skips creation when a non-revoked license exists.

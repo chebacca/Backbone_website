@@ -3,6 +3,8 @@ import { logger } from '../utils/logger.js';
 import { LicenseKeyUtil } from '../utils/licenseKey.js';
 import { PasswordUtil } from '../utils/password.js';
 import { v4 as uuidv4 } from 'uuid';
+import { firestoreService } from '../services/firestoreService.js';
+import { LicenseService } from '../services/licenseService.js';
 
 // Initialize the db connection by importing the service (this ensures firebase is initialized)
 import '../services/firestoreService.js';
@@ -553,6 +555,148 @@ class DatabaseSeeder {
       logger.error('❌ Database seeding failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Minimal seed: 6 users only
+   * - SUPERADMIN: chebacca@gmail.com (ensure exists)
+   * - SUPERADMIN: Chris Mole (chrismole@gmail.com)
+   * - ACCOUNTING: accounting@example.com
+   * - BASIC tier user
+   * - PRO tier user
+   * - ENTERPRISE tier user
+   * Each user gets default template projects: Production, Accounting, Admin
+   */
+  public static async seedMinimal(): Promise<void> {
+    logger.info('🌱 Seeding minimal dataset (6 users)...');
+    const now = new Date();
+
+    const ensureUser = async (email: string, name: string, role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING'): Promise<string> => {
+      const existing = await firestoreService.getUserByEmail(email);
+      if (existing) {
+        const updates: any = { role, isEmailVerified: true };
+        await firestoreService.updateUser(existing.id, updates);
+        return existing.id;
+      }
+      const user = await firestoreService.createUser({
+        email,
+        password: await PasswordUtil.hash('ChangeMe123!'),
+        name,
+        role,
+        isEmailVerified: true,
+        twoFactorEnabled: false,
+        twoFactorBackupCodes: [],
+        privacyConsent: [],
+        marketingConsent: false,
+        dataProcessingConsent: false,
+        termsAcceptedAt: now,
+        termsVersionAccepted: 'v1',
+        privacyPolicyAcceptedAt: now,
+        privacyPolicyVersionAccepted: 'v1',
+        identityVerified: false,
+        kycStatus: 'PENDING',
+      } as any);
+      return user.id;
+    };
+
+    const createDefaultProjects = async (userId: string, organizationId?: string | null): Promise<void> => {
+      const defaults = [
+        { name: 'Production', description: 'Primary production project' },
+        { name: 'Accounting', description: 'Financial and accounting project' },
+        { name: 'Admin', description: 'Administrative project' },
+      ];
+      for (const d of defaults) {
+        try {
+          await firestoreService.createProject({
+            ownerId: userId,
+            name: d.name,
+            description: d.description,
+            type: 'networked',
+            applicationMode: 'shared_network',
+            visibility: organizationId ? 'organization' : 'private',
+            organizationId: organizationId || null,
+            storageBackend: 'firestore',
+            allowCollaboration: Boolean(organizationId),
+            maxCollaborators: organizationId ? 25 : 10,
+            realTimeEnabled: true,
+          });
+        } catch {}
+      }
+    };
+
+    // Ensure users
+    const superadmin1Id = await ensureUser('chebacca@gmail.com', 'System Administrator', 'SUPERADMIN');
+    const superadmin2Id = await ensureUser('chrismole@gmail.com', 'Chris Mole', 'SUPERADMIN');
+    const accountingId = await ensureUser('accounting@example.com', 'Accounting User', 'ACCOUNTING');
+    const basicUserId = await ensureUser('basic.user@example.com', 'Basic User', 'USER');
+    const proUserId = await ensureUser('pro.user@example.com', 'Pro User', 'USER');
+    const enterpriseUserId = await ensureUser('enterprise.user@example.com', 'Enterprise User', 'USER');
+
+    // Create organizations for Pro and Enterprise (team-capable) and set owner membership
+    const proOrg = await firestoreService.createOrganization({ name: 'Pro User Org', ownerUserId: proUserId, tier: 'PRO' } as any);
+    await firestoreService.createOrgMember({ orgId: proOrg.id, email: 'pro.user@example.com', userId: proUserId, role: 'ENTERPRISE_ADMIN', status: 'ACTIVE', seatReserved: true, invitedAt: now, joinedAt: now } as any);
+    const entOrg = await firestoreService.createOrganization({ name: 'Enterprise User Org', ownerUserId: enterpriseUserId, tier: 'ENTERPRISE' } as any);
+    await firestoreService.createOrgMember({ orgId: entOrg.id, email: 'enterprise.user@example.com', userId: enterpriseUserId, role: 'ENTERPRISE_ADMIN', status: 'ACTIVE', seatReserved: true, invitedAt: now, joinedAt: now } as any);
+
+    // Create subscriptions for tiered users only
+    const pricePerSeat: Record<'BASIC' | 'PRO' | 'ENTERPRISE', number> = { BASIC: 2900, PRO: 9900, ENTERPRISE: 19900 };
+    const mkSub = async (userId: string, tier: 'BASIC' | 'PRO' | 'ENTERPRISE', seats: number, organizationId?: string | null) => {
+      const subData: any = {
+        userId,
+        tier,
+        status: 'ACTIVE',
+        seats,
+        pricePerSeat: pricePerSeat[tier],
+        cancelAtPeriodEnd: false,
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      };
+      if (organizationId) subData.organizationId = organizationId;
+      const sub = await firestoreService.createSubscription(subData);
+      await LicenseService.generateLicenses(userId, sub.id, tier as any, seats, 'ACTIVE' as any, 12);
+      // Generate a first payment
+      await firestoreService.createPayment({
+        userId,
+        subscriptionId: sub.id,
+        stripePaymentIntentId: `pi_seed_${sub.id}`,
+        stripeInvoiceId: `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        amount: pricePerSeat[tier] * seats,
+        currency: 'usd',
+        status: 'SUCCEEDED',
+        description: `${tier} subscription - ${seats} seats`,
+        receiptUrl: 'https://example.com/receipt',
+        billingAddressSnapshot: { firstName: 'Seed', lastName: 'User', country: 'US' },
+        taxAmount: Math.round(pricePerSeat[tier] * seats * 0.08),
+        taxRate: 0.08,
+        taxJurisdiction: 'US',
+        paymentMethod: 'credit_card',
+        complianceData: { invoiceNumber: `INV-${Date.now()}` },
+        amlScreeningStatus: 'PASSED',
+        amlScreeningDate: now,
+        amlRiskScore: 0.1,
+        pciCompliant: true,
+        ipAddress: '127.0.0.1',
+        userAgent: 'Seeder/1.0',
+        processingLocation: 'US',
+      } as any);
+      return sub.id;
+    };
+
+    await mkSub(basicUserId, 'BASIC', 1, null);
+    await mkSub(proUserId, 'PRO', 5, proOrg.id);
+    await mkSub(enterpriseUserId, 'ENTERPRISE', 25, entOrg.id);
+
+    // Create default template projects for all users (org-scoped for Pro/Enterprise)
+    await Promise.all([
+      createDefaultProjects(superadmin1Id, null),
+      createDefaultProjects(superadmin2Id, null),
+      createDefaultProjects(accountingId, null),
+      createDefaultProjects(basicUserId, null),
+      createDefaultProjects(proUserId, proOrg.id),
+      createDefaultProjects(enterpriseUserId, entOrg.id),
+    ]);
+
+    logger.info('✅ Minimal dataset seeded successfully');
   }
 
   /**

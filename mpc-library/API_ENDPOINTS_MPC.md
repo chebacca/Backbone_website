@@ -42,6 +42,25 @@ Base URL: `${VITE_API_BASE_URL || /api}` (Firebase hosting)
 - POST /subscriptions/:subscriptionId/add-seats
   - Note: For PRO/ENTERPRISE, seat increases do not auto-issue licenses; issuance occurs on org invite acceptance or explicit seat assignment.
 
+Plan rules:
+- BASIC: exactly 1 seat
+- PRO: 1–50 seats
+- ENTERPRISE: >= 10 seats
+
+## Organizations (Team Management)
+
+- GET  /organizations/my
+- GET  /organizations/my/context
+- POST /organizations/:orgId/invitations
+- POST /organizations/invitations/accept
+- POST /organizations/:orgId/members/:memberId/remove
+- PATCH /organizations/:orgId/members/:memberId
+- PUT  /organizations/:orgId/members/:memberId/password
+
+Seat accounting:
+- activeSeats = count(m.status == ACTIVE) + count(m.seatReserved == true)
+- Invites fail with 400 if no active subscription or no seats available
+
 ## Licenses
 - GET  /licenses/my-licenses
 - POST /licenses/activate
@@ -118,3 +137,4 @@ Base URL: `${VITE_API_BASE_URL || /api}` (Firebase hosting)
 - **Base URL**: https://us-central1-backbone-logic.cloudfunctions.net/api
 - **Hosting**: https://backbone-logic.web.app
 - **CORS**: Configured for Firebase hosting domain
+- **Dev Discovery**: API exposes `/health` and `/api/health` for local auto-detection by the desktop app.

@@ -40,6 +40,8 @@
 
 ### Enterprise Features
 1. **Organization Setup**: Multi-user organization creation
+   - Owner purchase creates/locates `organization`; OWNER seeded as ACTIVE member
+   - Seats tracked on `subscriptions.seats`; Team UI uses `GET /organizations/my/context` for `{ organization, members, primaryRole, activeSubscription }`
 2. **Role Management**: Admin and user role assignment
 3. **Bulk Operations**: Mass license and user management
 4. **Compliance Monitoring**: KYC/AML and audit tracking
@@ -52,12 +54,17 @@
 2. **Role Assignment**: Assign admin or super admin roles
 3. **Compliance Monitoring**: Track KYC and compliance status
 4. **Support Actions**: Handle user issues and requests
+5. **Per-user Licenses**: From the Users/Licenses tab, click the license icon on a user to open a popover showing that user’s active licenses.
 
 ### Subscription Management
 1. **Subscription Overview**: Monitor all active subscriptions
 2. **Payment Processing**: Handle payment issues and refunds
-3. **License Allocation**: Manage license distribution
+3. **License Allocation**: Manage license distribution (Users tab → per-user license popover). Licenses for PRO/ENTERPRISE are issued JIT on org invite acceptance.
 4. **Revenue Analytics**: Track revenue and growth metrics
+
+### Seat Management
+1. **Org Admins/Owners**: Increase/decrease seats via Team page Manage Seats dialog → `PUT /subscriptions/:subscriptionId` within plan rules (BASIC=1, PRO=1–50, ENTERPRISE>=10)
+2. **SUPERADMIN**: From Admin Dashboard → Users → Edit User → Manage Seats; updates the user’s active PRO/ENTERPRISE subscription
 
 ### Compliance & Security
 1. **Audit Logging**: Monitor system access and changes

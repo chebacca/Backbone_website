@@ -226,6 +226,34 @@ export interface FirestoreOrgInvitation {
   updatedAt: Date;
 }
 
+// Datasets and project-dataset linking
+export interface FirestoreDataset {
+  id: string;
+  name: string;
+  description?: string;
+  ownerId: string;
+  organizationId?: string | null;
+  visibility: 'private' | 'organization' | 'public';
+  tags?: string[];
+  schema?: any;
+  storage?: {
+    backend: 'firestore' | 'gcs' | 's3' | 'local';
+    gcsBucket?: string;
+    gcsPrefix?: string;
+    path?: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FirestoreProjectDataset {
+  id: string;
+  projectId: string;
+  datasetId: string;
+  addedByUserId: string;
+  addedAt: Date;
+}
+
 export interface FirestorePrivacyConsent {
   id: string;
   userId: string;
@@ -482,8 +510,22 @@ export class FirestoreService {
   }
 
   async getPaymentsBySubscriptionId(subscriptionId: string): Promise<FirestorePayment[]> {
-    const snapshot = await db.collection('payments').where('subscriptionId', '==', subscriptionId).orderBy('createdAt', 'desc').get();
-    return snapshot.docs.map(doc => doc.data() as FirestorePayment);
+    // Avoid Firestore composite index requirement by not ordering at query time.
+    // We'll sort in memory by createdAt desc.
+    const snapshot = await db.collection('payments').where('subscriptionId', '==', subscriptionId).get();
+    const list = snapshot.docs.map(doc => doc.data() as FirestorePayment);
+    const toMillis = (v: any): number => {
+      if (!v) return 0;
+      if (typeof v === 'string') {
+        const t = Date.parse(v);
+        return Number.isNaN(t) ? 0 : t;
+      }
+      if (v instanceof Date) return v.getTime();
+      if (typeof v.toMillis === 'function') return v.toMillis();
+      if (typeof v.toDate === 'function') return v.toDate().getTime();
+      try { return new Date(v).getTime(); } catch { return 0; }
+    };
+    return list.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
   }
 
   async getPaymentsPageBySubscriptionId(subscriptionId: string, page: number, limit: number): Promise<{ payments: FirestorePayment[]; total: number }> {
@@ -1179,6 +1221,199 @@ export class FirestoreService {
     const snap = await db.collection('project_participants').where('id', '==', participantId).limit(1).get();
     if (snap.empty) return;
     await db.collection('project_participants').doc(snap.docs[0].id).delete();
+  }
+
+  // ================================
+  // Datasets - Firestore-backed
+  // ================================
+
+  private async canAccessDataset(dataset: FirestoreDataset, userId: string): Promise<boolean> {
+    if (!dataset) return false;
+    if (dataset.ownerId === userId) return true;
+    if (dataset.visibility === 'public') return true;
+    if (dataset.visibility === 'organization' && dataset.organizationId) {
+      return this.verifyOrgMembership(userId, dataset.organizationId, ['OWNER', 'ENTERPRISE_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER']);
+    }
+    return false;
+  }
+
+  async createDataset(data: Omit<FirestoreDataset, 'id' | 'createdAt' | 'updatedAt'>): Promise<FirestoreDataset> {
+    const ref = db.collection('datasets').doc();
+    const now = new Date();
+    const record: FirestoreDataset = { id: ref.id, ...data, createdAt: now, updatedAt: now };
+    await ref.set(record);
+    return record;
+  }
+
+  async getDatasetById(id: string): Promise<FirestoreDataset | null> {
+    const doc = await db.collection('datasets').doc(id).get();
+    return doc.exists ? (doc.data() as FirestoreDataset) : null;
+  }
+
+  async getDatasetByIdAuthorized(datasetId: string, userId: string): Promise<FirestoreDataset | null> {
+    const ds = await this.getDatasetById(datasetId);
+    if (!ds) return null;
+    const ok = await this.canAccessDataset(ds, userId);
+    return ok ? ds : null;
+  }
+
+  async updateDatasetAuthorized(datasetId: string, userId: string, updates: Partial<FirestoreDataset>): Promise<FirestoreDataset> {
+    const existing = await this.getDatasetById(datasetId);
+    if (!existing) {
+      const err: any = new Error('Dataset not found');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    // Owner or org admin can update
+    let isAdmin = existing.ownerId === userId;
+    if (!isAdmin && existing.organizationId) {
+      isAdmin = await this.verifyOrgMembership(userId, existing.organizationId, ['OWNER', 'ENTERPRISE_ADMIN', 'ADMIN', 'MANAGER']);
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    const payload = { ...updates, updatedAt: new Date() } as Partial<FirestoreDataset>;
+    await db.collection('datasets').doc(datasetId).update(payload);
+    const after = await this.getDatasetById(datasetId);
+    return after!;
+  }
+
+  async deleteDatasetAuthorized(datasetId: string, userId: string): Promise<void> {
+    const existing = await this.getDatasetById(datasetId);
+    if (!existing) {
+      const err: any = new Error('Dataset not found');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    let isAdmin = existing.ownerId === userId;
+    if (!isAdmin && existing.organizationId) {
+      isAdmin = await this.verifyOrgMembership(userId, existing.organizationId, ['OWNER', 'ENTERPRISE_ADMIN', 'ADMIN']);
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    // Remove links then delete dataset
+    const linkSnap = await db.collection('project_datasets').where('datasetId', '==', datasetId).get();
+    const batch = db.batch();
+    linkSnap.docs.forEach(d => batch.delete(d.ref));
+    batch.delete(db.collection('datasets').doc(datasetId));
+    await batch.commit();
+  }
+
+  async listUserDatasets(userId: string, filter: { organizationId?: string; visibility?: 'private' | 'organization' | 'public' } = {}): Promise<FirestoreDataset[]> {
+    const { organizationId, visibility } = filter;
+    const results: Map<string, FirestoreDataset> = new Map();
+    // Owned datasets
+    let q: FirebaseFirestore.Query = db.collection('datasets').where('ownerId', '==', userId);
+    if (visibility) q = q.where('visibility', '==', visibility);
+    const owned = await q.get();
+    owned.docs.forEach(d => results.set(d.id, d.data() as FirestoreDataset));
+    // Org datasets where user is a member
+    if (organizationId) {
+      const isMember = await this.verifyOrgMembership(userId, organizationId, ['OWNER', 'ENTERPRISE_ADMIN', 'ADMIN', 'MANAGER', 'MEMBER']);
+      if (isMember) {
+        let oq: FirebaseFirestore.Query = db.collection('datasets').where('organizationId', '==', organizationId);
+        if (visibility) oq = oq.where('visibility', '==', visibility);
+        const orgSnap = await oq.get();
+        orgSnap.docs.forEach(d => results.set(d.id, d.data() as FirestoreDataset));
+      }
+    }
+    // Public datasets
+    const pub = await db.collection('datasets').where('visibility', '==', 'public').get();
+    pub.docs.forEach(d => results.set(d.id, d.data() as FirestoreDataset));
+    return Array.from(results.values());
+  }
+
+  async listProjectDatasetsAuthorized(projectId: string, userId: string): Promise<FirestoreDataset[]> {
+    const project = await this.getProjectByIdAuthorized(projectId, userId);
+    if (!project) {
+      const err: any = new Error('Project not found or access denied');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    const links = await db.collection('project_datasets').where('projectId', '==', projectId).get();
+    const datasetIds = links.docs.map(d => (d.data() as FirestoreProjectDataset).datasetId);
+    if (datasetIds.length === 0) return [];
+    const results: FirestoreDataset[] = [];
+    for (const did of datasetIds) {
+      const ds = await this.getDatasetById(did);
+      if (ds) results.push(ds);
+    }
+    return results;
+  }
+
+  async assignDatasetToProjectAuthorized(projectId: string, datasetId: string, actingUserId: string): Promise<FirestoreProjectDataset> {
+    // Ensure project access and admin role
+    const project = await this.getProjectByIdAuthorized(projectId, actingUserId);
+    if (!project) {
+      const err: any = new Error('Project not found or access denied');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    let isAdmin = project.ownerId === actingUserId;
+    if (!isAdmin) {
+      const snap = await db.collection('project_participants').where('projectId', '==', projectId).where('userId', '==', actingUserId).limit(1).get();
+      if (!snap.empty) {
+        const role = (snap.docs[0].data() as any).role;
+        isAdmin = ['admin', 'owner'].includes(String(role).toLowerCase());
+      }
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    // Ensure user can access dataset
+    const ds = await this.getDatasetById(datasetId);
+    if (!ds) {
+      const err: any = new Error('Dataset not found');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    const canUseDataset = await this.canAccessDataset(ds, actingUserId);
+    if (!canUseDataset) {
+      const err: any = new Error('Cannot assign dataset you cannot access');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    // Upsert link
+    const existing = await db.collection('project_datasets')
+      .where('projectId', '==', projectId).where('datasetId', '==', datasetId).limit(1).get();
+    if (!existing.empty) return existing.docs[0].data() as FirestoreProjectDataset;
+    const ref = db.collection('project_datasets').doc();
+    const link: FirestoreProjectDataset = { id: ref.id, projectId, datasetId, addedByUserId: actingUserId, addedAt: new Date() };
+    await ref.set(link);
+    return link;
+  }
+
+  async unassignDatasetFromProjectAuthorized(projectId: string, datasetId: string, actingUserId: string): Promise<void> {
+    const project = await this.getProjectByIdAuthorized(projectId, actingUserId);
+    if (!project) {
+      const err: any = new Error('Project not found or access denied');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+    let isAdmin = project.ownerId === actingUserId;
+    if (!isAdmin) {
+      const snap = await db.collection('project_participants').where('projectId', '==', projectId).where('userId', '==', actingUserId).limit(1).get();
+      if (!snap.empty) {
+        const role = (snap.docs[0].data() as any).role;
+        isAdmin = ['admin', 'owner'].includes(String(role).toLowerCase());
+      }
+    }
+    if (!isAdmin) {
+      const err: any = new Error('Insufficient permissions');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+    const snap = await db.collection('project_datasets')
+      .where('projectId', '==', projectId).where('datasetId', '==', datasetId).limit(1).get();
+    if (snap.empty) return;
+    await db.collection('project_datasets').doc(snap.docs[0].id).delete();
   }
 }
 

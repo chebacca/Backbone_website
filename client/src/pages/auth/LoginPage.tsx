@@ -54,6 +54,30 @@ const LoginPage: React.FC = () => {
     },
   });
 
+  const isBridgeMode = React.useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('bridge') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const postAuthToOpenerAndClose = React.useCallback((user: any) => {
+    if (!isBridgeMode) return;
+    try {
+      const accessToken = localStorage.getItem('auth_token');
+      const refreshToken = localStorage.getItem('refresh_token');
+      const payload = { user, tokens: { accessToken, refreshToken } };
+      if (window.opener) {
+        window.opener.postMessage({ type: 'BACKBONE_AUTH', payload }, '*');
+      }
+      window.close();
+    } catch {
+      // fall through to normal navigation if cross-window comms fail
+    }
+  }, [isBridgeMode]);
+
   const onSubmit = async (data: LoginFormData) => {
     try {
       setError(null);
@@ -63,6 +87,12 @@ const LoginPage: React.FC = () => {
       
       enqueueSnackbar('Welcome back!', { variant: 'success' });
       
+      // Bridge mode: post tokens to opener and close instead of navigating
+      if (isBridgeMode) {
+        postAuthToOpenerAndClose(user);
+        return;
+      }
+
       // Redirect based on user role
       const roleUpper = String(user?.role || '').toUpperCase();
       if (roleUpper === 'SUPERADMIN') {
@@ -92,6 +122,10 @@ const LoginPage: React.FC = () => {
       setLoading(true);
       const user = await loginWithGoogle(credential);
       enqueueSnackbar('Signed in with Google', { variant: 'success' });
+      if (isBridgeMode) {
+        postAuthToOpenerAndClose(user);
+        return;
+      }
       const roleUpper = String(user?.role || '').toUpperCase();
       if (roleUpper === 'SUPERADMIN') navigate('/admin');
       else if (roleUpper === 'ACCOUNTING') navigate('/accounting');
@@ -111,6 +145,10 @@ const LoginPage: React.FC = () => {
       setLoading(true);
       const user = await loginWithApple(idToken);
       enqueueSnackbar('Signed in with Apple', { variant: 'success' });
+      if (isBridgeMode) {
+        postAuthToOpenerAndClose(user);
+        return;
+      }
       const roleUpper = String(user?.role || '').toUpperCase();
       if (roleUpper === 'SUPERADMIN') navigate('/admin');
       else if (roleUpper === 'ACCOUNTING') navigate('/accounting');
@@ -376,6 +414,20 @@ const LoginPage: React.FC = () => {
                         enqueueSnackbar('Google Sign-In not initialized. Please refresh.', { variant: 'warning' });
                       }
                     }}
+                    sx={{
+                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                      color: 'white',
+                      borderWidth: 2,
+                      fontWeight: 600,
+                      py: 1.5,
+                      fontSize: '1rem',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                        boxShadow: '0 4px 12px rgba(0, 212, 255, 0.2)',
+                        transform: 'translateY(-1px)'
+                      }
+                    }}
                   >
                     Continue with Google
                   </Button>
@@ -398,6 +450,20 @@ const LoginPage: React.FC = () => {
                         }
                       } else {
                         enqueueSnackbar('Apple Sign-In not initialized. Please refresh.', { variant: 'warning' });
+                      }
+                    }}
+                    sx={{
+                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                      color: 'white',
+                      borderWidth: 2,
+                      fontWeight: 600,
+                      py: 1.5,
+                      fontSize: '1rem',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                        boxShadow: '0 4px 12px rgba(0, 212, 255, 0.2)',
+                        transform: 'translateY(-1px)'
                       }
                     }}
                   >
@@ -431,6 +497,12 @@ const LoginPage: React.FC = () => {
                       localStorage.setItem('auth_user', JSON.stringify(result.user));
                       enqueueSnackbar('2FA verified. Welcome back!', { variant: 'success' });
                       
+                      // Bridge mode for 2FA path
+                      if (isBridgeMode) {
+                        postAuthToOpenerAndClose(result.user);
+                        return;
+                      }
+
                       // Redirect based on user role
                       const roleUpper = String(result.user?.role || '').toUpperCase();
                       if (roleUpper === 'SUPERADMIN') {
@@ -449,6 +521,14 @@ const LoginPage: React.FC = () => {
                   sx={{
                     background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
                     color: '#000',
+                    fontWeight: 600,
+                    py: 1.5,
+                    fontSize: '1rem',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #33ddff 0%, #7b8eed 100%)',
+                      boxShadow: '0 4px 12px rgba(0, 212, 255, 0.3)',
+                      transform: 'translateY(-1px)'
+                    }
                   }}
                 >
                   Verify Code

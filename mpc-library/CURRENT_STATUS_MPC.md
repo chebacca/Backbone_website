@@ -70,7 +70,7 @@
 ### Admin Dashboard
 - ✅ User management and analytics
 - ✅ Subscription overview
-- ✅ License management
+- ✅ License management (via Users/Licenses tab with per-user popover)
 - ✅ Compliance monitoring
 - ✅ System health monitoring
 - ✅ Revenue analytics

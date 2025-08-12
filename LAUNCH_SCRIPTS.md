@@ -23,7 +23,8 @@ This is the simplest way to start both the backend and frontend servers.
 **Access URLs:**
 - Frontend: http://localhost:3002
 - Backend API: http://localhost:3003
-- Health Check: http://localhost:3003/health
+- Website Health: http://localhost:3002/health.json (dev discovery)
+- API Health: http://localhost:3003/health
 
 ### 2. `launch.sh` - Comprehensive Launch Script
 **Advanced users who want more control**

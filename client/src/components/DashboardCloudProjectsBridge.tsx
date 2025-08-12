@@ -72,6 +72,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [showLaunchDialog, setShowLaunchDialog] = useState(false);
     const [selectedProject, setSelectedProject] = useState<CloudProject | null>(null);
+  const [projectDatasets, setProjectDatasets] = useState<any[]>([]);
+  const [datasetsLoading, setDatasetsLoading] = useState(false);
+  const [availableDatasets, setAvailableDatasets] = useState<any[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
 
     useEffect(() => {
         loadProjects();
@@ -373,6 +377,84 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 </ListItem>
                             )}
                         </List>
+                    )}
+
+                    {selectedProject && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle1" sx={{ mb: 1 }}>Assigned Datasets</Typography>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={async () => {
+                            if (!selectedProject) return;
+                            try {
+                              setDatasetsLoading(true);
+                              const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
+                              setProjectDatasets(items);
+                              const all = await cloudProjectIntegration.listDatasets();
+                              setAvailableDatasets(all);
+                            } catch (e) {
+                              console.error('Failed to load datasets', e);
+                            } finally {
+                              setDatasetsLoading(false);
+                            }
+                          }}
+                          sx={{ mb: 1 }}
+                        >
+                          {datasetsLoading ? 'Loading...' : 'Refresh'}
+                        </Button>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
+                          <label htmlFor="dataset-select" className="visually-hidden">Select dataset</label>
+                          <select
+                            id="dataset-select"
+                            aria-label="Select dataset"
+                            value={selectedDatasetId}
+                            onChange={(e) => setSelectedDatasetId(e.target.value)}
+                            className="dataset-select-input"
+                          >
+                            <option value="">Select dataset…</option>
+                            {availableDatasets.map((ds: any) => (
+                              <option key={ds.id} value={ds.id}>{ds.name}</option>
+                            ))}
+                          </select>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            disabled={!selectedDatasetId}
+                            onClick={async () => {
+                              if (!selectedProject || !selectedDatasetId) return;
+                              try {
+                                await cloudProjectIntegration.assignDatasetToProject(selectedProject.id, selectedDatasetId);
+                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
+                                setProjectDatasets(items);
+                                setSelectedDatasetId('');
+                              } catch (e) {
+                                console.error('Failed to assign dataset', e);
+                              }
+                            }}
+                          >Assign</Button>
+                        </Box>
+                        {projectDatasets.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">No datasets assigned</Typography>
+                        ) : (
+                          <List>
+                            {projectDatasets.map((ds: any) => (
+                              <ListItem key={ds.id} secondaryAction={
+                                <Button size="small" color="error" onClick={async () => {
+                                  try {
+                                    await cloudProjectIntegration.unassignDatasetFromProject(selectedProject!.id, ds.id);
+                                    setProjectDatasets(prev => prev.filter(x => x.id !== ds.id));
+                                  } catch (e) {
+                                    console.error('Failed to unassign dataset', e);
+                                  }
+                                }}>Remove</Button>
+                              }>
+                                <ListItemText primary={ds.name} secondary={ds.description} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        )}
+                      </Box>
                     )}
                 </DialogContent>
                 <DialogActions>

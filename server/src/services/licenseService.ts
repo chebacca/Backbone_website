@@ -231,6 +231,8 @@ export class LicenseService {
       await firestoreService.updateLicense(license.id, {
         status: 'SUSPENDED',
         activationCount: Math.max(0, (license.activationCount || 0) - 1),
+        deviceInfo: null as any,
+        ipAddress: null as any,
       } as any);
 
       // Create audit log
@@ -293,7 +295,7 @@ export class LicenseService {
   /**
    * Validate license and return details
    */
-  static async validateLicense(licenseKey: string) {
+  static async validateLicense(licenseKey: string, deviceInfo?: any) {
     try {
       if (!LicenseKeyUtil.validateFormat(licenseKey)) {
         return { valid: false, error: 'Invalid license key format' };
@@ -307,6 +309,18 @@ export class LicenseService {
 
       if (license.status !== 'ACTIVE') {
         return { valid: false, error: `License is ${license.status.toLowerCase()}` };
+      }
+
+      // Enforce machine binding when a device fingerprint exists
+      const boundFingerprint = (license as any).deviceInfo?.fingerprint;
+      if (boundFingerprint) {
+        if (!deviceInfo) {
+          return { valid: false, error: 'Device not recognized' };
+        }
+        const incomingFingerprint = LicenseKeyUtil.generateDeviceFingerprint(deviceInfo);
+        if (incomingFingerprint !== boundFingerprint) {
+          return { valid: false, error: 'License bound to another device' };
+        }
       }
 
       if (license.expiresAt && new Date() > new Date(license.expiresAt)) {
@@ -339,7 +353,7 @@ export class LicenseService {
    */
   static async generateSDKDownloads(licenseKey: string) {
     try {
-      const validation = await this.validateLicense(licenseKey);
+      const validation = await this.validateLicense(licenseKey, undefined);
       
       if (!validation.valid) {
         throw new Error(validation.error);

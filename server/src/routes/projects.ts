@@ -38,6 +38,19 @@ const createProjectSchema = z.object({
   enableActivityLog: z.boolean().optional(),
   allowGuestUsers: z.boolean().optional(),
   inviteUsers: z.array(z.string().email()).optional(),
+  // Settings (including preferred dev ports for desktop/web compatibility)
+  settings: z
+    .object({
+      preferredPorts: z
+        .object({
+          website: z.number().int().min(1024).max(65535).optional(),
+          api: z.number().int().min(1024).max(65535).optional(),
+        })
+        .partial()
+        .optional(),
+    })
+    .partial()
+    .optional(),
 });
 
 function transformProject(p: any, participants: any[] = []) {
@@ -193,11 +206,29 @@ router.post('/', authenticateToken, async (req: any, res) => {
 // Update
 router.patch('/:id', authenticateToken, async (req: any, res) => {
   try {
-    const updated = await firestoreService.updateProjectAuthorized(req.params.id, req.user.id, req.body);
+    // Validate optional settings.preferredPorts on update to enforce port ranges when provided
+    const updates = req.body || {};
+    const validated = (() => {
+      const schema = z.object({
+        settings: z.object({
+          preferredPorts: z.object({
+            website: z.number().int().min(1024).max(65535).optional(),
+            api: z.number().int().min(1024).max(65535).optional(),
+          }).partial().optional(),
+        }).partial().optional(),
+      }).partial();
+      try {
+        return schema.parse(updates);
+      } catch (e: any) {
+        throw Object.assign(new Error(e?.message || 'Invalid update payload'), { code: 'BAD_REQUEST' });
+      }
+    })();
+
+    const updated = await firestoreService.updateProjectAuthorized(req.params.id, req.user.id, validated);
     const participants = await firestoreService.listParticipants(req.params.id);
     res.json({ success: true, data: transformProject(updated, participants) });
   } catch (e: any) {
-    const code = e?.code === 'FORBIDDEN' ? 403 : e?.code === 'NOT_FOUND' ? 404 : 500;
+    const code = e?.code === 'FORBIDDEN' ? 403 : e?.code === 'NOT_FOUND' ? 404 : e?.code === 'BAD_REQUEST' ? 400 : 500;
     res.status(code).json({ success: false, error: e?.message || 'Failed to update project' });
   }
 });

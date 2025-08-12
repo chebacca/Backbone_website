@@ -72,6 +72,14 @@ interface CloudProjectCreatePayload {
     backupEnabled?: boolean;
     encryptionEnabled?: boolean;
     offlineMode?: boolean;
+
+  // Project settings for dev compatibility
+  settings?: {
+    preferredPorts?: {
+      website?: number;
+      api?: number;
+    };
+  };
 }
 
 interface ApiResponse<T = any> {
@@ -79,6 +87,25 @@ interface ApiResponse<T = any> {
     data?: T;
     message?: string;
     error?: string;
+}
+
+export interface CloudDataset {
+    id: string;
+    name: string;
+    description?: string;
+    visibility: 'private' | 'organization' | 'public';
+    ownerId: string;
+    organizationId?: string | null;
+    tags?: string[];
+    schema?: any;
+    storage?: {
+        backend: 'firestore' | 'gcs' | 's3' | 'local';
+        gcsBucket?: string;
+        gcsPrefix?: string;
+        path?: string;
+    };
+    createdAt: string;
+    updatedAt: string;
 }
 
 class CloudProjectIntegrationService {
@@ -281,6 +308,17 @@ class CloudProjectIntegrationService {
             payload.autoSave = true;
             payload.backupEnabled = true;
             payload.offlineMode = currentState.storageMode === 'local';
+        }
+
+        // Attach preferred ports in settings if provided
+        if (options.preferredPorts && (options.preferredPorts.website || options.preferredPorts.api)) {
+            payload.settings = {
+                ...(payload.settings || {}),
+                preferredPorts: {
+                    ...(options.preferredPorts.website ? { website: options.preferredPorts.website } : {}),
+                    ...(options.preferredPorts.api ? { api: options.preferredPorts.api } : {}),
+                }
+            };
         }
 
         return payload;
@@ -498,6 +536,33 @@ class CloudProjectIntegrationService {
             console.error('Failed to archive project:', error);
             throw error;
         }
+    }
+
+    // ==========================
+    // Datasets
+    // ==========================
+
+    public async listDatasets(params?: { organizationId?: string; visibility?: 'private' | 'organization' | 'public' }): Promise<CloudDataset[]> {
+        const qs = new URLSearchParams();
+        if (params?.organizationId) qs.append('organizationId', params.organizationId);
+        if (params?.visibility) qs.append('visibility', params.visibility);
+        return this.apiRequest<CloudDataset[]>(`datasets${qs.toString() ? `?${qs}` : ''}`);
+    }
+
+    public async createDataset(input: Omit<CloudDataset, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'> & { organizationId?: string | null }): Promise<CloudDataset> {
+        return this.apiRequest<CloudDataset>('datasets', 'POST', input);
+    }
+
+    public async getProjectDatasets(projectId: string): Promise<CloudDataset[]> {
+        return this.apiRequest<CloudDataset[]>(`datasets/project/${projectId}`, 'GET');
+    }
+
+    public async assignDatasetToProject(projectId: string, datasetId: string): Promise<void> {
+        await this.apiRequest(`datasets/project/${projectId}/${datasetId}`, 'POST');
+    }
+
+    public async unassignDatasetFromProject(projectId: string, datasetId: string): Promise<void> {
+        await this.apiRequest(`datasets/project/${projectId}/${datasetId}`, 'DELETE');
     }
 }
 

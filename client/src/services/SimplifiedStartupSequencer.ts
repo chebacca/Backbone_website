@@ -33,6 +33,10 @@ export interface ProjectCreationOptions {
     name: string;
     description?: string;
     storageMode: StorageMode;
+    preferredPorts?: {
+        website?: number;
+        api?: number;
+    };
     localNetworkConfig?: {
         enabled: boolean;
         port: number;
@@ -379,6 +383,16 @@ class SimplifiedStartupSequencer {
     private validateProjectCreationOptions(options: ProjectCreationOptions): void {
         if (!options.name?.trim()) {
             throw new Error('Project name is required');
+        }
+
+        if (options.preferredPorts) {
+            const { website, api } = options.preferredPorts;
+            if (typeof website === 'number' && (website < 1024 || website > 65535)) {
+                throw new Error('Website port must be between 1024-65535');
+            }
+            if (typeof api === 'number' && (api < 1024 || api > 65535)) {
+                throw new Error('API port must be between 1024-65535');
+            }
         }
 
         if (options.localNetworkConfig?.enabled) {

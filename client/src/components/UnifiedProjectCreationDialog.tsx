@@ -91,6 +91,10 @@ interface FormData {
     networkAddress: string;
     maxNetworkUsers: number;
     networkPassword: string;
+
+    // Preferred Dev Ports (for Desktop/Web compatibility)
+    preferredWebsitePort?: number;
+    preferredApiPort?: number;
     
     // Collaboration Settings
     maxCollaborators: number;
@@ -118,6 +122,8 @@ const DEFAULT_FORM_DATA: FormData = {
     networkAddress: 'localhost',
     maxNetworkUsers: 10,
     networkPassword: '',
+    preferredWebsitePort: 3002,
+    preferredApiPort: 3003,
     maxCollaborators: 10,
     enableRealTime: true,
     enableComments: true,
@@ -208,6 +214,12 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
                         errors.maxNetworkUsers = 'Max users must be between 1 and 100';
                     }
                 }
+                if (typeof formData.preferredWebsitePort === 'number' && (formData.preferredWebsitePort < 1024 || formData.preferredWebsitePort > 65535)) {
+                    errors.preferredWebsitePort = 'Website port must be 1024-65535';
+                }
+                if (typeof formData.preferredApiPort === 'number' && (formData.preferredApiPort < 1024 || formData.preferredApiPort > 65535)) {
+                    errors.preferredApiPort = 'API port must be 1024-65535';
+                }
                 break;
 
             case 3: // Collaboration Options
@@ -242,6 +254,10 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
                 name: formData.name,
                 description: formData.description,
                 storageMode: formData.storageMode,
+                preferredPorts: {
+                    website: formData.preferredWebsitePort,
+                    api: formData.preferredApiPort,
+                },
                 localNetworkConfig: formData.enableLocalNetwork ? {
                     enabled: true,
                     port: formData.networkPort,
@@ -527,6 +543,36 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
                                         InputProps={{
                                             inputProps: { min: 1024, max: 65535 }
                                         }}
+                                    />
+                                </Grid>
+                                <Grid item xs={12}>
+                                    <Divider sx={{ my: 1 }} />
+                                    <Typography variant="subtitle2" gutterBottom>
+                                        Desktop/Web Preferred Development Ports
+                                    </Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        fullWidth
+                                        label="Preferred Website Port (Dev)"
+                                        type="number"
+                                        value={formData.preferredWebsitePort ?? ''}
+                                        onChange={(e) => updateFormData({ preferredWebsitePort: parseInt(e.target.value) || undefined })}
+                                        error={!!validationErrors.preferredWebsitePort}
+                                        helperText={validationErrors.preferredWebsitePort || 'Optional. Default 3002'}
+                                        InputProps={{ inputProps: { min: 1024, max: 65535 } }}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        fullWidth
+                                        label="Preferred API Port (Dev)"
+                                        type="number"
+                                        value={formData.preferredApiPort ?? ''}
+                                        onChange={(e) => updateFormData({ preferredApiPort: parseInt(e.target.value) || undefined })}
+                                        error={!!validationErrors.preferredApiPort}
+                                        helperText={validationErrors.preferredApiPort || 'Optional. Default 3003'}
+                                        InputProps={{ inputProps: { min: 1024, max: 65535 } }}
                                     />
                                 </Grid>
                                 <Grid item xs={12} sm={6}>

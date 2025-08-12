@@ -77,12 +77,17 @@ router.post('/register', [
   await firestoreService.updateUser(user.id, { emailVerifyToken: verificationToken });
   try { await EmailService.sendWelcomeEmail(user, verificationToken); } catch {}
 
-  // Create a default empty cloud project for the new user
+  // Create default projects for the new user
   try {
-    await firestoreService.createProject({
+    const defaults = [
+      { name: 'Production', description: 'Primary production project' },
+      { name: 'Accounting', description: 'Financial and accounting project' },
+      { name: 'Admin', description: 'Administrative project' },
+    ];
+    await Promise.all(defaults.map((d) => firestoreService.createProject({
       ownerId: user.id,
-      name: 'My Cloud Project',
-      description: '',
+      name: d.name,
+      description: d.description,
       type: 'networked',
       applicationMode: 'shared_network',
       visibility: 'private',
@@ -90,9 +95,9 @@ router.post('/register', [
       allowCollaboration: false,
       maxCollaborators: 10,
       realTimeEnabled: false,
-    });
+    })));
   } catch (e) {
-    // Non-blocking: project can be created later if this fails
+    // Non-blocking: projects can be created later if this fails
     logger.warn('Default project creation failed for new user', { userId: user.id, error: (e as any)?.message });
   }
 
@@ -142,7 +147,7 @@ router.post('/oauth/google', [body('idToken').notEmpty()], asyncHandler(async (r
   if (!user) {
     // Create user with a random password; mark verified if provider verified
     const randomPassword = crypto.randomBytes(16).toString('hex');
-    user = await firestoreService.createUser({
+    const createdUser = await firestoreService.createUser({
       email,
       password: await PasswordUtil.hash(randomPassword),
       name,
@@ -161,13 +166,19 @@ router.post('/oauth/google', [body('idToken').notEmpty()], asyncHandler(async (r
       kycStatus: 'PENDING',
       registrationSource: 'google-oauth',
     });
+    user = createdUser;
 
-    // Create a default empty cloud project for the new Google user
+    // Create default projects for the new Google user
     try {
-      await firestoreService.createProject({
-        ownerId: user.id,
-        name: 'My Cloud Project',
-        description: '',
+      const defaults = [
+        { name: 'Production', description: 'Primary production project' },
+        { name: 'Accounting', description: 'Financial and accounting project' },
+        { name: 'Admin', description: 'Administrative project' },
+      ];
+      await Promise.all(defaults.map((d) => firestoreService.createProject({
+        ownerId: user!.id,
+        name: d.name,
+        description: d.description,
         type: 'networked',
         applicationMode: 'shared_network',
         visibility: 'private',
@@ -175,9 +186,9 @@ router.post('/oauth/google', [body('idToken').notEmpty()], asyncHandler(async (r
         allowCollaboration: false,
         maxCollaborators: 10,
         realTimeEnabled: false,
-      });
+      })));
     } catch (e) {
-      logger.warn('Default project creation failed for Google user', { userId: user.id, error: (e as any)?.message });
+      logger.warn('Default project creation failed for Google user', { userId: user!.id, error: (e as any)?.message });
     }
   } else {
     // Update verification if Google says verified and we aren't yet
@@ -244,7 +255,7 @@ router.post('/oauth/apple', asyncHandler(async (req: Request, res: Response): Pr
   let user = await firestoreService.getUserByEmail(email);
   if (!user) {
     const randomPassword = crypto.randomBytes(16).toString('hex');
-    user = await firestoreService.createUser({
+    const createdUser = await firestoreService.createUser({
       email,
       password: await PasswordUtil.hash(randomPassword),
       name,
@@ -263,13 +274,19 @@ router.post('/oauth/apple', asyncHandler(async (req: Request, res: Response): Pr
       kycStatus: 'PENDING',
       registrationSource: 'apple-oauth',
     });
+    user = createdUser;
 
-    // Create a default empty cloud project for the new Apple user
+    // Create default projects for the new Apple user
     try {
-      await firestoreService.createProject({
-        ownerId: user.id,
-        name: 'My Cloud Project',
-        description: '',
+      const defaults = [
+        { name: 'Production', description: 'Primary production project' },
+        { name: 'Accounting', description: 'Financial and accounting project' },
+        { name: 'Admin', description: 'Administrative project' },
+      ];
+      await Promise.all(defaults.map((d) => firestoreService.createProject({
+        ownerId: user!.id,
+        name: d.name,
+        description: d.description,
         type: 'networked',
         applicationMode: 'shared_network',
         visibility: 'private',
@@ -277,9 +294,9 @@ router.post('/oauth/apple', asyncHandler(async (req: Request, res: Response): Pr
         allowCollaboration: false,
         maxCollaborators: 10,
         realTimeEnabled: false,
-      });
+      })));
     } catch (e) {
-      logger.warn('Default project creation failed for Apple user', { userId: user.id, error: (e as any)?.message });
+      logger.warn('Default project creation failed for Apple user', { userId: user!.id, error: (e as any)?.message });
     }
   }
 

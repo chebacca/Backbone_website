@@ -29,6 +29,7 @@ VITE_API_URL=http://localhost:3003
 - **Login Page**: http://localhost:3002/login
 - **User Dashboard**: http://localhost:3002/dashboard
 - **Pricing Page**: http://localhost:3002/pricing
+- **Website Health**: http://localhost:3002/health.json (dev discovery)
 - **API Health Check**: http://localhost:3003/api/health
 
 ### **Development Commands**
@@ -53,3 +54,8 @@ This configuration allows both applications to run simultaneously:
 - **Licensing Website**: ports 3002 (frontend) and 3003 (backend)
 
 No port conflicts will occur! 🎉
+
+### **Auto-Discovery and Overrides**
+- Desktop app auto-detects website and API ports by probing `health.json` and `/health`.
+- Users can override detected ports locally via the desktop app; overrides are stored in `localStorage`.
+- Projects can optionally include `settings.preferredPorts.website|api` to hint common ports. These are non-authoritative and can be overridden per-user.

@@ -51,6 +51,11 @@ Desktop Application Integration
 - Unified project creation dialog reused from web interface
 - Seamless mode switching between Standalone and Network modes
 - Full integration with Firestore/GCS project metadata
+- Development port coordination:
+  - Website serves `client/public/health.json` for auto-discovery
+  - API exposes `/health` and `/api/health`
+  - Desktop app auto-detects local ports, with per-user overrides stored in localStorage
+  - Optional project hint: `project.settings.preferredPorts.website|api` (non-authoritative)
 - JWT token synchronization and license validation
 
 Package Management
@@ -67,3 +72,4 @@ See also: API_ENDPOINTS_MPC.md, PAYMENTS_STRIPE_MPC.md, LICENSE_MANAGEMENT_MPC.m
 - Licenses tied to subscriptions and `organizationId` for enterprise flows
 - Seat-to-license policy: one seat equals one license per user per subscription (no duplicates)
 - Issuance policy: PRO/ENTERPRISE licenses are issued JIT on invite acceptance; not mass-issued on purchase or seat increases
+ - Team context endpoint: `GET /organizations/my/context` returns `{ organization, members, primaryRole, activeSubscription }` used by Team UI for accurate seat counts

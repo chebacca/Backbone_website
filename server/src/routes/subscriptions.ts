@@ -107,6 +107,14 @@ router.put('/:subscriptionId', [
     throw createApiError('Enterprise tier requires minimum 10 seats', 400);
   }
 
+  // Enforce: Only SUPERADMINs may change seats from the public subscriptions API.
+  if (typeof seats !== 'undefined') {
+    const userRole = String(req.user!.role || '').toUpperCase();
+    if (userRole !== 'SUPERADMIN') {
+      throw createApiError('Only SUPERADMIN may modify seat counts. Contact support.', 403);
+    }
+  }
+
   const result = await PaymentService.updateSubscription(
     userId,
     subscriptionId,

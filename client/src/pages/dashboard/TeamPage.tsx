@@ -181,6 +181,8 @@ const TeamPage: React.FC = () => {
   });
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string>('');
+  const [orgPrimaryRole, setOrgPrimaryRole] = useState<'OWNER' | 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER' | null>(null);
+  const [activeSubscription, setActiveSubscription] = useState<null | { id: string; tier: 'BASIC' | 'PRO' | 'ENTERPRISE'; seats: number; status: string; organizationId?: string }>(null);
 
   // Normalize server date values (string | number | Firestore Timestamp-like)
   const toIsoDate = (value: any, { includeTime = false }: { includeTime?: boolean } = {}): string => {
@@ -210,16 +212,30 @@ const TeamPage: React.FC = () => {
     return includeTime ? d.toISOString() : d.toISOString().slice(0, 10);
   };
 
-  // Fetch organizations, members, and seat usage
+  // Fetch organizations, members, and seat usage (prefer org context endpoint when available)
   useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
-        // Load orgs
-        const orgRes = await api.get(endpoints.organizations.my());
-        const owned = orgRes?.data?.data?.owned ?? [];
-        const memberOf = orgRes?.data?.data?.memberOf ?? [];
-        const primaryOrg = (owned[0] || memberOf[0]) || null;
+        // Try richer context endpoint first
+        const ctxRes = await api.get(endpoints.organizations.context()).catch(() => null as any);
+        const ctxOrg = ctxRes?.data?.data?.organization || null;
+        const ctxMembers = ctxRes?.data?.data?.members || [];
+        const ctxActiveSub = ctxRes?.data?.data?.activeSubscription || null;
+        const ctxRole = ctxRes?.data?.data?.primaryRole || null;
+
+        let primaryOrg = ctxOrg;
+        let members: any[] = ctxMembers;
+        let activeSub = ctxActiveSub;
+
+        if (!primaryOrg) {
+          // Fallback to /organizations/my if context not available
+          const orgRes = await api.get(endpoints.organizations.my());
+          const owned = orgRes?.data?.data?.owned ?? [];
+          const memberOf = orgRes?.data?.data?.memberOf ?? [];
+          primaryOrg = (owned[0] || memberOf[0]) || null;
+          members = (primaryOrg?.members || []) as any[];
+        }
 
         if (!primaryOrg) {
           if (isMounted) {
@@ -231,15 +247,23 @@ const TeamPage: React.FC = () => {
           return;
         }
 
-        const members = (primaryOrg.members || []) as any[];
         const pendingInvites = members.filter(m => m.status === 'INVITED').length;
         const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
 
-        // Load subscriptions and filter to org
-        const subsRes = await api.get(endpoints.subscriptions.mySubscriptions());
-        const subscriptions = (subsRes.data?.data?.subscriptions ?? []) as any[];
-        const orgSubs = subscriptions.filter(s => s.organizationId === primaryOrg.id && s.status === 'ACTIVE');
-        const totalSeats = orgSubs.reduce((sum, s) => sum + (s.seats || 0), 0);
+        // Determine seats from active org subscription if provided by context; otherwise compute from user subs
+        let totalSeats = 0;
+        if (activeSub && activeSub.status === 'ACTIVE' && activeSub.organizationId === primaryOrg.id) {
+          totalSeats = Number(activeSub.seats || 0);
+        } else {
+          const subsRes = await api.get(endpoints.subscriptions.mySubscriptions());
+          const subscriptions = (subsRes.data?.data?.subscriptions ?? []) as any[];
+          const orgSubs = subscriptions.filter(s => s.organizationId === primaryOrg.id && s.status === 'ACTIVE');
+          totalSeats = orgSubs.reduce((sum, s) => {
+            // Prefer to remember one active subscription for seat management
+            if (!activeSub && s.status === 'ACTIVE') activeSub = s;
+            return sum + (s.seats || 0);
+          }, 0);
+        }
         const availableSeats = Math.max(0, totalSeats - (activeMembers + pendingInvites));
 
         // Map members to display
@@ -274,6 +298,8 @@ const TeamPage: React.FC = () => {
         if (!isMounted) return;
         setOrgId(primaryOrg.id);
         setOrgName(primaryOrg.name || 'Organization');
+        setOrgPrimaryRole(ctxRole || null);
+        setActiveSubscription(activeSub ? { id: String(activeSub.id), tier: String(activeSub.tier).toUpperCase() as any, seats: Number(activeSub.seats || 0), status: String(activeSub.status || '') , organizationId: activeSub.organizationId } : null);
         setTeamMembers(derivedMembers);
         setStats({
           totalMembers: derivedMembers.length,
@@ -296,6 +322,8 @@ const TeamPage: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [manageSeatsDialogOpen, setManageSeatsDialogOpen] = useState(false);
+  const [seatInput, setSeatInput] = useState<number>(0);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -320,6 +348,11 @@ const TeamPage: React.FC = () => {
 
   const handleInviteMember = async () => {
     if (!orgId) return;
+    // Guard: prevent inviting when no seats are available
+    if (stats.availableSeats <= 0) {
+      enqueueSnackbar('No seats available. Please add seats from Billing before inviting new members.', { variant: 'warning' });
+      return;
+    }
     try {
       const roleMap: Record<TeamMember['role'], 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER'> = {
         admin: 'ENTERPRISE_ADMIN',
@@ -341,7 +374,7 @@ const TeamPage: React.FC = () => {
       const memberOf = orgRes?.data?.data?.memberOf ?? [];
       const primaryOrg = [...owned, ...memberOf].find((o: any) => o.id === orgId) || owned[0] || memberOf[0];
       if (primaryOrg) {
-        const members = (primaryOrg.members || []) as any[];
+         const members = (primaryOrg.members || []) as any[];
         const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
           .filter((m: any) => m && m.status !== 'REMOVED')
           .map((m: any) => {
@@ -376,7 +409,59 @@ const TeamPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error('[TeamPage] Invite failed:', err);
-      enqueueSnackbar(err?.message || 'Failed to send invitation', { variant: 'error' });
+      const serverMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Failed to send invitation';
+      enqueueSnackbar(serverMsg, { variant: 'error' });
+    }
+  };
+
+  const canManageSeats = useMemo(() => {
+    const roleUpper = String(user?.role || '').toUpperCase();
+    // Only SUPERADMINs can manage seats (moved to Admin Dashboard)
+    return roleUpper === 'SUPERADMIN';
+  }, [user?.role]);
+
+  const openManageSeats = () => {
+    if (!activeSubscription) {
+      enqueueSnackbar('No active subscription found for this organization.', { variant: 'warning' });
+      return;
+    }
+    setSeatInput(Number(activeSubscription.seats || 0));
+    setManageSeatsDialogOpen(true);
+  };
+
+  const saveManageSeats = async () => {
+    if (!activeSubscription) return;
+    try {
+      const tier = activeSubscription.tier;
+      const requested = Number(seatInput || 0);
+      // Client-side constraints aligned with server rules
+      if (tier === 'BASIC' && requested !== 1) {
+        enqueueSnackbar('Basic plan supports exactly 1 seat.', { variant: 'warning' });
+        return;
+      }
+      if (tier === 'PRO' && (requested < 1 || requested > 50)) {
+        enqueueSnackbar('Pro plan seats must be between 1 and 50.', { variant: 'warning' });
+        return;
+      }
+      if (tier === 'ENTERPRISE' && requested < 10) {
+        enqueueSnackbar('Enterprise requires minimum 10 seats.', { variant: 'warning' });
+        return;
+      }
+
+      await api.put(endpoints.subscriptions.update(activeSubscription.id), { seats: requested });
+
+      // Refresh local view
+      setActiveSubscription((s) => (s ? { ...s, seats: requested } : s));
+      setStats((s) => ({
+        ...s,
+        totalSeats: requested,
+        availableSeats: Math.max(0, requested - (s.activeMembers + s.pendingInvites)),
+      }));
+      enqueueSnackbar('Seats updated successfully', { variant: 'success' });
+      setManageSeatsDialogOpen(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update seats';
+      enqueueSnackbar(msg, { variant: 'error' });
     }
   };
 
@@ -606,6 +691,7 @@ const TeamPage: React.FC = () => {
             variant="contained"
             startIcon={<PersonAdd />}
             onClick={() => setInviteDialogOpen(true)}
+            disabled={stats.availableSeats <= 0}
             sx={{
               background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
               color: '#000',
@@ -614,6 +700,15 @@ const TeamPage: React.FC = () => {
           >
             Invite Member
           </Button>
+          {canManageSeats && (
+            <Button
+              variant="outlined"
+              onClick={openManageSeats}
+              sx={{ ml: 2 }}
+            >
+              Manage Seats{activeSubscription ? ` (${activeSubscription.seats})` : ''}
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -919,6 +1014,13 @@ const TeamPage: React.FC = () => {
         <DialogTitle>Invite Team Member</DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
+            {stats.availableSeats <= 0 && (
+              <Grid item xs={12}>
+                <Alert severity="warning">
+                  No available seats. Add seats on the Billing page to invite more team members.
+                </Alert>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -971,10 +1073,49 @@ const TeamPage: React.FC = () => {
           <Button
             onClick={handleInviteMember}
             variant="contained"
-            disabled={!inviteForm.email}
+            disabled={!inviteForm.email || stats.availableSeats <= 0}
           >
             Send Invitation
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Manage Seats Dialog */}
+      <Dialog
+        open={manageSeatsDialogOpen}
+        onClose={() => setManageSeatsDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'background.paper',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+          },
+        }}
+      >
+        <DialogTitle>Manage Seats</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12}>
+              <Alert severity="info">
+                {activeSubscription ? `${activeSubscription.tier} subscription` : 'No active subscription'}
+              </Alert>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Total Seats"
+                value={seatInput}
+                onChange={(e) => setSeatInput(parseInt(e.target.value || '0', 10))}
+                inputProps={{ min: 1, max: activeSubscription?.tier === 'PRO' ? 50 : 1000 }}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setManageSeatsDialogOpen(false)}>Cancel</Button>
+          <Button onClick={saveManageSeats} variant="contained" disabled={!activeSubscription}>Save</Button>
         </DialogActions>
       </Dialog>
 

@@ -221,6 +221,7 @@ router.put('/users/:userId', [
   body('isEmailVerified').optional().isBoolean().withMessage('Invalid email verification status'),
   body('kycStatus').optional().isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED', 'EXPIRED'])
     .withMessage('Valid KYC status required'),
+  body('status').optional().isIn(['ACTIVE', 'SUSPENDED', 'PENDING']).withMessage('Valid user status required'),
   body('password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ], asyncHandler(async (req: Request, res: Response) => {
   const errors = validationResult(req);
@@ -229,7 +230,7 @@ router.put('/users/:userId', [
   }
 
   const { userId } = req.params;
-  const { name, role, isEmailVerified, kycStatus, password } = req.body;
+  const { name, role, isEmailVerified, kycStatus, password, status } = req.body as any;
   const adminUserId = req.user!.id;
   const requestInfo = (req as any).requestInfo;
 
@@ -238,6 +239,7 @@ router.put('/users/:userId', [
   if (role !== undefined) updateData.role = role;
   if (isEmailVerified !== undefined) updateData.isEmailVerified = isEmailVerified;
   if (kycStatus !== undefined) updateData.kycStatus = kycStatus;
+  if (status !== undefined) updateData.status = status;
   
   // Handle password update
   if (password !== undefined) {
@@ -247,6 +249,44 @@ router.put('/users/:userId', [
     }
     const hashed = await PasswordUtil.hash(password);
     updateData.password = hashed;
+  }
+
+  // Enforce role safety rules:
+  // 1) Disallow elevating any user to SUPERADMIN through this endpoint.
+  // 2) Enforce subscription-tier based roles:
+  //    - BASIC → USER
+  //    - PRO or ENTERPRISE → ADMIN
+  // Existing SUPERADMINs are not modified here.
+
+  if (updateData.role === 'SUPERADMIN') {
+    throw createApiError('Elevation to SUPERADMIN is not allowed via admin API', 400, 'ROLE_ELEVATION_BLOCKED');
+  }
+
+  const current = await firestoreService.getUserById(userId);
+  if (!current) throw createApiError('User not found', 404);
+
+  // Only enforce for non-superadmin targets
+  if ((current.role || '').toUpperCase() !== 'SUPERADMIN') {
+    const userSubs = await firestoreService.getSubscriptionsByUserId(userId);
+    const activeSubs = (userSubs || []).filter((s: any) => (s.status || '').toUpperCase() === 'ACTIVE');
+    const tiers = new Set((activeSubs || []).map((s: any) => String(s.tier || '').toUpperCase()));
+    let enforcedRole: 'USER' | 'ADMIN' | null = null;
+    if (tiers.has('ENTERPRISE') || tiers.has('PRO')) {
+      enforcedRole = 'ADMIN';
+    } else if (tiers.has('BASIC')) {
+      enforcedRole = 'USER';
+    }
+    if (enforcedRole) {
+      updateData.role = enforcedRole;
+    } else if (updateData.role && updateData.role === 'SUPERADMIN') {
+      // Already blocked above; kept for clarity
+      updateData.role = undefined;
+    } else if (updateData.role && !['USER', 'ADMIN', 'ACCOUNTING'].includes(updateData.role)) {
+      updateData.role = undefined;
+    }
+  } else {
+    // If target is SUPERADMIN, do not allow changing their role here to avoid lock-outs
+    if ('role' in updateData) delete updateData.role;
   }
 
   await firestoreService.updateUser(userId, updateData);

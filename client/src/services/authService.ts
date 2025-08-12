@@ -153,6 +153,14 @@ export const authService = {
     if (!response.data.success) throw new Error(response.data.message || 'Failed to disable 2FA');
   },
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    const response = await api.put(endpoints.auth.changePassword(), { currentPassword, newPassword });
+    if (response.data.success) {
+      return { message: response.data.message || 'Password changed successfully' };
+    }
+    throw new Error(response.data.message || 'Failed to change password');
+  },
+
   /**
    * Register new user
    */

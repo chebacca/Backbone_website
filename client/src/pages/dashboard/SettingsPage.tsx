@@ -88,7 +88,7 @@ const securitySettings: SecuritySetting[] = [
 ];
 
 const SettingsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { enqueueSnackbar } = useSnackbar();
   const location = useLocation();
   const navigate = useNavigate();
@@ -116,6 +116,9 @@ const SettingsPage: React.FC = () => {
   const [twoFAToken, setTwoFAToken] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
   const [activeTab, setActiveTab] = useState('profile');
   // KYC form state
   const [kyc, setKyc] = useState({
@@ -147,28 +150,59 @@ const SettingsPage: React.FC = () => {
     navigate(url, { replace: true });
   };
 
-  const handleProfileUpdate = () => {
-    enqueueSnackbar('Profile updated successfully', { variant: 'success' });
+  const handleProfileUpdate = async () => {
+    try {
+      const fullName = `${(profile.firstName || '').trim()} ${(profile.lastName || '').trim()}`.trim();
+      if (!fullName) {
+        enqueueSnackbar('Please provide your first and last name', { variant: 'warning' });
+        return;
+      }
+      await authService.updateProfile({ name: fullName } as any);
+      await refreshUser();
+      enqueueSnackbar('Profile updated successfully', { variant: 'success' });
+    } catch (e: any) {
+      enqueueSnackbar(e.message || 'Failed to update profile', { variant: 'error' });
+    }
   };
 
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
+    if (!security.currentPassword || !security.newPassword) {
+      enqueueSnackbar('Please fill in all password fields', { variant: 'warning' });
+      return;
+    }
     if (security.newPassword !== security.confirmPassword) {
       enqueueSnackbar('Passwords do not match', { variant: 'error' });
       return;
     }
-    enqueueSnackbar('Password changed successfully', { variant: 'success' });
-    setSecurity({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    try {
+      await authService.changePassword(security.currentPassword, security.newPassword);
+      enqueueSnackbar('Password changed successfully', { variant: 'success' });
+      setSecurity({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (e: any) {
+      enqueueSnackbar(e.message || 'Failed to change password', { variant: 'error' });
+    }
+  };
+
+  const persistNotificationPreferences = async (nextSettings: SecuritySetting[]) => {
+    try {
+      const emailNotifications = !!nextSettings.find(s => s.id === 'email_notifications')?.enabled;
+      const securityAlerts = !!nextSettings.find(s => s.id === 'login_alerts')?.enabled;
+      await apiUtils.withLoading(async () => api.put(endpoints.users.notifications(), {
+        emailNotifications,
+        securityAlerts,
+      }));
+      enqueueSnackbar('Notification preferences saved', { variant: 'success' });
+    } catch (e: any) {
+      enqueueSnackbar(e.message || 'Failed to save notification preferences', { variant: 'error' });
+    }
   };
 
   const handleSettingToggle = (settingId: string) => {
-    setSettings(prev => 
-      prev.map(setting => 
-        setting.id === settingId 
-          ? { ...setting, enabled: !setting.enabled }
-          : setting
-      )
-    );
-    enqueueSnackbar('Setting updated', { variant: 'success' });
+    setSettings(prev => {
+      const next = prev.map(setting => setting.id === settingId ? { ...setting, enabled: !setting.enabled } : setting);
+      void persistNotificationPreferences(next);
+      return next;
+    });
   };
 
   const handleEnable2FA = async () => {
@@ -202,11 +236,17 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteAccount = () => {
-    enqueueSnackbar('Account deletion initiated. Check your email for confirmation.', { 
-      variant: 'warning' 
-    });
-    setDeleteDialogOpen(false);
+  const handleDeleteAccount = async () => {
+    try {
+      await api.post(endpoints.users.requestDeletion(), { reason: deleteReason, confirmEmail: deleteConfirmEmail });
+      enqueueSnackbar('Account deletion request submitted. Please check your email.', { variant: 'warning' });
+      setDeleteDialogOpen(false);
+      setDeleteConfirmText('');
+      setDeleteConfirmEmail('');
+      setDeleteReason('');
+    } catch (e: any) {
+      enqueueSnackbar(e.message || 'Failed to request account deletion', { variant: 'error' });
+    }
   };
 
   const TabButton = ({ id, label, isActive }: { id: string; label: string; isActive: boolean }) => (
@@ -655,6 +695,25 @@ const SettingsPage: React.FC = () => {
               variant="outlined"
               startIcon={<Download />}
               sx={{ mr: 2 }}
+              onClick={async () => {
+                try {
+                  const res = await api.post(endpoints.users.exportData());
+                  if (!res.data?.success) throw new Error(res.data?.message || 'Export failed');
+                  const userData = res.data.data?.userData ?? res.data.data;
+                  const blob = new Blob([JSON.stringify(userData, null, 2)], { type: 'application/json' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'user-data.json';
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  window.URL.revokeObjectURL(url);
+                  enqueueSnackbar('Data export ready', { variant: 'success' });
+                } catch (e: any) {
+                  enqueueSnackbar(e.message || 'Failed to export data', { variant: 'error' });
+                }
+              }}
             >
               Export My Data
             </Button>
@@ -827,6 +886,25 @@ const SettingsPage: React.FC = () => {
             label="Type 'DELETE' to confirm"
             sx={{ mt: 2 }}
             placeholder="DELETE"
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+          />
+          <TextField
+            fullWidth
+            label="Confirm your email"
+            sx={{ mt: 2 }}
+            placeholder={user?.email}
+            value={deleteConfirmEmail}
+            onChange={(e) => setDeleteConfirmEmail(e.target.value)}
+          />
+          <TextField
+            fullWidth
+            label="Reason (optional)"
+            sx={{ mt: 2 }}
+            multiline
+            minRows={2}
+            value={deleteReason}
+            onChange={(e) => setDeleteReason(e.target.value)}
           />
         </DialogContent>
         <DialogActions>
@@ -837,6 +915,7 @@ const SettingsPage: React.FC = () => {
             onClick={handleDeleteAccount}
             color="error"
             variant="contained"
+            disabled={deleteConfirmText !== 'DELETE' || (deleteConfirmEmail || '').toLowerCase() !== (user?.email || '').toLowerCase()}
           >
             Delete Account
           </Button>

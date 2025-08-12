@@ -565,6 +565,45 @@ router.post('/reset-password', [
   }
 }));
 
+/**
+ * Change password for authenticated user
+ */
+router.put('/change-password', [
+  authenticateToken,
+  requireEmailVerification,
+  body('currentPassword').isLength({ min: 1 }).withMessage('Current password is required'),
+  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters'),
+], asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
+
+  const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
+  const requestInfo = (req as any).requestInfo;
+  const userId = req.user!.id;
+
+  const user = await firestoreService.getUserById(userId);
+  if (!user) throw createApiError('User not found', 404);
+
+  const ok = await PasswordUtil.compare(currentPassword, user.password);
+  if (!ok) throw createApiError('Current password is incorrect', 401, 'INVALID_CURRENT_PASSWORD');
+
+  const passCheck = PasswordUtil.validate(newPassword);
+  if (!passCheck.isValid) {
+    throw createApiError('Password does not meet requirements', 400, 'WEAK_PASSWORD', { requirements: passCheck.errors });
+  }
+
+  const isSame = await PasswordUtil.compare(newPassword, user.password);
+  if (isSame) throw createApiError('New password must be different from current password', 400);
+
+  const hashed = await PasswordUtil.hash(newPassword);
+  await firestoreService.updateUser(userId, { password: hashed });
+  await ComplianceService.createAuditLog(userId, 'PASSWORD_CHANGE', 'Password changed successfully', {}, requestInfo);
+  logger.info(`Password changed successfully for user: ${user.email}`, { userId });
+
+  res.json({ success: true, message: 'Password changed successfully' });
+  return;
+}));
+
 router.get('/me', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const user = await firestoreService.getUserById(req.user!.id);
   if (!user) throw createApiError('User not found', 404);

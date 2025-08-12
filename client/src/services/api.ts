@@ -320,6 +320,7 @@ export const endpoints = {
     twoFADisable: () => 'auth/2fa/disable',
     oauthGoogle: () => 'auth/oauth/google',
     oauthApple: () => 'auth/oauth/apple',
+    changePassword: () => 'auth/change-password',
   },
 
   // Payment endpoints

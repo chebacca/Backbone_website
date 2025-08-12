@@ -70,6 +70,7 @@ interface UnifiedProjectCreationDialogProps {
     onClose: () => void;
     mode: ApplicationMode;
     onSuccess?: (projectId: string) => void;
+  onCreate?: (options: ProjectCreationOptions) => Promise<string>;
 }
 
 interface FormData {
@@ -147,7 +148,8 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
     open,
     onClose,
     mode,
-    onSuccess
+  onSuccess,
+  onCreate
 }) => {
     const [activeStep, setActiveStep] = useState(0);
     const [formData, setFormData] = useState<FormData>(DEFAULT_FORM_DATA);
@@ -277,7 +279,9 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
                 }
             };
 
-            const projectId = await simplifiedStartupSequencer.createProject(options);
+      const projectId = onCreate
+        ? await onCreate(options)
+        : await simplifiedStartupSequencer.createProject(options);
             
             onSuccess?.(projectId);
             onClose();

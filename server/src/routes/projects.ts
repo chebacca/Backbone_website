@@ -199,6 +199,16 @@ router.post('/', authenticateToken, async (req: any, res) => {
     res.status(201).json({ success: true, data: transformProject(created, participants) });
   } catch (e: any) {
     logger.error('project create', e);
+    // Provide clearer validation feedback if Zod parsing failed
+    if (e && typeof e === 'object' && Array.isArray(e.issues)) {
+      res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        details: e.issues,
+      });
+      return;
+    }
     res.status(400).json({ success: false, error: e?.message || 'Failed to create project' });
   }
 });

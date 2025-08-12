@@ -7,6 +7,8 @@
     "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\"",
     "dev:client": "cd client && vite",
     "dev:server": "cd server && pnpm dev",
+    "preproduction": "pnpm build",
+    "production": "node server/dist/index.js",
     "build": "pnpm build:shared && pnpm build:client && pnpm build:server",
     "build:shared": "cd shared && tsc",
     "build:client": "cd client && vite build",

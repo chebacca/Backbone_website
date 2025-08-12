@@ -380,23 +380,24 @@ export class FirestoreService {
 
   async getLicenseById(id: string): Promise<FirestoreLicense | null> {
     const doc = await db.collection('licenses').doc(id).get();
-    return doc.exists ? (doc.data() as FirestoreLicense) : null;
+    return doc.exists ? ({ id: doc.id, ...(doc.data() as any) } as FirestoreLicense) : null;
   }
 
   async getLicenseByKey(key: string): Promise<FirestoreLicense | null> {
     const snapshot = await db.collection('licenses').where('key', '==', key).limit(1).get();
     if (snapshot.empty) return null;
-    return snapshot.docs[0].data() as FirestoreLicense;
+    const doc = snapshot.docs[0];
+    return ({ id: doc.id, ...(doc.data() as any) } as FirestoreLicense);
   }
 
   async getLicensesByUserId(userId: string): Promise<FirestoreLicense[]> {
     const snapshot = await db.collection('licenses').where('userId', '==', userId).get();
-    return snapshot.docs.map(doc => doc.data() as FirestoreLicense);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as FirestoreLicense));
   }
 
   async getLicensesBySubscriptionId(subscriptionId: string): Promise<FirestoreLicense[]> {
     const snapshot = await db.collection('licenses').where('subscriptionId', '==', subscriptionId).get();
-    return snapshot.docs.map(doc => doc.data() as FirestoreLicense);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as FirestoreLicense));
   }
 
   async getLicensesByUserAndSubscription(userId: string, subscriptionId: string): Promise<FirestoreLicense[]> {
@@ -405,7 +406,7 @@ export class FirestoreService {
       .where('userId', '==', userId)
       .where('subscriptionId', '==', subscriptionId)
       .get();
-    return snapshot.docs.map(doc => doc.data() as FirestoreLicense);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as FirestoreLicense));
   }
 
   async updateLicense(id: string, updates: Partial<FirestoreLicense>): Promise<void> {

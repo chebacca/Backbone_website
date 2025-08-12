@@ -79,6 +79,12 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
 
     useEffect(() => {
         loadProjects();
+        // Listen for project creation events to refresh without full page reload
+        const onCreated = (e: any) => {
+            loadProjects();
+        };
+        window.addEventListener('project:created' as any, onCreated);
+        return () => window.removeEventListener('project:created' as any, onCreated);
     }, []);
 
     const loadProjects = async () => {
@@ -115,12 +121,12 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     const handleProjectCreated = async (projectId: string) => {
         setShowCreateDialog(false);
         await loadProjects(); // Refresh the list
-        
-        // Optionally launch the new project immediately
-        const newProject = projects.find(p => p.id === projectId);
-        if (newProject) {
-            handleLaunchProject(newProject);
-        }
+        // Launch the newly created project once the list is refreshed
+        // Find from the latest state after refresh
+        setTimeout(() => {
+            const latest = (tab === 0 ? activeProjects : archivedProjects).find(p => p.id === projectId) || projects.find(p => p.id === projectId);
+            if (latest) handleLaunchProject(latest);
+        }, 0);
     };
 
     const getStorageIcon = (storageBackend: string) => {
@@ -318,6 +324,18 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 onClose={() => setShowCreateDialog(false)}
                 mode="shared_network" // Cloud projects are typically network mode
                 onSuccess={handleProjectCreated}
+                onCreate={async (options) => {
+                    // Use the cloud integration directly to ensure correct API path and auth
+                    // Ensure auth token is set from localStorage if available
+                    try {
+                        const token = localStorage.getItem('auth_token');
+                        if (token) {
+                            (window as any).cloudProjectIntegration?.setAuthToken?.(token);
+                        }
+                    } catch {}
+                    const id = await cloudProjectIntegration.createCloudProject(options);
+                    return id;
+                }}
             />
 
             {/* Project Details Dialog */}

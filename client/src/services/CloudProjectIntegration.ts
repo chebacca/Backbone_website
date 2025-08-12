@@ -156,7 +156,9 @@ class CloudProjectIntegrationService {
         method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET',
         data?: any
     ): Promise<T> {
-        const url = `${this.baseURL}/${endpoint}`;
+         const base = this.baseURL.replace(/\/$/, '');
+        const path = String(endpoint || '').replace(/^\//, '');
+        const url = `${base}/${path}`;
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -181,7 +183,23 @@ class CloudProjectIntegrationService {
                     await this.handleAuthError();
                     throw new Error('Authentication required');
                 }
-                throw new Error(`API request failed: ${response.statusText}`);
+                // Try to parse JSON error for clearer messaging
+                let message = '';
+                let details: any = undefined;
+                try {
+                    const errJson = await response.clone().json();
+                    message = errJson?.error || errJson?.message || '';
+                    if (errJson?.details) details = errJson.details;
+                } catch {
+                    try {
+                        const text = await response.text();
+                        message = text || '';
+                    } catch {}
+                }
+                const statusText = response.statusText || 'Bad Request';
+                const detailMsg = message ? ` - ${message}` : '';
+                const detailsSuffix = details ? ` | details=${JSON.stringify(details)}` : '';
+                throw new Error(`API request failed: ${response.status} ${statusText}${detailMsg}${detailsSuffix}`);
             }
 
             const result: ApiResponse<T> = await response.json();
@@ -217,11 +235,13 @@ class CloudProjectIntegrationService {
             if (response.ok) {
                 const result = await response.json();
                 if (result.success && result.data?.tokens?.accessToken) {
-                    this.authToken = result.data.tokens.accessToken;
-                    localStorage.setItem('auth_token', this.authToken);
+                    const newAccessToken: string = result.data.tokens.accessToken as string;
+                    this.authToken = newAccessToken;
+                    localStorage.setItem('auth_token', newAccessToken);
 
-                    if (result.data.tokens.refreshToken) {
-                        localStorage.setItem('refresh_token', result.data.tokens.refreshToken);
+                    const nextRefresh: string | undefined = result.data.tokens.refreshToken as string | undefined;
+                    if (nextRefresh) {
+                        localStorage.setItem('refresh_token', nextRefresh);
                     }
                     return;
                 }
@@ -260,10 +280,16 @@ class CloudProjectIntegrationService {
             // Set up additional project resources if needed
             await this.setupProjectResources(project.id, options);
 
+                // Notify listeners in the app so lists can refresh immediately
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('project:created', { detail: { projectId: project.id, project } }));
+                }
+
             return project.id;
         } catch (error) {
             console.error('Failed to create cloud project:', error);
-            throw new Error(`Failed to create cloud project: ${error.message}`);
+            const msg = error instanceof Error ? error.message : String(error);
+            throw new Error(`Failed to create cloud project: ${msg}`);
         }
     }
 
@@ -272,12 +298,13 @@ class CloudProjectIntegrationService {
      */
     private mapToCloudProjectPayload(options: ProjectCreationOptions): CloudProjectCreatePayload {
         const currentState = simplifiedStartupSequencer.getState();
+        const selectedMode: ApplicationMode = (currentState.selectedMode || 'shared_network') as ApplicationMode;
 
         const payload: CloudProjectCreatePayload = {
             name: options.name,
             description: options.description,
-            type: this.mapApplicationModeToType(currentState.selectedMode!),
-            applicationMode: currentState.selectedMode!,
+            type: this.mapApplicationModeToType(selectedMode),
+            applicationMode: selectedMode,
             visibility: 'private', // Default, could be configurable
             storageBackend: this.mapStorageModeToBackend(currentState.storageMode),
         };
@@ -294,9 +321,10 @@ class CloudProjectIntegrationService {
         }
 
         // Add collaboration settings for network mode
-        if (options.collaborationSettings && currentState.selectedMode === 'shared_network') {
+        if (options.collaborationSettings && selectedMode === 'shared_network') {
             payload.allowCollaboration = true;
-            payload.maxCollaborators = options.collaborationSettings.maxCollaborators;
+            // Ensure integer to satisfy backend validation
+            payload.maxCollaborators = Math.max(1, Math.round(options.collaborationSettings.maxCollaborators));
             payload.realTimeEnabled = options.collaborationSettings.enableRealTime;
             payload.enableComments = options.collaborationSettings.enableComments;
             payload.enableActivityLog = true;
@@ -304,7 +332,7 @@ class CloudProjectIntegrationService {
         }
 
         // Add standalone settings
-        if (currentState.selectedMode === 'standalone') {
+        if (selectedMode === 'standalone') {
             payload.autoSave = true;
             payload.backupEnabled = true;
             payload.offlineMode = currentState.storageMode === 'local';
@@ -497,7 +525,7 @@ class CloudProjectIntegrationService {
         contentType?: string
     ): Promise<{ url: string; method: string; headers?: Record<string, string> }> {
         try {
-            const result = await this.apiRequest(`projects/${projectId}/storage/signed-url`, 'POST', {
+            const result = await this.apiRequest<{ url: string; method: string; headers?: Record<string, string> }>(`projects/${projectId}/storage/signed-url`, 'POST', {
                 filename,
                 operation,
                 contentType

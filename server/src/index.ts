@@ -72,9 +72,21 @@ app.use(helmet({
   },
 }));
 
-// CORS (open in development, strict in production)
+// CORS
+// - Allow all origins at the Cloud Functions entry (handled below via onRequest cors: true)
+// - Enforce allowed origins here, with special handling for desktop/electron (no Origin header)
+const allowedOrigins: (string | RegExp)[] = [
+  config.corsOrigin,
+  /^http:\/\/localhost:\d+$/,
+  /^http:\/\/127\.0\.0\.1:\d+$/,
+];
 app.use(cors({
-  origin: config.isDevelopment ? true : config.corsOrigin,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or Electron)
+    if (!origin) return callback(null, true);
+    const ok = allowedOrigins.some((o) => (typeof o === 'string' ? o === origin : o.test(origin)));
+    return callback(null, ok);
+  },
   credentials: true,
 }));
 
@@ -1056,7 +1068,8 @@ const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 
 export const api = onRequest({
   region: 'us-central1',
-  cors: config.corsOrigin,
+  // Allow all origins at the Functions layer; app-level CORS above enforces allowed list
+  cors: true,
   secrets: [ADMIN_SETUP_TOKEN, SENDGRID_API_KEY, STRIPE_SECRET_KEY],
 }, app);
 

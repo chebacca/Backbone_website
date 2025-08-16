@@ -34,7 +34,6 @@ import {
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 
 interface NavigationItem {
   label: string;
@@ -275,22 +274,9 @@ export const Navigation: React.FC = () => {
                 <ArrowBack />
               </IconButton>
             )}
-            <Box
-              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-              onClick={() => navigate('/')}
+            <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => navigate('/')}
             >
-              <Box
-                sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 1,
-                  background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mr: 2,
-                }}
-              >
+              <Box sx={{ width: 40, height: 40, borderRadius: 1, background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 2, }} >
                 <Typography
                   variant="h6"
                   sx={{

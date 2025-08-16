@@ -18,45 +18,15 @@ const NotFoundPage: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
+    <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', }} >
       {/* Background Pattern */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundImage: 
-            'linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-          opacity: 0.5,
-        }}
-      />
+      <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)', backgroundSize: '50px 50px', opacity: 0.5, }} />
 
       <Container maxWidth="md" sx={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
-        <Box
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-        >
+        <Box >
           {/* 404 Illustration */}
           <Box sx={{ mb: 4 }}>
-            <Box
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
+            <Box >
               <Typography
                 variant="h1"
                 sx={{
@@ -74,35 +44,15 @@ const NotFoundPage: React.FC = () => {
               </Typography>
             </Box>
 
-            <Box
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-            >
-              <Box
-                sx={{
-                  width: 100,
-                  height: 100,
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: 3,
-                }}
-              >
+            <Box >
+              <Box sx={{ width: 100, height: 100, borderRadius: '50%', backgroundColor: 'rgba(0, 212, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3, }} >
                 <Search sx={{ fontSize: 50, color: 'primary.main' }} />
               </Box>
             </Box>
           </Box>
 
           {/* Content */}
-          <Box
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-          >
+          <Box >
             <Typography
               variant="h3"
               sx={{
@@ -129,17 +79,7 @@ const NotFoundPage: React.FC = () => {
               Don't worry, even the best explorers sometimes take a wrong turn.
             </Typography>
 
-            <Box
-              sx={{
-                p: 3,
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: 3,
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                mb: 4,
-                maxWidth: 500,
-                mx: 'auto',
-              }}
-            >
+            <Box sx={{ p: 3, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 3, border: '1px solid rgba(255, 255, 255, 0.1)', mb: 4, maxWidth: 500, mx: 'auto', }} >
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 <strong>What might have happened?</strong>
               </Typography>

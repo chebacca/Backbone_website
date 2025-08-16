@@ -47,6 +47,7 @@ import {
 import { cloudProjectIntegration } from '../services/CloudProjectIntegration';
 import { simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
 import UnifiedProjectCreationDialog from './UnifiedProjectCreationDialog';
+import styles from './DashboardCloudProjectsBridge.module.css';
 
 interface CloudProject {
     id: string;
@@ -93,6 +94,9 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [launchMenuProject, setLaunchMenuProject] = useState<CloudProject | null>(null);
   const [projectDatasetCounts, setProjectDatasetCounts] = useState<Record<string, number>>({});
   const [launchPrefs, setLaunchPrefs] = useState<Record<string, 'web' | 'desktop'>>({});
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [showCreateDatasetDialog, setShowCreateDatasetDialog] = useState(false);
   const [createDatasetLoading, setCreateDatasetLoading] = useState(false);
   const [createDatasetError, setCreateDatasetError] = useState<string | null>(null);
@@ -596,6 +600,38 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     {selectedProject && (
                       <Box sx={{ mt: 2 }}>
                         <Typography variant="subtitle1" sx={{ mb: 1 }}>Assigned Datasets</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                          <input
+                            id="project-file-upload"
+                            type="file"
+                            className={styles.hiddenFileInput}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file || !selectedProject) return;
+                              setUploadError(null);
+                              setUploading(true);
+                              setUploadProgress(0);
+                              try {
+                                await cloudProjectIntegration.uploadFileViaSignedUrl(selectedProject.id, file, {
+                                  targetPath: selectedProject.gcsPrefix || `projects/${selectedProject.id}`,
+                                  onProgress: (pct) => setUploadProgress(pct),
+                                });
+                              } catch (err) {
+                                const msg = err instanceof Error ? err.message : 'Upload failed';
+                                setUploadError(msg);
+                              } finally {
+                                setUploading(false);
+                                setTimeout(() => setUploadProgress(0), 800);
+                              }
+                            }}
+                          />
+                          <label htmlFor="project-file-upload">
+                            <Button component="span" size="small" variant="outlined" disabled={uploading}>
+                              {uploading ? `Uploading… ${uploadProgress}%` : 'Upload File'}
+                            </Button>
+                          </label>
+                          {uploadError && <Typography variant="caption" color="error">{uploadError}</Typography>}
+                        </Box>
                         <Button
                           size="small"
                           variant="outlined"

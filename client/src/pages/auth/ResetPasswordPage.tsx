@@ -20,7 +20,6 @@ import {
   Error,
 } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate, useParams, Link as RouterLink } from 'react-router-dom';
 import { useSnackbar } from 'notistack';
 import { authService } from '@/services/authService';
@@ -111,21 +110,9 @@ const ResetPasswordPage: React.FC = () => {
 
   if (isValidToken === false) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          py: { xs: 4, md: 0 },
-        }}
-      >
+      <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', display: 'flex', alignItems: 'center', py: { xs: 4, md: 0 }, }} >
         <Container maxWidth="sm">
-          <Box
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+          <Box>
             <Paper
               elevation={10}
               sx={{
@@ -175,21 +162,9 @@ const ResetPasswordPage: React.FC = () => {
 
   if (isSuccess) {
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          py: { xs: 4, md: 0 },
-        }}
-      >
+      <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', display: 'flex', alignItems: 'center', py: { xs: 4, md: 0 }, }} >
         <Container maxWidth="sm">
-          <Box
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+          <Box>
             <Paper
               elevation={10}
               sx={{
@@ -233,21 +208,9 @@ const ResetPasswordPage: React.FC = () => {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        py: { xs: 4, md: 0 },
-      }}
-    >
+    <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', display: 'flex', alignItems: 'center', py: { xs: 4, md: 0 }, }} >
       <Container maxWidth="sm">
-        <Box
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box>
           <Paper
             elevation={10}
             sx={{
@@ -259,19 +222,7 @@ const ResetPasswordPage: React.FC = () => {
           >
             {/* Header */}
             <Box sx={{ textAlign: 'center', mb: 4 }}>
-              <Box
-                sx={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: 2,
-                  backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: 3,
-                }}
-              >
+              <Box sx={{ width: 80, height: 80, borderRadius: 2, backgroundColor: 'rgba(0, 212, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 3, }} >
                 <Lock sx={{ fontSize: 40, color: 'primary.main' }} />
               </Box>
 

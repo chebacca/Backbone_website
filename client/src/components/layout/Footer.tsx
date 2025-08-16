@@ -85,42 +85,16 @@ export const Footer: React.FC = () => {
   ];
 
   return (
-    <Box
-      component="footer"
-      sx={{
-        backgroundColor: 'background.paper',
-        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-        pt: { xs: 6, md: 8 },
-        pb: 3,
-      }}
-    >
+    <Box component="footer" sx={{ backgroundColor: 'background.paper', borderTop: '1px solid rgba(255, 255, 255, 0.1)', pt: { xs: 6, md: 8 }, pb: 3, }} >
       <Container maxWidth="lg">
         <Grid container spacing={4}>
           {/* Company Info */}
           <Grid item xs={12} md={4}>
             <Box sx={{ mb: 4 }}>
               {/* Logo */}
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  mb: 3,
-                  cursor: 'pointer',
-                }}
-                onClick={() => navigate('/')}
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, cursor: 'pointer', }} onClick={() => navigate('/')}
               >
-                <Box
-                  sx={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 1,
-                    background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mr: 2,
-                  }}
-                >
+                <Box sx={{ width: 40, height: 40, borderRadius: 1, background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 2, }} >
                   <Typography
                     variant="h6"
                     sx={{
@@ -259,27 +233,12 @@ export const Footer: React.FC = () => {
         <Divider sx={{ my: 4, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
 
         {/* Bottom Section */}
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            justifyContent: 'space-between',
-            alignItems: { xs: 'flex-start', md: 'center' },
-            gap: 2,
-          }}
-        >
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, gap: 2, }} >
           <Typography variant="body2" color="text.secondary">
             © {currentYear} BackboneLogic, Inc. All rights reserved.
           </Typography>
 
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              gap: { xs: 1, sm: 3 },
-              alignItems: { xs: 'flex-start', sm: 'center' },
-            }}
-          >
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 3 }, alignItems: { xs: 'flex-start', sm: 'center' }, }} >
             <Typography variant="body2" color="text.secondary">
               🔒 SOC 2 Type II Certified
             </Typography>

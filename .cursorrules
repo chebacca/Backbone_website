@@ -38,6 +38,50 @@ Architecture:
 Authoritative Docs:
 - Always consult `mpc-library/` for architecture, flows, API contracts, compliance, payments, licensing, prompts, and runbooks.
 
+### 🤖 **LLM AGENT MPC LIBRARY CONSULTATION REQUIREMENT**
+
+#### **MANDATORY FOR ALL LLM AGENTS (Claude, ChatGPT, etc.)**
+
+**ALWAYS CONSULT MPC LIBRARY FIRST BEFORE ANY CODE GENERATION:**
+
+1. **Search MPC library** for relevant documentation before any code generation
+2. **Reference established patterns** from MPC library documentation  
+3. **Follow documented architecture** and coding standards
+4. **Use documented API patterns** and integration methods
+5. **Consult feature-specific documentation** in appropriate MPC library folders
+
+**MPC LIBRARY STRUCTURE (ALWAYS REFERENCE):**
+```bash
+mpc-library/
+├── MPC_INDEX.md                    # Complete feature overview
+├── APPLICATION_ARCHITECTURE_MPC.md  # System architecture overview
+├── API_INTEGRATION_MPC.md          # API structure and patterns
+├── CODING_STANDARDS_MPC.md         # Code organization and standards
+├── authentication/                  # Authentication documentation
+├── payments/                        # Payment system documentation
+├── licensing/                       # Licensing system documentation
+├── compliance/                      # Compliance and security documentation
+└── [feature-specific folders]/      # Feature-specific documentation
+```
+
+**LLM AGENT WORKFLOW REQUIREMENTS:**
+- [ ] **ALWAYS start with MPC library search** for relevant documentation
+- [ ] **NEVER generate code** without consulting established patterns
+- [ ] **ALWAYS reference MPC library** in code comments and documentation
+- [ ] **ALWAYS follow documented standards** for authentication, API integration
+- [ ] **ALWAYS use established component patterns** from MPC library
+- [ ] **ALWAYS validate against MPC library** before finalizing any implementation
+
+**MPC LIBRARY CONSULTATION CHECKLIST:**
+- [ ] **Searched MPC_INDEX.md** for feature overview
+- [ ] **Consulted feature-specific folder** for detailed implementation
+- [ ] **Referenced established patterns** from MPC library
+- [ ] **Followed documented coding standards** from MPC library
+- [ ] **Used documented API patterns** from MPC library
+- [ ] **Applied documented authentication patterns** from MPC library
+- [ ] **Used documented payment patterns** from MPC library
+- [ ] **Followed documented compliance patterns** from MPC library
+
 Coding Standards:
 - TypeScript everywhere; explicit types for exported APIs; avoid `any`.
 - Follow Clean Code naming; functions are verbs; variables are meaningful nouns.
@@ -80,6 +124,7 @@ Pull Request Review Checklist:
 - Compliance: audit/consent/compliance events created where required.
 - Performance: N+1 avoided; Firestore queries optimized.
 - DX: clear naming, small functions, docs updated in `mpc-library/`.
+- **LLM Agent Compliance**: MPC library consultation completed and documented.
 
 Cursor Agent Guidance:
 - Always read relevant doc in `mpc-library/` before edits.
@@ -87,3 +132,11 @@ Cursor Agent Guidance:
 - After server edits: run `pnpm build` and (if needed) `pnpm deploy`.
 - Do not introduce new frameworks or switch package manager.
 - Maintain Firebase hosting and Firestore flows.
+
+**LLM AGENT REQUIREMENTS (Claude, ChatGPT, etc.):**
+- **ALWAYS consult MPC library** before any code generation or documentation
+- **ALWAYS reference established patterns** from MPC library documentation
+- **ALWAYS follow documented architecture** and coding standards
+- **ALWAYS use documented API patterns** and integration methods
+- **ALWAYS validate against MPC library** before finalizing implementations
+- **NEVER generate code** without consulting established patterns

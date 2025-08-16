@@ -48,7 +48,6 @@ import {
   Star,
   Security,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { paymentService } from '@/services/paymentService';
 import { api, endpoints } from '@/services/api';
@@ -293,11 +292,7 @@ const BillingPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
+      <Box >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
@@ -323,11 +318,7 @@ const BillingPage: React.FC = () => {
       </Box>
 
       {/* Subscription Overview */}
-      <Box
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
+      <Box >
         <Card
           sx={{
             mb: 4,
@@ -386,11 +377,7 @@ const BillingPage: React.FC = () => {
       <Grid container spacing={4}>
         {/* Payment Methods */}
         <Grid item xs={12} md={8}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
+          <Box >
             <Paper
               sx={{
                 p: 3,
@@ -458,11 +445,7 @@ const BillingPage: React.FC = () => {
 
         {/* Quick Actions */}
         <Grid item xs={12} md={4}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
+          <Box >
             <Paper
               sx={{
                 p: 3,
@@ -524,11 +507,7 @@ const BillingPage: React.FC = () => {
 
         {/* Billing History */}
         <Grid item xs={12}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
+          <Box >
             <Paper
               sx={{
                 p: 3,

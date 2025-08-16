@@ -950,13 +950,22 @@ export class FirestoreService {
   }
 
   async listUserProjects(userId: string, q: any): Promise<any[]> {
-    const { query, type, applicationMode, visibility, organizationId, isArchived, limit = 50, sortBy = 'lastAccessedAt', sortOrder = 'desc' } = q || {};
+    const { query, type, applicationMode, visibility, organizationId, isArchived, includeArchived, limit = 50, sortBy = 'lastAccessedAt', sortOrder = 'desc' } = q || {};
 
-    // Owner projects
-    let baseQuery: FirebaseFirestore.Query = db.collection('projects')
-      .where('isActive', '==', true);
-    if (typeof isArchived !== 'undefined') {
-      baseQuery = baseQuery.where('isArchived', '==', String(isArchived) === 'true');
+    // Determine archived filter behavior
+    const isArchivedProvided = typeof isArchived !== 'undefined' && isArchived !== null;
+    const archivedBool = String(isArchived) === 'true';
+    const includeArchivedBool = String(includeArchived) === 'true';
+
+    // Base query
+    let baseQuery: FirebaseFirestore.Query = db.collection('projects');
+
+    if (isArchivedProvided) {
+      // Explicit archived filter requested by client
+      baseQuery = baseQuery.where('isArchived', '==', archivedBool);
+    } else if (!includeArchivedBool) {
+      // Default behavior: only active, non-archived projects
+      baseQuery = baseQuery.where('isActive', '==', true).where('isArchived', '==', false);
     }
     // Firestore requires an equality filter before orderBy; ensure sortBy is indexed with the filters
     // We'll fetch multiple slices: owner, participant, and role-based public fallbacks, then merge unique
@@ -977,6 +986,12 @@ export class FirestoreService {
       for (let i = 0; i < projectIds.length; i += 10) chunks.push(projectIds.slice(i, i + 10));
       for (const chunk of chunks) {
         let pQuery: FirebaseFirestore.Query = db.collection('projects').where('id', 'in', chunk);
+        // Apply archived/default filters consistently to participant query as well
+        if (isArchivedProvided) {
+          pQuery = pQuery.where('isArchived', '==', archivedBool);
+        } else if (!includeArchivedBool) {
+          pQuery = pQuery.where('isActive', '==', true).where('isArchived', '==', false);
+        }
         pQuery = this.applyProjectFilters(pQuery, { type, applicationMode, visibility, organizationId });
         const pSnap = await pQuery.get();
         pSnap.forEach(d => results.set(d.id, d.data()));
@@ -985,9 +1000,12 @@ export class FirestoreService {
 
     // Role-based: show public network projects as a fallback
     let publicQuery: FirebaseFirestore.Query = db.collection('projects')
-      .where('visibility', '==', 'public')
-      .where('isActive', '==', true)
-      .where('isArchived', '==', false);
+      .where('visibility', '==', 'public');
+    if (isArchivedProvided) {
+      publicQuery = publicQuery.where('isArchived', '==', archivedBool);
+    } else if (!includeArchivedBool) {
+      publicQuery = publicQuery.where('isActive', '==', true).where('isArchived', '==', false);
+    }
     publicQuery = this.applyProjectFilters(publicQuery, { type: type || 'network', applicationMode, organizationId });
     const publicSnap = await publicQuery.get();
     publicSnap.forEach(d => results.set(d.id, d.data()));

@@ -379,29 +379,10 @@ export const BillingDetailsStep: React.FC<BillingDetailsStepProps> = ({
                     onChange={onChange}
                     color="primary"
                     icon={
-                      <Box 
-                        sx={{ 
-                          width: 20, 
-                          height: 20, 
-                          border: '2px solid', 
-                          borderColor: 'rgba(255,255,255,0.3)', 
-                          borderRadius: 0.5 
-                        }} 
-                      />
+                      <Box sx={{ width: 20, height: 20, border: '2px solid', borderColor: 'rgba(255,255,255,0.3)', borderRadius: 0.5 }} />
                     }
                     checkedIcon={
-                      <Box 
-                        sx={{ 
-                          width: 20, 
-                          height: 20, 
-                          backgroundColor: 'primary.main', 
-                          color: '#000', 
-                          borderRadius: 0.5, 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
-                        }}
-                      >
+                      <Box sx={{ width: 20, height: 20, backgroundColor: 'primary.main', color: '#000', borderRadius: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }} >
                         <Check sx={{ fontSize: 14 }} />
                       </Box>
                     }
@@ -416,7 +397,7 @@ export const BillingDetailsStep: React.FC<BillingDetailsStepProps> = ({
                       target="_blank"
                       sx={{ color: 'primary.main' }}
                     >
-                      Terms of Service (v{import.meta.env?.VITE_TERMS_VERSION || '1.0'})
+                      Terms of Service
                     </Link>
                     {' '}and{' '}
                     <Link
@@ -453,29 +434,10 @@ export const BillingDetailsStep: React.FC<BillingDetailsStepProps> = ({
                     onChange={onChange}
                     color="primary"
                     icon={
-                      <Box 
-                        sx={{ 
-                          width: 20, 
-                          height: 20, 
-                          border: '2px solid', 
-                          borderColor: 'rgba(255,255,255,0.3)', 
-                          borderRadius: 0.5 
-                        }} 
-                      />
+                      <Box sx={{ width: 20, height: 20, border: '2px solid', borderColor: 'rgba(255,255,255,0.3)', borderRadius: 0.5 }} />
                     }
                     checkedIcon={
-                      <Box 
-                        sx={{ 
-                          width: 20, 
-                          height: 20, 
-                          backgroundColor: 'primary.main', 
-                          color: '#000', 
-                          borderRadius: 0.5, 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center' 
-                        }}
-                      >
+                      <Box sx={{ width: 20, height: 20, backgroundColor: 'primary.main', color: '#000', borderRadius: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center' }} >
                         <Check sx={{ fontSize: 14 }} />
                       </Box>
                     }
@@ -516,15 +478,7 @@ export const BillingDetailsStep: React.FC<BillingDetailsStepProps> = ({
       </Grid>
 
       {/* Compliance Notice */}
-      <Box
-        sx={{
-          mt: 4,
-          p: 3,
-          backgroundColor: 'rgba(255, 255, 255, 0.02)',
-          borderRadius: 2,
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-        }}
-      >
+      <Box sx={{ mt: 4, p: 3, backgroundColor: 'rgba(255, 255, 255, 0.02)', borderRadius: 2, border: '1px solid rgba(255, 255, 255, 0.1)', }} >
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
           <strong>Privacy & Compliance Notice</strong>
         </Typography>

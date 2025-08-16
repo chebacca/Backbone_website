@@ -47,16 +47,7 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <Box
-          sx={{
-            minHeight: '100vh',
-            backgroundColor: 'background.default',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            p: 2,
-          }}
-        >
+        <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2, }} >
           <Container maxWidth="md">
             <Paper
               elevation={3}
@@ -84,17 +75,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </Typography>
 
               {(import.meta as any).env?.DEV && this.state.error && (
-                <Box
-                  sx={{
-                    mt: 3,
-                    p: 2,
-                    backgroundColor: 'background.default',
-                    borderRadius: 1,
-                    textAlign: 'left',
-                    overflow: 'auto',
-                    maxHeight: 200,
-                  }}
-                >
+                <Box sx={{ mt: 3, p: 2, backgroundColor: 'background.default', borderRadius: 1, textAlign: 'left', overflow: 'auto', maxHeight: 200, }} >
                   <Typography variant="body2" component="pre" color="error.main">
                     {this.state.error.toString()}
                   </Typography>

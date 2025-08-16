@@ -48,7 +48,6 @@ import {
   Support,
   Close,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
@@ -186,19 +185,9 @@ const SupportPage: React.FC = () => {
       {!inDashboard && <Navigation />}
       
       <Container maxWidth="lg" sx={{ pt: inDashboard ? { xs: 2, md: 4 } : { xs: 12, md: 16 }, pb: inDashboard ? { xs: 2, md: 4 } : { xs: 4, md: 8 } }}>
-        <Box
-          sx={{
-            background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%)',
-            borderRadius: 2,
-            p: { xs: 2, md: 4 },
-          }}
-        >
+        <Box sx={{ background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%)', borderRadius: 2, p: { xs: 2, md: 4 }, }} >
           {/* Header */}
-          <Box
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+          <Box >
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
             Support Center
@@ -210,11 +199,7 @@ const SupportPage: React.FC = () => {
       </Box>
 
       {/* Support Channels */}
-      <Box
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
+      <Box >
         <Grid container spacing={3} sx={{ mb: 4 }}>
           {supportChannels.map((channel, index) => (
             <Grid item xs={12} sm={6} md={3} key={index}>
@@ -232,20 +217,7 @@ const SupportPage: React.FC = () => {
                 }}
               >
                 <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                  <Box
-                    sx={{
-                      width: 60,
-                      height: 60,
-                      borderRadius: 2,
-                      backgroundColor: `${channel.color}.main`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      mx: 'auto',
-                      mb: 2,
-                      color: '#000',
-                    }}
-                  >
+                  <Box sx={{ width: 60, height: 60, borderRadius: 2, backgroundColor: `${channel.color}.main`, display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2, color: '#000', }} >
                     {channel.icon}
                   </Box>
                   
@@ -277,11 +249,7 @@ const SupportPage: React.FC = () => {
       </Box>
 
       {/* Tabs */}
-      <Box
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-      >
+      <Box >
         <Paper
           sx={{
             background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',

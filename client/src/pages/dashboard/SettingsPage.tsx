@@ -36,7 +36,6 @@ import {
   PhotoCamera,
   Warning,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { useAuth } from '@/context/AuthContext';
 import { authService } from '@/services/authService';
@@ -269,11 +268,7 @@ const SettingsPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
+      <Box >
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
             Account Settings
@@ -285,11 +280,7 @@ const SettingsPage: React.FC = () => {
       </Box>
 
       {/* Tab Navigation */}
-      <Box
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
+      <Box >
         <Box sx={{ mb: 4 }}>
           <TabButton id="profile" label="Profile" isActive={activeTab === 'profile'} />
           <TabButton id="security" label="Security" isActive={activeTab === 'security'} />
@@ -302,11 +293,7 @@ const SettingsPage: React.FC = () => {
 
       {/* Profile Tab */}
       {activeTab === 'profile' && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Grid container spacing={4}>
             <Grid item xs={12} md={4}>
               <Paper
@@ -470,11 +457,7 @@ const SettingsPage: React.FC = () => {
 
       {/* Security Tab */}
       {activeTab === 'security' && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Grid container spacing={4}>
             <Grid item xs={12} md={6}>
               <Paper
@@ -601,11 +584,7 @@ const SettingsPage: React.FC = () => {
 
       {/* Notifications Tab */}
       {activeTab === 'notifications' && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Paper
             sx={{
               p: 4,
@@ -644,11 +623,7 @@ const SettingsPage: React.FC = () => {
 
       {/* Privacy Tab */}
       {activeTab === 'privacy' && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Paper
             sx={{
               p: 4,
@@ -797,11 +772,7 @@ const SettingsPage: React.FC = () => {
 
       {/* Danger Zone Tab */}
       {activeTab === 'danger' && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Paper
             sx={{
               p: 4,

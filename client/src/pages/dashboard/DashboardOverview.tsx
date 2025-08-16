@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
 import {
   Box,
   Typography,
@@ -59,11 +58,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
   trend, 
   color = 'primary' 
 }) => (
-  <Box
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.6 }}
-  >
+  <Box >
     <Card
       sx={{
         background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
@@ -270,11 +265,7 @@ const DashboardOverview: React.FC = () => {
   return (
     <Box>
       {/* Welcome Header */}
-      <Box
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
+      <Box >
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
             Welcome back, {user?.name?.split(' ')[0] || 'User'}! 👋
@@ -334,11 +325,7 @@ const DashboardOverview: React.FC = () => {
       <Grid container spacing={3}>
         {/* License Status */}
         <Grid item xs={12} lg={8}>
-          <Box
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
+          <Box >
             <Card
               sx={{
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
@@ -442,11 +429,7 @@ const DashboardOverview: React.FC = () => {
 
         {/* Recent Activity */}
         <Grid item xs={12} lg={4}>
-          <Box
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
+          <Box >
             <Card
               sx={{
                 background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
@@ -517,11 +500,7 @@ const DashboardOverview: React.FC = () => {
 
         {/* System Status */}
         <Grid item xs={12}>
-          <Box
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-          >
+          <Box >
             <Paper
               sx={{
                 p: 3,

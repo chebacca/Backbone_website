@@ -1,0 +1,36 @@
+# Resend Configuration (Primary)
+RESEND_API_KEY=re_VHQfntzh_6nysJvuj1anT7kedxuUoevEP
+RESEND_FROM_EMAIL=noreply@backbone-logic.com
+RESEND_FROM_NAME=Backbone Logic
+
+# Legacy fallback names (will work as backup)
+FROM_EMAIL=noreply@backbone-logic.com
+FROM_NAME=Backbone Logic
+
+# Frontend Configuration
+FRONTEND_URL=https://backbone-logic.web.app
+CORS_ORIGIN=https://backbone-logic.web.app
+
+# Database Configuration (if needed)
+# DATABASE_URL="postgresql://username:password@localhost:5432/dashboard_v14_db"
+
+# Firebase Configuration (if needed)
+# FIREBASE_PROJECT_ID="your-firebase-project-id"
+# FIREBASE_CLIENT_EMAIL="your-service-account-email"
+# FIREBASE_PRIVATE_KEY="your-private-key"
+
+# JWT Configuration (if needed)
+# JWT_SECRET="your-super-secret-jwt-key-here"
+# JWT_EXPIRES_IN="15m"
+# JWT_REFRESH_EXPIRES_IN="7d"
+
+# Stripe Configuration (if needed)
+# STRIPE_SECRET_KEY="sk_test_..."
+# STRIPE_PUBLISHABLE_KEY="pk_test_..."
+# STRIPE_WEBHOOK_SECRET="whsec_..."
+# STRIPE_BASIC_PRICE_ID="price_..."
+# STRIPE_PRO_PRICE_ID="price_..."
+# STRIPE_ENTERPRISE_PRICE_ID="price_..."
+
+# Optional: Enable Data Connect (set to false to use Prisma directly)
+USE_DATACONNECT="false"

@@ -96,29 +96,9 @@ const LandingPage: React.FC = () => {
       <Navigation />
       
       {/* Hero Section */}
-      <Box
-        sx={{
-          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-          position: 'relative',
-          overflow: 'hidden',
-          pt: { xs: 12, md: 16 },
-          pb: { xs: 8, md: 12 },
-        }}
-      >
+      <Box sx={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', position: 'relative', overflow: 'hidden', pt: { xs: 12, md: 16 }, pb: { xs: 8, md: 12 }, }} >
         {/* Background Pattern */}
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundImage: 
-              'linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)',
-            backgroundSize: '50px 50px',
-            opacity: 0.5,
-          }}
-        />
+        <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)', backgroundSize: '50px 50px', opacity: 0.5, }} />
         
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
           <Box>
@@ -250,14 +230,7 @@ const LandingPage: React.FC = () => {
               </Grid>
               
               <Grid item xs={12} md={6}>
-                <Box
-                  sx={{
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'scale(1.02)',
-                    },
-                  }}
-                >
+                <Box sx={{ transition: 'all 0.3s ease', '&:hover': { transform: 'scale(1.02)', }, }} >
                   <Paper
                     elevation={20}
                     sx={{
@@ -268,19 +241,7 @@ const LandingPage: React.FC = () => {
                       borderRadius: 3,
                     }}
                   >
-                    <Box
-                      sx={{
-                        width: '100%',
-                        height: 400,
-                        backgroundColor: '#000',
-                        borderRadius: 2,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        position: 'relative',
-                        overflow: 'hidden',
-                      }}
-                    >
+                    <Box sx={{ width: '100%', height: 400, backgroundColor: '#000', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden', }} >
                       {/* Video placeholder or actual demo video */}
                       <IconButton
                         sx={{
@@ -352,14 +313,7 @@ const LandingPage: React.FC = () => {
           <Grid container spacing={4}>
             {features.map((feature, index) => (
               <Grid item xs={12} md={6} lg={4} key={index}>
-                <Box
-                  sx={{
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-8px)',
-                    },
-                  }}
-                >
+                <Box sx={{ transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-8px)', }, }} >
                   <Card
                     sx={{
                       height: '100%',
@@ -373,19 +327,7 @@ const LandingPage: React.FC = () => {
                     }}
                   >
                     <CardContent sx={{ p: 4 }}>
-                      <Box
-                        sx={{
-                          width: 60,
-                          height: 60,
-                          borderRadius: 2,
-                          backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          mb: 3,
-                          color: 'primary.main',
-                        }}
-                      >
+                      <Box sx={{ width: 60, height: 60, borderRadius: 2, backgroundColor: 'rgba(0, 212, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3, color: 'primary.main', }} >
                         {feature.icon}
                       </Box>
                       
@@ -427,14 +369,7 @@ const LandingPage: React.FC = () => {
             <Grid container spacing={4}>
               {testimonials.map((testimonial, index) => (
                 <Grid item xs={12} md={4} key={index}>
-                  <Box
-                    sx={{
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                      },
-                    }}
-                  >
+                  <Box sx={{ transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-4px)', }, }} >
                     <Card
                       sx={{
                         height: '100%',
@@ -479,14 +414,7 @@ const LandingPage: React.FC = () => {
 
       {/* CTA Section */}
       <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
-        <Box
-          sx={{
-            transition: 'all 0.3s ease',
-            '&:hover': {
-              transform: 'scale(1.01)',
-            },
-          }}
-        >
+        <Box sx={{ transition: 'all 0.3s ease', '&:hover': { transform: 'scale(1.01)', }, }} >
           <Paper
             elevation={3}
             sx={{

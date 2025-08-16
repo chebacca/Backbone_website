@@ -634,9 +634,9 @@ class DatabaseSeeder {
 
     // Create organizations for Pro and Enterprise (team-capable) and set owner membership
     const proOrg = await firestoreService.createOrganization({ name: 'Pro User Org', ownerUserId: proUserId, tier: 'PRO' } as any);
-    await firestoreService.createOrgMember({ orgId: proOrg.id, email: 'pro.user@example.com', userId: proUserId, role: 'ENTERPRISE_ADMIN', status: 'ACTIVE', seatReserved: true, invitedAt: now, joinedAt: now } as any);
+    await firestoreService.createOrgMember({ orgId: proOrg.id, email: 'pro.user@example.com', userId: proUserId, role: 'OWNER', status: 'ACTIVE', seatReserved: true, invitedAt: now, joinedAt: now } as any);
     const entOrg = await firestoreService.createOrganization({ name: 'Enterprise User Org', ownerUserId: enterpriseUserId, tier: 'ENTERPRISE' } as any);
-    await firestoreService.createOrgMember({ orgId: entOrg.id, email: 'enterprise.user@example.com', userId: enterpriseUserId, role: 'ENTERPRISE_ADMIN', status: 'ACTIVE', seatReserved: true, invitedAt: now, joinedAt: now } as any);
+    await firestoreService.createOrgMember({ orgId: entOrg.id, email: 'enterprise.user@example.com', userId: enterpriseUserId, role: 'OWNER', status: 'ACTIVE', seatReserved: true, invitedAt: now, joinedAt: now } as any);
 
     // Create subscriptions for tiered users only
     const pricePerSeat: Record<'BASIC' | 'PRO' | 'ENTERPRISE', number> = { BASIC: 2900, PRO: 9900, ENTERPRISE: 19900 };

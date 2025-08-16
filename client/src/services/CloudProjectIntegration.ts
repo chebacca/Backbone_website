@@ -543,6 +543,73 @@ class CloudProjectIntegrationService {
     }
 
     /**
+     * Upload a file to project storage via signed URL (GCS)
+     */
+    public async uploadFileViaSignedUrl(
+        projectId: string,
+        file: File,
+        options?: { targetPath?: string; onProgress?: (pct: number) => void }
+    ): Promise<{ key: string; bucket?: string; url: string }> {
+        // Build a safe target filename under an optional path
+        const baseName = file.name || 'upload.bin';
+        const safeName = baseName.replace(/[^a-zA-Z0-9._\-]/g, '_');
+        const filename = options?.targetPath
+            ? `${String(options.targetPath).replace(/\/$/, '')}/${safeName}`
+            : safeName;
+
+        // Request signed URL
+        const { url, headers } = await this.generateSignedUrl(
+            projectId,
+            filename,
+            'upload',
+            file.type || 'application/octet-stream'
+        );
+
+        // Use XHR to support progress callbacks (fetch lacks upload progress)
+        await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', url, true);
+            // Apply returned headers (e.g., Content-Type)
+            if (headers) {
+                Object.entries(headers).forEach(([k, v]) => {
+                    try { xhr.setRequestHeader(k, v as string); } catch {}
+                });
+            }
+            if (options?.onProgress && xhr.upload) {
+                xhr.upload.onprogress = (evt) => {
+                    if (evt.lengthComputable) {
+                        const pct = Math.round((evt.loaded * 100) / evt.total);
+                        options.onProgress!(pct);
+                    }
+                };
+            }
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) resolve();
+                else reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+            };
+            xhr.onerror = () => reject(new Error('Network error during upload'));
+            xhr.send(file);
+        });
+
+        // Persist simple metadata for listing/search
+        try {
+            await this.apiRequest(`projects/${projectId}/storage/record`, 'POST', {
+                key: filename,
+                name: baseName,
+                size: file.size,
+                contentType: file.type || 'application/octet-stream',
+                url,
+            });
+        } catch (e) {
+            // Non-fatal: upload succeeded even if metadata recording fails
+            console.warn('File metadata record failed', e);
+        }
+
+        // Return the signed URL and object key
+        return { key: filename, url };
+    }
+
+    /**
      * Update project settings
      */
     public async updateProject(projectId: string, updates: Partial<CloudProject>): Promise<CloudProject> {

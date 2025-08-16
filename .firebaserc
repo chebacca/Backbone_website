@@ -3,6 +3,22 @@
     "default": "backbone-logic",
     "staging1": "backbone-logic"
   },
-  "targets": {},
-  "etags": {}
+  "targets": {
+    "backbone-logic": {
+      "hosting": {
+        "main": [
+          "backbone-logic"
+        ]
+      }
+    }
+  },
+  "etags": {
+    "backbone-logic": {
+      "extensionInstances": {
+        "delete-user-data": "50b2444661ed7e3fbade4a4269df64abdc9ae3082d7812ed1513bbb0b175cf26",
+        "firestore-bigquery-export": "a612475d7a5e11f1c91df59537f58d19f8acc47f7a22e85d0244d3f400187dc5",
+        "firestore-counter": "b91bf8e6bff7e8c103aaf7e5ea4ed8d049644f175e497f0adfe5b6a81899eaed"
+      }
+    }
+  }
 }

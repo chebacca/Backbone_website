@@ -1,3 +1,22 @@
+/**
+ * Dashboard v14 Licensing Website - Main Application
+ * 
+ * This application integrates the Simplified Startup System with the existing
+ * licensing website dashboard. The startup system provides:
+ * 
+ * - Mode Selection (Standalone vs Network)
+ * - Project Creation and Management
+ * - Cloud Integration (Firebase/GCS)
+ * - Seamless Dashboard Integration
+ * 
+ * Startup Routes:
+ * - /startup - Public startup workflow
+ * - /dashboard/startup - Dashboard-integrated startup workflow
+ * 
+ * The startup system automatically navigates users to the appropriate
+ * dashboard sections after completion.
+ */
+
 import React, { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Box, ThemeProvider, CssBaseline } from '@mui/material';
@@ -36,7 +55,7 @@ const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
 const AccountingDashboard = React.lazy(() => import('@/pages/admin/AccountingDashboard'));
 const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
 
-// Startup workflow demo
+// Startup workflow components
 const StartupWorkflow = React.lazy(() => import('@/components/StartupWorkflow'));
 
 // Protected route wrapper
@@ -119,21 +138,15 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary>
-        <Box
-          sx={{
-            minHeight: '100vh',
-            backgroundColor: 'background.default',
-            color: 'text.primary',
-          }}
-        >
+        <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default', color: 'text.primary', }} >
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               
-              {/* Startup Workflow Demo Route */}
-              <Route path="/startup-demo" element={<StartupWorkflow />} />
+              {/* Startup Workflow Route */}
+              <Route path="/startup" element={<StartupWorkflow />} />
               
               {/* Auth Routes */}
               <Route 
@@ -240,6 +253,7 @@ function App() {
                 <Route path="cloud-projects" element={<DashboardCloudProjectsBridge />} />
                 <Route path="documentation" element={<DocumentationPage />} />
                 <Route path="support" element={<SupportPage />} />
+                <Route path="startup" element={<StartupWorkflow />} />
                 <Route path="organization" element={<div>Organization (Coming Soon)</div>} />
                 <Route path="security" element={<div>Security Center (Coming Soon)</div>} />
                 <Route path="compliance" element={<div>Compliance (Coming Soon)</div>} />

@@ -170,22 +170,7 @@ export const DashboardLayout: React.FC = () => {
   const NavigationList = () => (
     <Box sx={{ width: drawerWidth, height: '100%', backgroundColor: 'background.paper' }}>
       {/* Logo and Brand (clickable to go to Landing Page) */}
-      <Box
-        component={RouterLink}
-        to="/"
-        aria-label="Go to Landing Page"
-        sx={{
-          p: 3,
-          display: 'block',
-          textDecoration: 'none',
-          color: 'inherit',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          cursor: 'pointer',
-          '&:hover': {
-            backgroundColor: 'rgba(255, 255, 255, 0.04)',
-          },
-        }}
-      >
+      <Box component={RouterLink} to="/" aria-label="Go to Landing Page" sx={{ p: 3, display: 'block', textDecoration: 'none', color: 'inherit', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', cursor: 'pointer', '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.04)', }, }} >
         <Typography
           variant="h6"
           sx={{
@@ -237,11 +222,7 @@ export const DashboardLayout: React.FC = () => {
             ? (location.pathname === itemBasePath && location.hash === `#${itemHash}`)
             : (location.pathname === item.path);
           return (
-            <Box
-              key={item.text}
-              whileHover={{ x: 4 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            >
+            <Box key={item.text} >
               <ListItem disablePadding sx={{ mb: 0.5 }}>
                 <ListItemButton
                   component={RouterLink}
@@ -315,11 +296,7 @@ export const DashboardLayout: React.FC = () => {
             {enterpriseItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
-                <Box
-                  key={item.text}
-                  whileHover={{ x: 4 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                >
+                <Box key={item.text} >
                   <ListItem disablePadding sx={{ mb: 0.5 }}>
                     <ListItemButton
                       component={RouterLink}
@@ -522,10 +499,7 @@ export const DashboardLayout: React.FC = () => {
       </AppBar>
 
       {/* Navigation Drawer */}
-      <Box
-        component="nav"
-        sx={{ width: { lg: drawerWidth }, flexShrink: { lg: 0 } }}
-      >
+      <Box component="nav" sx={{ width: { lg: drawerWidth }, flexShrink: { lg: 0 } }} >
         <Drawer
           variant="temporary"
           open={mobileOpen}
@@ -565,15 +539,7 @@ export const DashboardLayout: React.FC = () => {
       </Box>
 
       {/* Main Content */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          width: { lg: `calc(100% - ${drawerWidth}px)` },
-          backgroundColor: 'background.default',
-          minHeight: '100vh',
-        }}
-      >
+      <Box component="main" sx={{ flexGrow: 1, width: { lg: `calc(100% - ${drawerWidth}px)` }, backgroundColor: 'background.default', minHeight: '100vh', }} >
         <Toolbar />
         <Box sx={{ p: 3 }}>
           {showKycBanner && (

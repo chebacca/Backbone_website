@@ -1,24 +1,26 @@
 {
   "hosting": {
+    "target": "main",
     "public": "deploy",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [],
     "rewrites": [
       {
         "source": "/api/**",
         "function": "api"
       },
       {
-        "source": "**",
+        "source": "/**",
         "destination": "/index.html"
       }
     ],
     "headers": [
       {
-        "source": "**/*.@(js|css)",
+        "source": "**/*.@(js|css|mjs)",
         "headers": [
           {
             "key": "Cache-Control",
@@ -31,7 +33,7 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: https://m.stripe.network https://q.stripe.com; connect-src 'self' https://api.stripe.com https://js.stripe.com https://m.stripe.network https://q.stripe.com https://*.firebaseapp.com https://*.googleapis.com; frame-src 'self' https://js.stripe.com https://m.stripe.network; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';"
+            "value": "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://js.stripe.com https://m.stripe.network https://accounts.google.com https://apis.google.com https://www.gstatic.com https://cdn.socket.io https://maps.googleapis.com https://maps.google.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.gstatic.com https://accounts.google.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://maps.googleapis.com https://maps.google.com; connect-src 'self' https://api.stripe.com https://js.stripe.com https://m.stripe.network https://q.stripe.com https://*.firebaseapp.com https://*.googleapis.com https://us-central1-backbone-logic.cloudfunctions.net https://backbone-logic.web.app https://accounts.google.com https://apis.google.com https://www.gstatic.com https://maps.googleapis.com https://maps.google.com https://cdn.jsdelivr.net https://unpkg.com https://rpc.cosmos.directory https://rest.cosmos.directory https://lcd-juno.itastakers.com https://rpc-juno.itastakers.com; frame-src 'self' https://js.stripe.com https://m.stripe.network https://accounts.google.com; worker-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self';"
           }
         ]
       }
@@ -85,7 +87,7 @@
           "JWT_EXPIRES_IN": "${JWT_EXPIRES_IN}",
           "JWT_REFRESH_EXPIRES_IN": "${JWT_REFRESH_EXPIRES_IN}",
           "FRONTEND_URL": "https://backbone-logic.web.app",
-          "CORS_ORIGIN": "https://backbone-logic.web.app",
+          "CORS_ORIGIN": "https://backbone-logic.web.app,https://dashboard-1c3a5.web.app",
           "ADMIN_RESET": "${ADMIN_RESET}"
         }
       }

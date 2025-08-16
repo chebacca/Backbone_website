@@ -13,13 +13,7 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   fullScreen = true,
 }) => {
   const content = (
-    <Box
-      display="flex"
-      flexDirection="column"
-      alignItems="center"
-      justifyContent="center"
-      gap={2}
-    >
+    <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" gap={2} >
       <CircularProgress 
         size={size} 
         sx={{
@@ -43,20 +37,7 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
 
   if (fullScreen) {
     return (
-      <Box
-        sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'background.default',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-        }}
-      >
+      <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, }} >
         {content}
       </Box>
     );

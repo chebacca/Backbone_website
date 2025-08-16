@@ -107,11 +107,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
   };
 
   return (
-    <Box
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.6 }}
-    >
+    <Box>
       <Paper
         elevation={3}
         sx={{
@@ -122,30 +118,9 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
         }}
       >
         {/* Header */}
-        <Box
-          sx={{
-            p: 3,
-            background: selectedTier.popular 
-              ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)'
-              : 'rgba(255, 255, 255, 0.05)',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          }}
-        >
+        <Box sx={{ p: 3, background: selectedTier.popular ? 'linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)' : 'rgba(255, 255, 255, 0.05)', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', }} >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-            <Box
-              sx={{
-                width: 48,
-                height: 48,
-                borderRadius: 2,
-                backgroundColor: selectedTier.popular 
-                  ? 'rgba(0, 212, 255, 0.2)' 
-                  : 'rgba(0, 212, 255, 0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'primary.main',
-              }}
-            >
+            <Box sx={{ width: 48, height: 48, borderRadius: 2, backgroundColor: selectedTier.popular ? 'rgba(0, 212, 255, 0.2)' : 'rgba(0, 212, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'primary.main', }} >
               {getIcon()}
             </Box>
             
@@ -278,13 +253,7 @@ export const OrderSummary: React.FC<OrderSummaryProps> = ({
         </Box>
 
         {/* Security Notice */}
-        <Box
-          sx={{
-            p: 3,
-            backgroundColor: 'rgba(255, 255, 255, 0.02)',
-            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-          }}
-        >
+        <Box sx={{ p: 3, backgroundColor: 'rgba(255, 255, 255, 0.02)', borderTop: '1px solid rgba(255, 255, 255, 0.1)', }} >
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
             🔒 Secured by 256-bit SSL encryption<br/>
             💳 PCI DSS compliant payment processing<br/>

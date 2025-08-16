@@ -140,10 +140,7 @@ export const PlanSelectionStep: React.FC<PlanSelectionStepProps> = ({
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {pricingTiers.map((tier) => (
           <Grid item xs={12} md={4} key={tier.id}>
-            <Box
-              whileHover={{ scale: 1.02 }}
-              transition={{ duration: 0.2 }}
-            >
+            <Box >
               <Card
                 sx={{
                   height: '100%',
@@ -161,14 +158,7 @@ export const PlanSelectionStep: React.FC<PlanSelectionStepProps> = ({
                 onClick={() => handleTierSelect(tier.id)}
               >
                 {tier.popular && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: -12,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                    }}
-                  >
+                  <Box sx={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', }} >
                     <Chip
                       icon={<Star />}
                       label="Most Popular"
@@ -180,22 +170,7 @@ export const PlanSelectionStep: React.FC<PlanSelectionStepProps> = ({
 
                 <CardContent sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <Box sx={{ textAlign: 'center', mb: 3 }}>
-                    <Box
-                      sx={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 2,
-                        backgroundColor: tier.id === selectedTier
-                          ? 'rgba(0, 212, 255, 0.2)' 
-                          : 'rgba(0, 212, 255, 0.1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        mx: 'auto',
-                        mb: 2,
-                        color: 'primary.main',
-                      }}
-                    >
+                    <Box sx={{ width: 48, height: 48, borderRadius: 2, backgroundColor: tier.id === selectedTier ? 'rgba(0, 212, 255, 0.2)' : 'rgba(0, 212, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2, color: 'primary.main', }} >
                       {getIcon(tier.id)}
                     </Box>
 

@@ -34,7 +34,7 @@ html, body {
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(30px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -55,12 +55,12 @@ html, body {
 
 @keyframes scaleIn {
   from {
+    transform: scale(0);
     opacity: 0;
-    transform: scale(0.8);
   }
   to {
-    opacity: 1;
     transform: scale(1);
+    opacity: 1;
   }
 }
 
@@ -184,11 +184,9 @@ select:focus {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -302,4 +300,53 @@ select:focus {
 /* Bridge-specific utility */
 .dataset-search-input {
   padding: 6px;
+}
+
+/* StartupWorkflow Component Classes */
+.startup-logo-animation {
+  animation: fadeIn 0.8s ease-out;
+}
+
+.startup-title-animation {
+  animation: fadeInUp 0.8s ease-out 0.2s both;
+}
+
+.startup-subtitle-animation {
+  animation: fadeInUp 0.8s ease-out 0.4s both;
+}
+
+.startup-loading-animation {
+  animation: fadeIn 0.8s ease-out 0.6s both;
+}
+
+.startup-status-animation {
+  animation: fadeIn 0.8s ease-out 0.8s both;
+}
+
+.startup-success-animation {
+  animation: scaleIn 0.5s ease-out;
+}
+
+.startup-success-title-animation {
+  animation: fadeInUp 0.5s ease-out 0.2s both;
+}
+
+.startup-success-subtitle-animation {
+  animation: fadeInUp 0.5s ease-out 0.4s both;
+}
+
+.startup-error-animation {
+  animation: scaleIn 0.5s ease-out;
+}
+
+.startup-error-title-animation {
+  animation: fadeInUp 0.5s ease-out 0.2s both;
+}
+
+.startup-error-subtitle-animation {
+  animation: fadeInUp 0.5s ease-out 0.4s both;
+}
+
+.startup-error-message-animation {
+  animation: fadeInUp 0.5s ease-out 0.6s both;
 }

@@ -23,7 +23,6 @@ import {
   ArrowBack,
   ArrowForward,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useLoading } from '@/context/LoadingContext';
@@ -233,11 +232,7 @@ const CheckoutPage: React.FC = () => {
       <Navigation />
       
       <Container maxWidth="lg" sx={{ pt: { xs: 10, md: 12 }, pb: 8 }}>
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box>
           {/* Back Button */}
           <Box sx={{ mb: 4 }}>
             <Button
@@ -310,22 +305,7 @@ const CheckoutPage: React.FC = () => {
                     <Step key={step.label}>
                       <StepLabel
                         StepIconComponent={({ active, completed }) => (
-                          <Box
-                            sx={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: '50%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: completed
-                                ? 'success.main'
-                                : active
-                                ? 'primary.main'
-                                : 'rgba(255, 255, 255, 0.1)',
-                              color: completed || active ? '#000' : 'text.secondary',
-                            }}
-                          >
+                          <Box sx={{ width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: completed ? 'success.main' : active ? 'primary.main' : 'rgba(255, 255, 255, 0.1)', color: completed || active ? '#000' : 'text.secondary', }} >
                             {step.icon}
                           </Box>
                         )}

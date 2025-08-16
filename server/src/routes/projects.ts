@@ -4,6 +4,8 @@ import { authenticateToken } from '../middleware/auth.js';
 import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { z } from 'zod';
+import { getStorage } from 'firebase-admin/storage';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const router: ExpressRouter = Router();
 
@@ -152,6 +154,19 @@ router.get('/', authenticateToken, async (req: any, res) => {
   }
 });
 
+// Convenience: list archived projects for current user
+router.get('/archived/list', authenticateToken, async (req: any, res) => {
+  try {
+    const userId = req.user?.id;
+    const items = await firestoreService.listUserProjects(userId, { ...req.query, isArchived: 'true' });
+    const participantsMap = await firestoreService.getParticipantsForProjects(items.map((p) => p.id));
+    res.json({ success: true, data: items.map((p) => transformProject(p, participantsMap.get(p.id) || [])) });
+  } catch (e: any) {
+    logger.error('projects archived list', e);
+    res.status(500).json({ success: false, error: 'Failed to fetch archived projects' });
+  }
+});
+
 // Get by id
 router.get('/:id', authenticateToken, async (req: any, res) => {
   try {
@@ -289,6 +304,132 @@ router.delete('/:id/participants/:participantId', authenticateToken, async (req:
   } catch (e: any) {
     const code = e?.code === 'FORBIDDEN' ? 403 : e?.code === 'NOT_FOUND' ? 404 : 500;
     res.status(code).json({ success: false, error: e?.message || 'Failed to remove participant' });
+  }
+});
+
+// Generate a signed URL for project-scoped storage operations (upload/download)
+router.post('/:id/storage/signed-url', authenticateToken, async (req: any, res) => {
+  try {
+    const schema = z.object({
+      filename: z.string().min(1),
+      operation: z.enum(['upload', 'download']).default('upload'),
+      contentType: z.string().optional(),
+      ttlSec: z.number().int().min(60).max(24 * 60 * 60).optional(),
+    });
+    const { filename, operation, contentType, ttlSec } = schema.parse(req.body || {});
+
+    const projectId = req.params.id as string;
+    const userId = req.user?.id as string;
+
+    // Authorization: ensure user can access project
+    const project = await firestoreService.getProjectByIdAuthorized(projectId, userId);
+    if (!project) {
+      res.status(404).json({ success: false, error: 'Project not found' });
+      return;
+    }
+
+    // Resolve bucket and object key
+    const bucketName = (project.gcsBucket as string) || process.env.GCS_BUCKET || (process.env.FIREBASE_STORAGE_BUCKET || '');
+    const adminProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
+    const defaultBucket = adminProjectId ? `${adminProjectId}.appspot.com` : '';
+    const finalBucketName = bucketName || defaultBucket;
+    if (!finalBucketName) {
+      res.status(500).json({ success: false, error: 'No storage bucket configured' });
+      return;
+    }
+
+    // Basic filename sanitization
+    const safeName = filename.replace(/[^a-zA-Z0-9._\-]/g, '_');
+    const prefix = (project.gcsPrefix as string) || `projects/${projectId}`;
+    const objectKey = `${prefix.replace(/\/$/, '')}/${safeName}`;
+
+    const bucket = getStorage().bucket(finalBucketName);
+    const file = bucket.file(objectKey);
+    const expiresAt = Date.now() + (ttlSec ? ttlSec * 1000 : 15 * 60 * 1000); // default 15 min
+
+    if (operation === 'upload') {
+      const [url] = await file.getSignedUrl({
+        version: 'v4',
+        action: 'write',
+        expires: expiresAt,
+        contentType: contentType || 'application/octet-stream',
+      });
+      res.json({
+        success: true,
+        data: {
+          url,
+          method: 'PUT',
+          headers: contentType ? { 'Content-Type': contentType } : undefined,
+          bucket: finalBucketName,
+          key: objectKey,
+        },
+      });
+      return;
+    }
+
+    // download
+    const [url] = await file.getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: expiresAt,
+    });
+    res.json({
+      success: true,
+      data: {
+        url,
+        method: 'GET',
+        bucket: finalBucketName,
+        key: objectKey,
+      },
+    });
+  } catch (e: any) {
+    logger.error('signed-url generation failed', e);
+    const code = e?.name === 'ZodError' ? 400 : 500;
+    res.status(code).json({ success: false, error: e?.message || 'Failed to generate signed URL' });
+  }
+});
+
+// Record uploaded file metadata for a project (Firestore)
+router.post('/:id/storage/record', authenticateToken, async (req: any, res) => {
+  try {
+    const schema = z.object({
+      key: z.string().min(1),
+      name: z.string().min(1),
+      size: z.number().int().min(0),
+      contentType: z.string().optional(),
+      bucket: z.string().optional(),
+      url: z.string().url().optional(),
+    });
+    const { key, name, size, contentType, bucket, url } = schema.parse(req.body || {});
+
+    const projectId = req.params.id as string;
+    const userId = req.user?.id as string;
+
+    // Authorization
+    const project = await firestoreService.getProjectByIdAuthorized(projectId, userId);
+    if (!project) {
+      res.status(404).json({ success: false, error: 'Project not found' });
+      return;
+    }
+
+    const db = getFirestore();
+    const filesCol = db.collection('projects').doc(projectId).collection('files');
+    const doc = await filesCol.add({
+      key,
+      name,
+      size,
+      contentType: contentType || null,
+      bucket: bucket || project.gcsBucket || null,
+      url: url || null,
+      uploadedBy: userId,
+      createdAt: new Date(),
+    });
+
+    res.json({ success: true, data: { id: doc.id } });
+  } catch (e: any) {
+    logger.error('storage record failed', e);
+    const code = e?.name === 'ZodError' ? 400 : 500;
+    res.status(code).json({ success: false, error: e?.message || 'Failed to record file metadata' });
   }
 });
 

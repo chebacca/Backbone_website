@@ -50,7 +50,6 @@ import {
   ArrowBack as ArrowBackIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -621,23 +620,7 @@ const AdminDashboard: React.FC = () => {
     <>
       <Box sx={{ pb: 4 }}>
         <Container maxWidth="xl">
-          <Box
-            sx={{
-              opacity: 0,
-              transform: 'translateY(20px)',
-              animation: 'fadeInUp 0.6s ease-out forwards',
-              '@keyframes fadeInUp': {
-                '0%': {
-                  opacity: 0,
-                  transform: 'translateY(20px)',
-                },
-                '100%': {
-                  opacity: 1,
-                  transform: 'translateY(0)',
-                },
-              },
-            }}
-          >
+          <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', '@keyframes fadeInUp': { '0%': { opacity: 0, transform: 'translateY(20px)', }, '100%': { opacity: 1, transform: 'translateY(0)', }, }, }} >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
               <DashboardIcon sx={{ fontSize: 32, color: 'primary.main' }} />
               <Typography variant="h4" sx={{ fontWeight: 700 }}>
@@ -654,13 +637,7 @@ const AdminDashboard: React.FC = () => {
         {/* Stats Cards */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} lg={3}>
-            <Box
-              sx={{
-                opacity: 0,
-                transform: 'translateY(20px)',
-                animation: 'fadeInUp 0.6s ease-out 0.1s forwards',
-              }}
-            >
+            <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out 0.1s forwards', }} >
               <Card
                 sx={{
                   background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)',
@@ -683,13 +660,7 @@ const AdminDashboard: React.FC = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} lg={3}>
-            <Box
-              sx={{
-                opacity: 0,
-                transform: 'translateY(20px)',
-                animation: 'fadeInUp 0.6s ease-out 0.2s forwards',
-              }}
-            >
+            <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out 0.2s forwards', }} >
               <Card
                 sx={{
                   background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
@@ -712,13 +683,7 @@ const AdminDashboard: React.FC = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} lg={3}>
-            <Box
-              sx={{
-                opacity: 0,
-                transform: 'translateY(20px)',
-                animation: 'fadeInUp 0.6s ease-out 0.3s forwards',
-              }}
-            >
+            <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out 0.3s forwards', }} >
               <Card
                 sx={{
                   background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(139, 195, 74, 0.1) 100%)',
@@ -741,13 +706,7 @@ const AdminDashboard: React.FC = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} lg={3}>
-            <Box
-              sx={{
-                opacity: 0,
-                transform: 'translateY(20px)',
-                animation: 'fadeInUp 0.6s ease-out 0.4s forwards',
-              }}
-            >
+            <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out 0.4s forwards', }} >
               <Card
                 sx={{
                   background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(255, 193, 7, 0.1) 100%)',
@@ -792,13 +751,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Users Tab */}
         {activeTab === 0 && (
-          <Box
-            sx={{
-              opacity: 0,
-              transform: 'translateY(20px)',
-              animation: 'fadeInUp 0.6s ease-out forwards',
-            }}
-          >
+          <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
               {/* Global Search */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -969,13 +922,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* Invoices Tab */}
         {activeTab === 1 && (
-          <Box
-            sx={{
-              opacity: 0,
-              transform: 'translateY(20px)',
-              animation: 'fadeInUp 0.6s ease-out forwards',
-            }}
-          >
+          <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
               {/* Global Search */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1133,13 +1080,7 @@ const AdminDashboard: React.FC = () => {
 
         {/* System Health Tab */}
         {activeTab === 2 && (
-          <Box
-            sx={{
-              opacity: 0,
-              transform: 'translateY(20px)',
-              animation: 'fadeInUp 0.6s ease-out forwards',
-            }}
-          >
+          <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
                 <Paper sx={{ p: 3 }}>

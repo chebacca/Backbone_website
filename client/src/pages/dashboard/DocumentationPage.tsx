@@ -57,7 +57,6 @@ import {
   CodeSharp,
   CodeTwoTone,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
 import { useSnackbar } from 'notistack';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
@@ -780,19 +779,9 @@ const DocumentationPage: React.FC = () => {
       {!inDashboard && <Navigation />}
       
       <Container maxWidth="lg" sx={{ pt: inDashboard ? { xs: 2, md: 4 } : { xs: 12, md: 16 }, pb: inDashboard ? { xs: 2, md: 4 } : { xs: 4, md: 8 } }}>
-        <Box
-          sx={{
-            background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%)',
-            borderRadius: 2,
-            p: { xs: 2, md: 4 },
-          }}
-        >
+        <Box sx={{ background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%)', borderRadius: 2, p: { xs: 2, md: 4 }, }} >
           {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+          <div >
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
             Documentation Center
@@ -801,14 +790,10 @@ const DocumentationPage: React.FC = () => {
             Comprehensive guides and resources for Dashboard v14
           </Typography>
         </Box>
-      </motion.div>
+      </div>
 
       {/* Quick Start Alert */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
+      <div >
         <Alert 
           severity="info" 
           sx={{ 
@@ -829,14 +814,10 @@ const DocumentationPage: React.FC = () => {
             specialized workflows and integrations. <strong>Click here to jump to Session Management!</strong>
           </Typography>
         </Alert>
-      </motion.div>
+      </div>
 
       {/* Tab Navigation */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-      >
+      <div >
         <Paper sx={{ mb: 4 }}>
           <Tabs
             value={selectedTab}
@@ -856,15 +837,11 @@ const DocumentationPage: React.FC = () => {
             <Tab label="Development" icon={<Code />} />
           </Tabs>
         </Paper>
-      </motion.div>
+      </div>
 
       {/* Core Features Tab */}
       <TabPanel value={selectedTab} index={0}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <div >
           <Grid container spacing={3}>
             {coreFeatures.map((section) => (
               <Grid item xs={12} key={section.id}>
@@ -914,16 +891,12 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </div>
       </TabPanel>
 
       {/* Advanced Features Tab */}
       <TabPanel value={selectedTab} index={1}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <div >
           <Grid container spacing={3}>
             {advancedFeatures.map((section) => (
               <Grid item xs={12} key={section.id}>
@@ -964,16 +937,12 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </div>
       </TabPanel>
 
       {/* Integration Tab */}
       <TabPanel value={selectedTab} index={2}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <div >
           <Grid container spacing={3}>
             {integrationDocs.map((section) => (
               <Grid item xs={12} key={section.id}>
@@ -1014,16 +983,12 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </div>
       </TabPanel>
 
       {/* Development Tab */}
       <TabPanel value={selectedTab} index={3}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <div >
           <Grid container spacing={3}>
             {developmentDocs.map((section) => (
               <Grid item xs={12} key={section.id}>
@@ -1064,15 +1029,11 @@ const DocumentationPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
-        </motion.div>
+        </div>
       </TabPanel>
 
       {/* Quick Actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.3 }}
-      >
+      <div >
         <Paper
           sx={{
             p: 3,
@@ -1128,7 +1089,7 @@ const DocumentationPage: React.FC = () => {
             </Grid>
           </Grid>
         </Paper>
-      </motion.div>
+      </div>
         </Box>
       </Container>
       

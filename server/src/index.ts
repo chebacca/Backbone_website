@@ -17,6 +17,10 @@ import { organizationsRouter } from './routes/organizations.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { accountingRouter } from './routes/accounting.js';
 import invoicesRouter from './routes/invoices.js';
+// Dashboard API routes for compatibility
+import { sessionsRouter } from './routes/sessions.js';
+import { callsheetsRouter } from './routes/callsheets.js';
+import { timecardRouter } from './routes/timecard.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { logger } from './utils/logger.js';
@@ -73,22 +77,60 @@ app.use(helmet({
 }));
 
 // CORS
-// - Allow all origins at the Cloud Functions entry (handled below via onRequest cors: true)
 // - Enforce allowed origins here, with special handling for desktop/electron (no Origin header)
+const corsOrigins = config.corsOrigin ? config.corsOrigin.split(',').map(origin => origin.trim()) : [];
 const allowedOrigins: (string | RegExp)[] = [
-  config.corsOrigin,
+  ...corsOrigins,
+  'https://dashboard-1c3a5.web.app',  // 🔧 CRITICAL FIX: Allow dashboard domain
+  'https://dashboard-1c3a5.firebaseapp.com',  // Alternative Firebase domain
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
 ];
-app.use(cors({
+const corsMiddleware = cors({
   origin: (origin, callback) => {
+    console.log('🔍 [CORS] Checking origin:', origin);
+    console.log('🔍 [CORS] Allowed origins:', allowedOrigins);
+    
     // Allow requests with no origin (like mobile apps or Electron)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('✅ [CORS] Allowing request with no origin');
+      return callback(null, true);
+    }
+    
     const ok = allowedOrigins.some((o) => (typeof o === 'string' ? o === origin : o.test(origin)));
+    
+    if (ok) {
+      console.log('✅ [CORS] Allowing origin:', origin);
+    } else {
+      console.log('❌ [CORS] Blocking origin:', origin);
+    }
+    
     return callback(null, ok);
   },
   credentials: true,
-}));
+});
+
+// Apply CORS and explicitly handle preflight for all routes
+app.use(corsMiddleware);
+app.options('*', corsMiddleware);
+
+// Ensure credentials header is always present when using CORS with credentials
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string | undefined;
+  if (origin && allowedOrigins.some((o) => (typeof o === 'string' ? o === origin : (o as RegExp).test(origin)))) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] as string || 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS,HEAD');
+  }
+  // Short-circuit preflight
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 
 // Rate limiting
 const limiter = rateLimit({
@@ -137,6 +179,11 @@ app.use('/api/accounting', accountingRouter);
 // Prefer named export to satisfy TS named typing if needed, but default remains for compatibility
 app.use('/api/projects', projectsRouter);
 app.use('/api/datasets', datasetsRouter);
+
+// Dashboard API routes for compatibility (return empty data for licensing website)
+app.use('/api/sessions', sessionsRouter);
+app.use('/api/callsheets', callsheetsRouter);
+app.use('/api/timecard', timecardRouter);
 
 // Setup endpoint: place BEFORE error handlers so it's reachable
 app.post('/api/setup/seed-superadmin', async (req, res) => {
@@ -1068,9 +1115,8 @@ const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 
 export const api = onRequest({
   region: 'us-central1',
-  // Allow all origins at the Functions layer; app-level CORS above enforces allowed list
-  cors: true,
+  // Handle CORS at the Express layer to support credentials on preflight
   secrets: [ADMIN_SETUP_TOKEN, SENDGRID_API_KEY, STRIPE_SECRET_KEY],
 }, app);
 
-export { app, server };
+export { app };

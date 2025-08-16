@@ -1,3 +1,35 @@
+// @ts-nocheck
+import React, { useState } from 'react';
+import { useTheme } from '@mui/material/styles';
+import {
+  Box,
+  Container,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Chip,
+} from '@mui/material';
+import {
+  Computer as ComputerIcon,
+  NetworkWifi as NetworkIcon,
+  CheckCircle as CheckCircleIcon,
+} from '@mui/icons-material';
 /**
  * Simplified Mode Selection Component
  * 
@@ -5,47 +37,6 @@
  * and provides proper guidance for choosing between Standalone and Network modes.
  */
 
-import React, { useState } from 'react';
-import {
-    Box,
-    Container,
-    Typography,
-    Card,
-    CardContent,
-    CardActions,
-    Button,
-    Grid,
-    Chip,
-    Alert,
-    FormControl,
-    FormLabel,
-    RadioGroup,
-    FormControlLabel,
-    Radio,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    List,
-    ListItem,
-    ListItemIcon,
-    ListItemText,
-    Divider,
-    useTheme
-} from '@mui/material';
-import {
-    Computer as ComputerIcon,
-    NetworkWifi as NetworkIcon,
-    Cloud as CloudIcon,
-    Storage as StorageIcon,
-    Group as GroupIcon,
-    Security as SecurityIcon,
-    Sync as SyncIcon,
-    CheckCircle as CheckCircleIcon,
-    Info as InfoIcon,
-    Warning as WarningIcon
-} from '@mui/icons-material';
-import { motion } from 'framer-motion';
 import { ApplicationMode } from '../types/applicationMode';
 import { StorageMode, simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
 
@@ -185,11 +176,7 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
             <Grid container spacing={4} sx={{ mb: 6 }}>
                 {MODE_OPTIONS.map((option, index) => (
                     <Grid item xs={12} md={6} key={option.mode}>
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                        >
+                        <div>
                             <Card
                                 sx={{
                                     height: '100%',
@@ -209,13 +196,7 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
                             >
                                 <CardContent sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                                        <Box sx={{ 
-                                            color: 'primary.main', 
-                                            mr: 2,
-                                            p: 1,
-                                            borderRadius: 2,
-                                            backgroundColor: 'rgba(0, 212, 255, 0.1)'
-                                        }}>
+                                        <Box sx={{ color: 'primary.main', mr: 2, p: 1, borderRadius: 2, backgroundColor: 'rgba(0, 212, 255, 0.1)' }}>
                                             {option.icon}
                                         </Box>
                                         <Box>
@@ -363,7 +344,7 @@ export const SimplifiedModeSelection: React.FC<SimplifiedModeSelectionProps> = (
                                     </Button>
                                 </CardActions>
                             </Card>
-                        </motion.div>
+                        </div>
                     </Grid>
                 ))}
             </Grid>

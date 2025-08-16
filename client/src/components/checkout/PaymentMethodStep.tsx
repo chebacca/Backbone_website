@@ -189,18 +189,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
                   <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
                     Card Number
                   </Typography>
-                  <Box
-                    sx={{
-                      p: 2,
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: 1,
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      '&:focus-within': {
-                        borderColor: 'primary.main',
-                        boxShadow: '0 0 0 2px rgba(0, 212, 255, 0.2)',
-                      },
-                    }}
-                  >
+                  <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: 1, backgroundColor: 'rgba(255, 255, 255, 0.05)', '&:focus-within': { borderColor: 'primary.main', boxShadow: '0 0 0 2px rgba(0, 212, 255, 0.2)', }, }} >
                     <CardNumberElement
                       options={cardElementOptions}
                       onChange={(event) => {
@@ -219,18 +208,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
                   <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
                     Expiry Date
                   </Typography>
-                  <Box
-                    sx={{
-                      p: 2,
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: 1,
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      '&:focus-within': {
-                        borderColor: 'primary.main',
-                        boxShadow: '0 0 0 2px rgba(0, 212, 255, 0.2)',
-                      },
-                    }}
-                  >
+                  <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: 1, backgroundColor: 'rgba(255, 255, 255, 0.05)', '&:focus-within': { borderColor: 'primary.main', boxShadow: '0 0 0 2px rgba(0, 212, 255, 0.2)', }, }} >
                     <CardExpiryElement
                       options={cardElementOptions}
                       onChange={(event) => {
@@ -249,18 +227,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
                   <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
                     CVC
                   </Typography>
-                  <Box
-                    sx={{
-                      p: 2,
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: 1,
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      '&:focus-within': {
-                        borderColor: 'primary.main',
-                        boxShadow: '0 0 0 2px rgba(0, 212, 255, 0.2)',
-                      },
-                    }}
-                  >
+                  <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: 1, backgroundColor: 'rgba(255, 255, 255, 0.05)', '&:focus-within': { borderColor: 'primary.main', boxShadow: '0 0 0 2px rgba(0, 212, 255, 0.2)', }, }} >
                     <CardCvcElement
                       options={cardElementOptions}
                       onChange={(event) => {
@@ -308,11 +275,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
 
         {/* Security & Trust Indicators */}
         <Grid item xs={12} lg={4}>
-          <Box
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+          <Box>
             <Paper
               elevation={2}
               sx={{
@@ -379,16 +342,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
                 
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mb: 2 }}>
                   {['Visa', 'Mastercard', 'American Express', 'Discover'].map((card) => (
-                    <Box
-                      key={card}
-                      sx={{
-                        px: 1,
-                        py: 0.5,
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                        borderRadius: 1,
-                        fontSize: '0.75rem',
-                      }}
-                    >
+                    <Box key={card} sx={{ px: 1, py: 0.5, backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: 1, fontSize: '0.75rem', }} >
                       {card}
                     </Box>
                   ))}
@@ -417,20 +371,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
               <List dense>
                 <ListItem sx={{ px: 0, alignItems: 'flex-start' }}>
                   <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
-                    <Box
-                      sx={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        backgroundColor: 'primary.main',
-                        color: '#000',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                      }}
-                    >
+                    <Box sx={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'primary.main', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600, }} >
                       1
                     </Box>
                   </ListItemIcon>
@@ -444,20 +385,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
 
                 <ListItem sx={{ px: 0, alignItems: 'flex-start' }}>
                   <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
-                    <Box
-                      sx={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        backgroundColor: 'primary.main',
-                        color: '#000',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                      }}
-                    >
+                    <Box sx={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'primary.main', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600, }} >
                       2
                     </Box>
                   </ListItemIcon>
@@ -471,20 +399,7 @@ export const PaymentMethodStep: React.FC<PaymentMethodStepProps> = ({
 
                 <ListItem sx={{ px: 0, alignItems: 'flex-start' }}>
                   <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
-                    <Box
-                      sx={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        backgroundColor: 'primary.main',
-                        color: '#000',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                      }}
-                    >
+                    <Box sx={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: 'primary.main', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600, }} >
                       3
                     </Box>
                   </ListItemIcon>

@@ -31,7 +31,6 @@ import {
   Cloud,
   Hub,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useNavigate } from 'react-router-dom';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
@@ -224,38 +223,9 @@ const PricingPage: React.FC = () => {
       <Navigation />
       
       {/* Hero Section */}
-      <Box
-        sx={{
-          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-          pt: { xs: 12, md: 16 },
-          pb: { xs: 6, md: 8 },
-          position: 'relative',
-        }}
-      >
+      <Box sx={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', pt: { xs: 12, md: 16 }, pb: { xs: 6, md: 8 }, position: 'relative', }} >
         <Container maxWidth="lg">
-          <Box
-            sx={{
-              ...staggerAnimation,
-              '@keyframes fadeInUp': {
-                '0%': {
-                  opacity: 0,
-                  transform: 'translateY(60px)',
-                },
-                '100%': {
-                  opacity: 1,
-                  transform: 'translateY(0)',
-                },
-              },
-              '@keyframes staggerFadeIn': {
-                '0%': {
-                  opacity: 0,
-                },
-                '100%': {
-                  opacity: 1,
-                },
-              },
-            }}
-          >
+          <Box sx={{ ...staggerAnimation, '@keyframes fadeInUp': { '0%': { opacity: 0, transform: 'translateY(60px)', }, '100%': { opacity: 1, transform: 'translateY(0)', }, }, '@keyframes staggerFadeIn': { '0%': { opacity: 0, }, '100%': { opacity: 1, }, }, }} >
             <Box textAlign="center" sx={{ mb: 6 }}>
               <Box sx={fadeInUpAnimation}>
                 <Typography
@@ -327,12 +297,7 @@ const PricingPage: React.FC = () => {
 
       {/* Pricing Cards */}
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 }, mt: -4 }}>
-        <Box
-          sx={{
-            ...staggerAnimation,
-            animationDelay: '0.1s',
-          }}
-        >
+        <Box sx={{ ...staggerAnimation, animationDelay: '0.1s', }} >
           <Grid container spacing={4} justifyContent="center">
             {pricingTiers.map((tier) => (
               <Grid item xs={12} md={4} key={tier.id}>
@@ -356,14 +321,7 @@ const PricingPage: React.FC = () => {
                     }}
                   >
                     {tier.popular && (
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: -12,
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                        }}
-                      >
+                      <Box sx={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', }} >
                         <Chip
                           icon={<Star />}
                           label="Most Popular"
@@ -378,22 +336,7 @@ const PricingPage: React.FC = () => {
 
                     <CardContent sx={{ p: 4, height: '100%', display: 'flex', flexDirection: 'column' }}>
                       <Box sx={{ textAlign: 'center', mb: 4 }}>
-                        <Box
-                          sx={{
-                            width: 60,
-                            height: 60,
-                            borderRadius: 2,
-                            backgroundColor: tier.popular 
-                              ? 'rgba(0, 212, 255, 0.2)' 
-                              : 'rgba(0, 212, 255, 0.1)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            mx: 'auto',
-                            mb: 2,
-                            color: 'primary.main',
-                          }}
-                        >
+                        <Box sx={{ width: 60, height: 60, borderRadius: 2, backgroundColor: tier.popular ? 'rgba(0, 212, 255, 0.2)' : 'rgba(0, 212, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2, color: 'primary.main', }} >
                           {tier.icon}
                         </Box>
 
@@ -503,12 +446,7 @@ const PricingPage: React.FC = () => {
       {/* Feature Comparison */}
       <Box sx={{ backgroundColor: 'background.paper', py: { xs: 6, md: 8 } }}>
         <Container maxWidth="lg">
-          <Box
-            sx={{
-              ...staggerAnimation,
-              animationDelay: '0.2s',
-            }}
-          >
+          <Box sx={{ ...staggerAnimation, animationDelay: '0.2s', }} >
             <Box textAlign="center" sx={{ mb: 6 }}>
               <Box sx={fadeInUpAnimation}>
                 <Typography
@@ -560,19 +498,7 @@ const PricingPage: React.FC = () => {
                 <Grid item xs={12} md={6} key={index}>
                   <Box sx={fadeInUpAnimation}>
                     <Box sx={{ display: 'flex', gap: 3, p: 3 }}>
-                      <Box
-                        sx={{
-                          width: 60,
-                          height: 60,
-                          borderRadius: 2,
-                          backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'primary.main',
-                          flexShrink: 0,
-                        }}
-                      >
+                      <Box sx={{ width: 60, height: 60, borderRadius: 2, backgroundColor: 'rgba(0, 212, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'primary.main', flexShrink: 0, }} >
                         {item.icon}
                       </Box>
                       
@@ -595,12 +521,7 @@ const PricingPage: React.FC = () => {
 
       {/* FAQ Section */}
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 8 } }}>
-        <Box
-          sx={{
-            ...staggerAnimation,
-            animationDelay: '0.3s',
-          }}
-        >
+        <Box sx={{ ...staggerAnimation, animationDelay: '0.3s', }} >
           <Box textAlign="center" sx={{ mb: 6 }}>
             <Box sx={fadeInUpAnimation}>
               <Typography variant="h3" sx={{ fontWeight: 600, mb: 2 }}>
@@ -640,12 +561,7 @@ const PricingPage: React.FC = () => {
       {/* Final CTA */}
       <Box sx={{ backgroundColor: 'background.paper', py: { xs: 6, md: 8 } }}>
         <Container maxWidth="md">
-          <Box
-            sx={{
-              ...fadeInUpAnimation,
-              animationDelay: '0.4s',
-            }}
-          >
+          <Box sx={{ ...fadeInUpAnimation, animationDelay: '0.4s', }} >
             <Box textAlign="center">
               <Typography variant="h4" sx={{ fontWeight: 600, mb: 2 }}>
                 Ready to Get Started?

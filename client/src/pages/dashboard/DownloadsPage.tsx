@@ -41,7 +41,6 @@ import {
   ContentCopy,
   Link as LinkIcon,
 } from '@mui/icons-material';
-// import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 import { useSnackbar } from 'notistack';
 
 interface SDKVersion {
@@ -215,11 +214,7 @@ const DownloadsPage: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
+      <Box >
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
             Downloads & Resources
@@ -231,11 +226,7 @@ const DownloadsPage: React.FC = () => {
       </Box>
 
       {/* License Key Card */}
-      <Box
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
+      <Box >
         <Alert
           severity="info"
           sx={{
@@ -276,11 +267,7 @@ const DownloadsPage: React.FC = () => {
       </Box>
 
       {/* Tabs */}
-      <Box
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-      >
+      <Box >
         <Box sx={{ borderBottom: 1, borderColor: 'rgba(255,255,255,0.1)', mb: 4 }}>
           <Tabs
             value={selectedTab}
@@ -303,19 +290,11 @@ const DownloadsPage: React.FC = () => {
 
       {/* SDK Downloads Tab */}
       {selectedTab === 0 && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Grid container spacing={3}>
             {mockSDKVersions.map((sdk, index) => (
               <Grid item xs={12} key={sdk.id}>
-                <Box
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                >
+                <Box >
                   <Card
                     sx={{
                       background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
@@ -396,19 +375,11 @@ const DownloadsPage: React.FC = () => {
 
       {/* Documentation Tab */}
       {selectedTab === 1 && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Grid container spacing={3}>
                           {mockSDKDocumentation.map((doc, index) => (
               <Grid item xs={12} md={6} lg={4} key={doc.id}>
-                <Box
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                >
+                <Box >
                   <Card
                     sx={{
                       height: '100%',
@@ -468,11 +439,7 @@ const DownloadsPage: React.FC = () => {
 
       {/* Download History Tab */}
       {selectedTab === 2 && (
-        <Box
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
+        <Box >
           <Paper
             sx={{
               background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',

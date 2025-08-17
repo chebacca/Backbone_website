@@ -47,5 +47,15 @@ export default defineConfig({
   define: {
     // Ensure environment variables are available at build time
     __DEV__: JSON.stringify(process.env.NODE_ENV === 'development'),
+    // Provide fallback values for required environment variables
+    'import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY': JSON.stringify(
+      process.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_your_stripe_publishable_key_here'
+    ),
+    'import.meta.env.VITE_STRIPE_ENABLED': JSON.stringify(
+      process.env.VITE_STRIPE_ENABLED || 'true'
+    ),
+    'import.meta.env.VITE_API_BASE_URL': JSON.stringify(
+      process.env.VITE_API_BASE_URL || '/api'
+    ),
   },
 });

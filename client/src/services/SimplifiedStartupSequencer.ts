@@ -231,6 +231,94 @@ class SimplifiedStartupSequencer {
     }
 
     /**
+     * Authenticate team member with email/password
+     * This integrates with the CloudProjectIntegration service for team member validation
+     */
+    public async authenticateTeamMember(email: string, password: string): Promise<void> {
+        try {
+            this.updateState({ isLoading: true, error: null });
+
+            // Import CloudProjectIntegration dynamically to avoid circular dependencies
+            const { cloudProjectIntegration } = await import('./CloudProjectIntegration');
+            
+            // Validate team member credentials
+            const validation = await cloudProjectIntegration.validateTeamMemberCredentials(email, password);
+            
+            if (!validation.isValid) {
+                throw new Error(validation.error || 'Invalid team member credentials');
+            }
+
+            // Mark user as team member for project access control
+            const teamMemberUser = {
+                ...validation.teamMember,
+                isTeamMember: true,
+                authenticationType: 'team_member',
+                projectAccess: validation.projectAccess || []
+            };
+
+            await this.onAuthenticationSuccess(teamMemberUser);
+        } catch (error) {
+            console.error('Team member authentication error:', error);
+            this.updateState({
+                error: error instanceof Error ? error.message : 'Team member authentication failed',
+                isLoading: false
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Get team member project context when selecting a project
+     * This determines the user's role in the Backbone app based on their team member role
+     */
+    public async getTeamMemberProjectContext(projectId: string): Promise<any> {
+        if (!this.state.user?.isTeamMember) {
+            return null;
+        }
+
+        try {
+            // Import CloudProjectIntegration dynamically
+            const { cloudProjectIntegration } = await import('./CloudProjectIntegration');
+            
+            // Get the team member's role in this specific project
+            const projectTeamMembers = await cloudProjectIntegration.getProjectTeamMembers(projectId);
+            const teamMemberAssignment = projectTeamMembers.find(
+                ptm => ptm.teamMemberId === this.state.user.id
+            );
+
+            if (!teamMemberAssignment) {
+                throw new Error('Team member is not assigned to this project');
+            }
+
+            // Import team member role mappings
+            const { TEAM_MEMBER_ROLE_MAPPINGS } = await import('../types/teamMember');
+            
+            // Find the corresponding Backbone app role
+            const roleMapping = TEAM_MEMBER_ROLE_MAPPINGS.find(
+                mapping => mapping.teamMemberRole === teamMemberAssignment.role
+            );
+
+            if (!roleMapping) {
+                throw new Error('Invalid team member role mapping');
+            }
+
+            return {
+                teamMember: this.state.user,
+                project: {
+                    id: projectId,
+                    role: teamMemberAssignment.role
+                },
+                backboneUserRole: roleMapping.backboneUserRole,
+                permissions: roleMapping.permissions,
+                canManageTeam: teamMemberAssignment.role === 'admin'
+            };
+        } catch (error) {
+            console.error('Failed to get team member project context:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Handle project selection/creation
      */
     public async selectProject(projectId: string): Promise<void> {
@@ -403,8 +491,8 @@ class SimplifiedStartupSequencer {
             if (!address?.trim()) {
                 throw new Error('Network address is required for local network deployment');
             }
-            if (!maxUsers || maxUsers < 1 || maxUsers > 100) {
-                throw new Error('Max users must be between 1-100');
+            if (!maxUsers || maxUsers < 1 || maxUsers > 250) {
+                throw new Error('Max users must be between 1-250');
             }
         }
 

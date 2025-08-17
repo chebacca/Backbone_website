@@ -13,9 +13,11 @@
     "build:shared": "cd shared && tsc",
     "build:client": "cd client && vite build",
     "build:server": "cd server && tsc",
+    "build:licensing": "pnpm build:shared && pnpm build:client && pnpm build:server",
     "setup": "pnpm install",
     "test": "echo \"Tests will be added\" && exit 0",
     "deploy": "pnpm build && firebase deploy --only hosting,functions,firestore,storage",
+    "deploy:licensing": "pnpm build:licensing && firebase deploy --only hosting,functions,firestore,storage",
     "deploy:all": "pnpm build && firebase deploy",
     "deploy:hosting": "pnpm build:client && firebase deploy --only hosting",
     "deploy:functions": "pnpm build:server && firebase deploy --only functions",
@@ -27,7 +29,10 @@
     "seed": "cd server && pnpm seed",
     "seed:clear": "cd server && pnpm seed:clear",
     "seed:reset": "cd server && pnpm seed:reset",
-    "seed:chris-mole": "cd server && pnpm seed:chris-mole"
+    "seed:chris-mole": "cd server && pnpm seed:chris-mole",
+    "quick:build": "./build-licensing-website.sh",
+    "quick:deploy": "./deploy-licensing-website.sh",
+    "quick:build-deploy": "./build-and-deploy.sh"
   },
   "keywords": [
     "licensing",

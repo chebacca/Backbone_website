@@ -12,6 +12,16 @@ import {
     StorageMode
 } from './SimplifiedStartupSequencer';
 import { ApplicationMode } from '../types/applicationMode';
+import { 
+    TeamMember, 
+    ProjectTeamMember, 
+    TeamMemberRole, 
+    TeamMemberStatus,
+    LicenseType,
+    TeamMemberAuthResult,
+    TeamMemberProjectContext,
+    TEAM_MEMBER_ROLE_MAPPINGS
+} from '../types/teamMember';
 
 // Import the existing API service from the licensing website
 interface CloudProject {
@@ -112,6 +122,7 @@ class CloudProjectIntegrationService {
     private static instance: CloudProjectIntegrationService;
     private baseURL: string;
     private authToken: string | null = null;
+    private authTokenCallback: (() => string | null) | null = null;
 
     private constructor() {
         this.baseURL = this.getBaseURL();
@@ -126,10 +137,35 @@ class CloudProjectIntegrationService {
     }
 
     /**
-     * Initialize authentication token from storage
+     * Set a callback to get the current auth token (for webonly mode)
+     */
+    public setAuthTokenCallback(callback: () => string | null): void {
+        this.authTokenCallback = callback;
+    }
+
+    /**
+     * Get the current auth token
+     */
+    private getAuthToken(): string | null {
+        const callbackToken = this.authTokenCallback ? this.authTokenCallback() : null;
+        const directToken = this.authToken;
+        
+        // Debug logging removed for production
+        
+        return callbackToken || directToken;
+    }
+
+    /**
+     * Initialize authentication token from storage (fallback for non-webonly mode)
      */
     private initializeAuth(): void {
-        this.authToken = localStorage.getItem('auth_token');
+        try {
+            this.authToken = localStorage.getItem('auth_token');
+        } catch (error) {
+            // localStorage might be disabled in webonly mode
+            console.warn('localStorage not available, using auth callback instead');
+            this.authToken = null;
+        }
     }
 
     /**
@@ -164,8 +200,11 @@ class CloudProjectIntegrationService {
             'Content-Type': 'application/json',
         };
 
-        if (this.authToken) {
-            headers.Authorization = `Bearer ${this.authToken}`;
+        const token = this.getAuthToken();
+        // Debug logging removed for production
+        
+        if (token) {
+            headers.Authorization = `Bearer ${token}`;
         }
 
         const config: RequestInit = {
@@ -221,7 +260,14 @@ class CloudProjectIntegrationService {
     private async handleAuthError(): Promise<void> {
         // Try to refresh token using the existing API logic
         try {
-            const refreshToken = localStorage.getItem('refresh_token');
+            let refreshToken: string | null = null;
+            try {
+                refreshToken = localStorage.getItem('refresh_token');
+            } catch (error) {
+                // localStorage might be disabled in webonly mode
+                console.warn('localStorage not available for refresh token');
+            }
+
             if (!refreshToken) {
                 throw new Error('No refresh token available');
             }
@@ -237,11 +283,16 @@ class CloudProjectIntegrationService {
                 if (result.success && result.data?.tokens?.accessToken) {
                     const newAccessToken: string = result.data.tokens.accessToken as string;
                     this.authToken = newAccessToken;
-                    localStorage.setItem('auth_token', newAccessToken);
-
-                    const nextRefresh: string | undefined = result.data.tokens.refreshToken as string | undefined;
-                    if (nextRefresh) {
-                        localStorage.setItem('refresh_token', nextRefresh);
+                    
+                    try {
+                        localStorage.setItem('auth_token', newAccessToken);
+                        const nextRefresh: string | undefined = result.data.tokens.refreshToken as string | undefined;
+                        if (nextRefresh) {
+                            localStorage.setItem('refresh_token', nextRefresh);
+                        }
+                    } catch (error) {
+                        // localStorage might be disabled in webonly mode
+                        console.warn('localStorage not available for storing tokens');
                     }
                     return;
                 }
@@ -251,8 +302,13 @@ class CloudProjectIntegrationService {
         }
 
         // Clear tokens and notify startup sequencer
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('refresh_token');
+        try {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('refresh_token');
+        } catch (error) {
+            // localStorage might be disabled in webonly mode
+            console.warn('localStorage not available for clearing tokens');
+        }
         this.authToken = null;
 
         // Reset startup sequencer to authentication step
@@ -483,10 +539,14 @@ class CloudProjectIntegrationService {
      */
     public async getUserProjects(): Promise<CloudProject[]> {
         try {
-      const endpoint = this.authToken ? 'projects' : 'projects/public';
-      return await this.apiRequest<CloudProject[]>(endpoint);
+            // Always use the authenticated endpoint - the apiRequest method handles auth
+            const endpoint = 'projects';
+            const result = await this.apiRequest<CloudProject[]>(endpoint);
+            // Debug logging removed for production
+            return result || [];
         } catch (error) {
             console.error('Failed to fetch user projects:', error);
+            // If authentication fails, return empty array instead of crashing
             return [];
         }
     }
@@ -694,6 +754,307 @@ class CloudProjectIntegrationService {
 
     public async unassignDatasetFromProject(projectId: string, datasetId: string): Promise<void> {
         await this.apiRequest(`datasets/project/${projectId}/${datasetId}`, 'DELETE');
+    }
+
+    // ==================== TEAM MEMBER MANAGEMENT ====================
+
+    /**
+     * Get team members assigned to a specific project
+     */
+    public async getProjectTeamMembers(projectId: string): Promise<ProjectTeamMember[]> {
+        try {
+            const result = await this.apiRequest<ProjectTeamMember[]>(`projects/${projectId}/team-members`);
+            return result || [];
+        } catch (error: any) {
+            console.warn('Team member API endpoint not yet implemented, using fallback data:', error?.message);
+            
+            // Return fallback/mock data until backend endpoints are implemented
+            return this.getFallbackTeamMembers(projectId);
+        }
+    }
+
+    /**
+     * Fallback team member data until backend endpoints are implemented
+     */
+    private getFallbackTeamMembers(projectId: string): ProjectTeamMember[] {
+        // Check if we have any stored team members for this project
+        const storedMembers = localStorage.getItem(`project_team_members_${projectId}`);
+        if (storedMembers) {
+            try {
+                return JSON.parse(storedMembers);
+            } catch (e) {
+                console.warn('Failed to parse stored team members');
+            }
+        }
+
+        // Return empty array for now - team members can be added through the UI
+        // and will be stored locally until backend is ready
+        return [];
+    }
+
+    /**
+     * Get all licensed team members available to the current user/organization
+     * Excludes members already assigned to the specified project
+     */
+    public async getLicensedTeamMembers(options?: {
+        search?: string;
+        excludeProjectId?: string;
+    }): Promise<TeamMember[]> {
+        try {
+            const params = new URLSearchParams();
+            if (options?.search) {
+                params.append('search', options.search);
+            }
+            if (options?.excludeProjectId) {
+                params.append('excludeProjectId', options.excludeProjectId);
+            }
+
+            const endpoint = `team-members/licensed${params.toString() ? `?${params.toString()}` : ''}`;
+            const result = await this.apiRequest<any[]>(endpoint);
+            return result || [];
+        } catch (error: any) {
+            console.warn('Licensed team members API endpoint not yet implemented, using fallback data:', error?.message);
+            
+            // Return fallback team member data from what we see in Team Management
+            return this.getFallbackLicensedTeamMembers(options);
+        }
+    }
+
+    /**
+     * Fallback licensed team member data based on Team Management page
+     */
+    private getFallbackLicensedTeamMembers(options?: {
+        search?: string;
+        excludeProjectId?: string;
+    }): TeamMember[] {
+        // Mock team members based on what's shown in the Team Management page
+        const allTeamMembers: TeamMember[] = [
+            {
+                id: 'audrey_guz_001',
+                name: 'Audrey Guz',
+                email: 'audrey.guz@apple.com',
+                firstName: 'Audrey',
+                lastName: 'Guz',
+                licenseType: LicenseType.PROFESSIONAL,
+                status: TeamMemberStatus.ACTIVE,
+                organizationId: 'org_001',
+                department: 'Not assigned',
+                createdAt: '2024-01-01T00:00:00Z',
+                updatedAt: '2025-08-14T00:00:00Z',
+                lastActive: '8/14/2025'
+            },
+            {
+                id: 'lissa_001',
+                name: 'Lissa',
+                email: 'lissa@apple.com',
+                firstName: 'Lissa',
+                licenseType: LicenseType.PROFESSIONAL,
+                status: TeamMemberStatus.ACTIVE,
+                organizationId: 'org_001',
+                department: 'Not assigned',
+                createdAt: '2024-01-01T00:00:00Z',
+                updatedAt: '2025-08-13T00:00:00Z',
+                lastActive: '8/13/2025'
+            },
+            {
+                id: 'enterprise_user_001',
+                name: 'Enterprise User',
+                email: 'enterprise.user@example.com',
+                firstName: 'Enterprise',
+                lastName: 'User',
+                licenseType: LicenseType.ENTERPRISE,
+                status: TeamMemberStatus.ACTIVE,
+                organizationId: 'org_001',
+                department: 'Not assigned',
+                createdAt: '2024-01-01T00:00:00Z',
+                updatedAt: '2025-08-13T00:00:00Z',
+                lastActive: '8/13/2025'
+            },
+            {
+                id: 'chebacca_001',
+                name: 'Chebacca',
+                email: 'chebacca@gmail.com',
+                firstName: 'Chebacca',
+                licenseType: LicenseType.PROFESSIONAL,
+                status: TeamMemberStatus.ACTIVE,
+                organizationId: 'org_001',
+                department: 'Not assigned',
+                createdAt: '2024-01-01T00:00:00Z',
+                updatedAt: '2025-08-13T00:00:00Z',
+                lastActive: '8/13/2025'
+            },
+            {
+                id: 's_moser_001',
+                name: 'S Moser',
+                email: 's.moser@apple.com',
+                firstName: 'S',
+                lastName: 'Moser',
+                licenseType: LicenseType.PROFESSIONAL,
+                status: TeamMemberStatus.ACTIVE,
+                organizationId: 'org_001',
+                department: 'Not assigned',
+                createdAt: '2024-01-01T00:00:00Z',
+                updatedAt: '2025-08-14T00:00:00Z',
+                lastActive: '8/14/2025'
+            }
+        ];
+
+        let filteredMembers = allTeamMembers;
+
+        // Apply search filter
+        if (options?.search) {
+            const searchLower = options.search.toLowerCase();
+            filteredMembers = filteredMembers.filter(member => 
+                member.name.toLowerCase().includes(searchLower) ||
+                member.email.toLowerCase().includes(searchLower)
+            );
+        }
+
+        // Exclude members already assigned to the project
+        if (options?.excludeProjectId) {
+            const assignedMembers = this.getFallbackTeamMembers(options.excludeProjectId);
+            const assignedIds = assignedMembers.map(m => m.id);
+            filteredMembers = filteredMembers.filter(member => 
+                !assignedIds.includes(member.id)
+            );
+        }
+
+        return filteredMembers;
+    }
+
+    /**
+     * Add a team member to a project with a specific role
+     */
+    public async addTeamMemberToProject(projectId: string, teamMemberId: string, role: TeamMemberRole = TeamMemberRole.DO_ER): Promise<void> {
+        try {
+            await this.apiRequest(`projects/${projectId}/team-members`, 'POST', {
+                teamMemberId,
+                role
+            });
+        } catch (error: any) {
+            console.warn('Add team member API endpoint not yet implemented, using local storage:', error?.message);
+            
+            // Fallback: Store in localStorage until backend is ready
+            const allMembers = this.getFallbackLicensedTeamMembers();
+            const memberToAdd = allMembers.find(m => m.id === teamMemberId);
+            
+            if (memberToAdd) {
+                // Check if there's already an Admin for this project (only 1 admin allowed)
+                const currentMembers = this.getFallbackTeamMembers(projectId);
+                const hasAdmin = currentMembers.some(m => m.role === TeamMemberRole.ADMIN);
+                
+                if (role === TeamMemberRole.ADMIN && hasAdmin) {
+                    throw new Error('Only one Admin is allowed per project. Please remove the existing Admin first.');
+                }
+                
+                const projectTeamMember: ProjectTeamMember = {
+                    id: `ptm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    projectId,
+                    teamMemberId,
+                    role,
+                    teamMember: memberToAdd,
+                    assignedAt: new Date().toISOString(),
+                    assignedBy: 'current_user', // Would be actual user ID in real implementation
+                    isActive: true
+                };
+                
+                const updatedMembers = [...currentMembers, projectTeamMember];
+                localStorage.setItem(`project_team_members_${projectId}`, JSON.stringify(updatedMembers));
+            }
+        }
+    }
+
+    /**
+     * Remove a team member from a project
+     */
+    public async removeTeamMemberFromProject(projectId: string, teamMemberId: string): Promise<void> {
+        try {
+            await this.apiRequest(`projects/${projectId}/team-members/${teamMemberId}`, 'DELETE');
+        } catch (error: any) {
+            console.warn('Remove team member API endpoint not yet implemented, using local storage:', error?.message);
+            
+            // Fallback: Remove from localStorage until backend is ready
+            const currentMembers = this.getFallbackTeamMembers(projectId);
+            const updatedMembers = currentMembers.filter(m => m.id !== teamMemberId);
+            localStorage.setItem(`project_team_members_${projectId}`, JSON.stringify(updatedMembers));
+        }
+    }
+
+    /**
+     * Update a team member's role in a project
+     */
+    public async updateTeamMemberRole(projectId: string, teamMemberId: string, role: string): Promise<void> {
+        await this.apiRequest(`projects/${projectId}/team-members/${teamMemberId}`, 'PATCH', {
+            role
+        });
+    }
+
+    /**
+     * Get team member details by ID (for authentication integration)
+     */
+    public async getTeamMemberById(teamMemberId: string): Promise<any | null> {
+        try {
+            const result = await this.apiRequest<any>(`team-members/${teamMemberId}`);
+            return result;
+        } catch (error) {
+            console.error('Failed to fetch team member details:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Validate team member credentials (for SimplifiedStartupSequencer integration)
+     * This method can be used to verify team member login credentials
+     */
+    public async validateTeamMemberCredentials(email: string, password: string): Promise<TeamMemberAuthResult> {
+        try {
+            const result = await this.apiRequest<TeamMemberAuthResult>('auth/team-member/validate', 'POST', {
+                email,
+                password
+            });
+
+            return result;
+        } catch (error: any) {
+            console.warn('Team member credential validation API not yet implemented, using fallback:', error?.message);
+            
+            // Fallback validation for development
+            const allMembers = this.getFallbackLicensedTeamMembers();
+            const teamMember = allMembers.find(m => m.email === email);
+            
+            if (!teamMember) {
+                return {
+                    isValid: false,
+                    error: 'Team member not found'
+                };
+            }
+            
+            // In a real implementation, you'd validate the password hash
+            // For now, we'll accept any password for development
+            if (password.length < 1) {
+                return {
+                    isValid: false,
+                    error: 'Password is required'
+                };
+            }
+            
+            // Get all projects this team member has access to
+            const projectAccess = this.getTeamMemberProjectAccess(teamMember.id);
+            
+            return {
+                isValid: true,
+                teamMember,
+                projectAccess
+            };
+        }
+    }
+
+    /**
+     * Get project access for a team member (fallback implementation)
+     */
+    private getTeamMemberProjectAccess(teamMemberId: string): any[] {
+        // In a real implementation, this would query the database
+        // For now, return empty array - projects will be loaded when needed
+        return [];
     }
 }
 

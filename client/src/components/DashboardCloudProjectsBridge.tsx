@@ -32,7 +32,11 @@ import {
   FormControlLabel,
   Switch,
   MenuItem,
-  Menu
+  Menu,
+  FormControl,
+  InputLabel,
+  Select,
+  OutlinedInput
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -42,7 +46,11 @@ import {
     Storage as StorageIcon,
     Launch as LaunchIcon,
     Settings as SettingsIcon,
-    Info as InfoIcon
+    Info as InfoIcon,
+    Upload as UploadIcon,
+    Refresh as RefreshIcon,
+    Dataset as DatasetIcon,
+    Delete as DeleteIcon
 } from '@mui/icons-material';
 import { cloudProjectIntegration } from '../services/CloudProjectIntegration';
 import { simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
@@ -109,6 +117,17 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     gcsPrefix: string;
   }>({ name: '', description: '', backend: 'firestore', gcsBucket: '', gcsPrefix: '' });
 
+  // Team Member Management State
+  const [projectTeamMembers, setProjectTeamMembers] = useState<any[]>([]);
+  const [availableTeamMembers, setAvailableTeamMembers] = useState<any[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<string>('');
+  const [selectedTeamMemberRole, setSelectedTeamMemberRole] = useState<'admin' | 'do_er'>('do_er');
+  const [teamMemberSearch, setTeamMemberSearch] = useState<string>('');
+  const [showAddTeamMemberDialog, setShowAddTeamMemberDialog] = useState(false);
+  const [addTeamMemberLoading, setAddTeamMemberLoading] = useState(false);
+  const [addTeamMemberError, setAddTeamMemberError] = useState<string | null>(null);
+
   // Helper to load available + assigned datasets for selected project
   const loadDatasetsForProject = async (project: CloudProject) => {
     try {
@@ -135,10 +154,34 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     }
   };
 
-  // Auto-fetch datasets when opening project details or when filters change
+  // Helper to load team members for selected project
+  const loadTeamMembersForProject = async (project: CloudProject) => {
+    try {
+      setTeamMembersLoading(true);
+      
+      // Load assigned team members for this project
+      const assignedMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
+      setProjectTeamMembers(assignedMembers);
+      
+      // Load all available licensed team members from owner's organization
+      const allLicensedMembers = await cloudProjectIntegration.getLicensedTeamMembers({
+        search: teamMemberSearch || undefined,
+        excludeProjectId: project.id // Exclude already assigned members
+      });
+      
+      setAvailableTeamMembers(allLicensedMembers);
+    } catch (e) {
+      console.error('Failed to load team members for project', e);
+    } finally {
+      setTeamMembersLoading(false);
+    }
+  };
+
+  // Auto-fetch datasets and team members when opening project details or when filters change
   useEffect(() => {
     if (selectedProject) {
       void loadDatasetsForProject(selectedProject);
+      void loadTeamMembersForProject(selectedProject);
       // Prefill dataset create dialog defaults based on selected project
       setCreateDatasetForm(prev => ({
         ...prev,
@@ -542,247 +585,839 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             <Dialog
                 open={!!selectedProject}
                 onClose={() => setSelectedProject(null)}
-                maxWidth="sm"
+                maxWidth="md"
                 fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 3,
+                        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
+                        overflow: 'hidden'
+                    }
+                }}
             >
-                <DialogTitle>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <InfoIcon />
-                        Project Details
+                <DialogTitle
+                    sx={{
+                        background: 'linear-gradient(135deg, #0f3460 0%, #16213e 100%)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                        p: 3,
+                        position: 'relative',
+                        '&::after': {
+                            content: '""',
+                            position: 'absolute',
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            height: '2px',
+                            background: 'linear-gradient(90deg, #4f46e5, #06b6d4, #3b82f6)',
+                            borderRadius: '1px'
+                        }
+                    }}
+                >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box
+                            sx={{
+                                width: 48,
+                                height: 48,
+                                borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #4f46e5, #06b6d4)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 8px 16px rgba(79, 70, 229, 0.3)'
+                            }}
+                        >
+                            <SettingsIcon sx={{ color: 'white', fontSize: 24 }} />
+                        </Box>
+                        <Box>
+                            <Typography variant="h5" sx={{ 
+                                color: 'white', 
+                                fontWeight: 700,
+                                textShadow: '0 2px 4px rgba(0, 0, 0, 0.3)'
+                            }}>
+                                Project Details
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                {selectedProject?.name || 'Project Configuration'}
+                            </Typography>
+                        </Box>
                     </Box>
                 </DialogTitle>
-                <DialogContent>
-                    {selectedProject && (
-                        <List>
-                            <ListItem>
-                                <ListItemIcon>
-                                    {getModeIcon(selectedProject.applicationMode)}
-                                </ListItemIcon>
-                                <ListItemText
-                                    primary="Mode"
-                                    secondary={selectedProject.applicationMode === 'standalone' ? 'Standalone' : 'Network'}
-                                />
-                            </ListItem>
-                            <ListItem>
-                                <ListItemIcon>
-                                    {getStorageIcon(selectedProject.storageBackend)}
-                                </ListItemIcon>
-                                <ListItemText
-                                    primary="Storage Backend"
-                                    secondary={selectedProject.storageBackend}
-                                />
-                            </ListItem>
-                            {selectedProject.gcsBucket && (
-                                <ListItem>
-                                    <ListItemIcon>
-                                        <StorageIcon />
-                                    </ListItemIcon>
-                                    <ListItemText
-                                        primary="GCS Bucket"
-                                        secondary={selectedProject.gcsBucket}
-                                    />
-                                </ListItem>
-                            )}
-                            {selectedProject.allowCollaboration && (
-                                <ListItem>
-                                    <ListItemIcon>
-                                        <NetworkIcon />
-                                    </ListItemIcon>
-                                    <ListItemText
-                                        primary="Collaboration"
-                                        secondary={`Up to ${selectedProject.maxCollaborators} users`}
-                                    />
-                                </ListItem>
-                            )}
-                        </List>
-                    )}
 
+                <DialogContent sx={{ p: 0, background: 'transparent' }}>
                     {selectedProject && (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="subtitle1" sx={{ mb: 1 }}>Assigned Datasets</Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-                          <input
-                            id="project-file-upload"
-                            type="file"
-                            className={styles.hiddenFileInput}
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file || !selectedProject) return;
-                              setUploadError(null);
-                              setUploading(true);
-                              setUploadProgress(0);
-                              try {
-                                await cloudProjectIntegration.uploadFileViaSignedUrl(selectedProject.id, file, {
-                                  targetPath: selectedProject.gcsPrefix || `projects/${selectedProject.id}`,
-                                  onProgress: (pct) => setUploadProgress(pct),
-                                });
-                              } catch (err) {
-                                const msg = err instanceof Error ? err.message : 'Upload failed';
-                                setUploadError(msg);
-                              } finally {
-                                setUploading(false);
-                                setTimeout(() => setUploadProgress(0), 800);
-                              }
-                            }}
-                          />
-                          <label htmlFor="project-file-upload">
-                            <Button component="span" size="small" variant="outlined" disabled={uploading}>
-                              {uploading ? `Uploading… ${uploadProgress}%` : 'Upload File'}
-                            </Button>
-                          </label>
-                          {uploadError && <Typography variant="caption" color="error">{uploadError}</Typography>}
+                        <Box sx={{ p: 3 }}>
+                            {/* Project Information Cards */}
+                            <Box sx={{ mb: 4 }}>
+                                <Typography variant="h6" sx={{ 
+                                    color: 'white', 
+                                    mb: 3, 
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1
+                                }}>
+                                    <Box
+                                        sx={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, #10b981, #06b6d4)',
+                                            boxShadow: '0 0 8px rgba(16, 185, 129, 0.5)'
+                                        }}
+                                    />
+                                    Project Information
+                                </Typography>
+                                
+                                <Grid container spacing={3}>
+                                    <Grid item xs={12} sm={4}>
+                                        <Box
+                                            sx={{
+                                                p: 3,
+                                                borderRadius: 2,
+                                                background: 'rgba(255, 255, 255, 0.05)',
+                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                backdropFilter: 'blur(10px)',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': {
+                                                    transform: 'translateY(-2px)',
+                                                    boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2)',
+                                                    borderColor: 'rgba(79, 70, 229, 0.3)'
+                                                }
+                                            }}
+                                        >
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                                <Box
+                                                    sx={{
+                                                        width: 40,
+                                                        height: 40,
+                                                        borderRadius: '50%',
+                                                        background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    {getModeIcon(selectedProject.applicationMode)}
+                                                </Box>
+                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                                                    Mode
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                                                {selectedProject.applicationMode === 'standalone' ? 'Standalone' : 'Network'}
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    
+                                    <Grid item xs={12} sm={4}>
+                                        <Box
+                                            sx={{
+                                                p: 3,
+                                                borderRadius: 2,
+                                                background: 'rgba(255, 255, 255, 0.05)',
+                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                backdropFilter: 'blur(10px)',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': {
+                                                    transform: 'translateY(-2px)',
+                                                    boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2)',
+                                                    borderColor: 'rgba(6, 182, 212, 0.3)'
+                                                }
+                                            }}
+                                        >
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                                <Box
+                                                    sx={{
+                                                        width: 40,
+                                                        height: 40,
+                                                        borderRadius: '50%',
+                                                        background: 'linear-gradient(135deg, #06b6d4, #0891b2)',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    {getStorageIcon(selectedProject.storageBackend)}
+                                                </Box>
+                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                                                    Storage Backend
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                                                {selectedProject.storageBackend}
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    
+                                    <Grid item xs={12} sm={4}>
+                                        <Box
+                                            sx={{
+                                                p: 3,
+                                                borderRadius: 2,
+                                                background: 'rgba(255, 255, 255, 0.05)',
+                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                backdropFilter: 'blur(10px)',
+                                                transition: 'all 0.3s ease',
+                                                '&:hover': {
+                                                    transform: 'translateY(-2px)',
+                                                    boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2)',
+                                                    borderColor: 'rgba(16, 185, 129, 0.3)'
+                                                }
+                                            }}
+                                        >
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                                <Box
+                                                    sx={{
+                                                        width: 40,
+                                                        height: 40,
+                                                        borderRadius: '50%',
+                                                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    <NetworkIcon sx={{ color: 'white' }} />
+                                                </Box>
+                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                                                    Collaboration
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                                                Up to {selectedProject.maxCollaborators || 10} users
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                </Grid>
+                            </Box>
+
+                            {/* Assigned Datasets Section */}
+                            <Box>
+                                <Typography variant="h6" sx={{ 
+                                    color: 'white', 
+                                    mb: 3, 
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1
+                                }}>
+                                    <Box
+                                        sx={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, #f59e0b, #f97316)',
+                                            boxShadow: '0 0 8px rgba(245, 158, 11, 0.5)'
+                                        }}
+                                    />
+                                    Assigned Datasets
+                                </Typography>
+                                
+                                <Box
+                                    sx={{
+                                        p: 3,
+                                        borderRadius: 2,
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        backdropFilter: 'blur(10px)'
+                                    }}
+                                >
+                                    {/* Action Buttons */}
+                                    <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                                        <Button
+                                            variant="contained"
+                                            startIcon={<UploadIcon />}
+                                            sx={{
+                                                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                                                color: 'white',
+                                                borderRadius: 2,
+                                                px: 3,
+                                                py: 1,
+                                                textTransform: 'none',
+                                                fontWeight: 600,
+                                                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)',
+                                                '&:hover': {
+                                                    background: 'linear-gradient(135deg, #4338ca, #6d28d9)',
+                                                    boxShadow: '0 6px 20px rgba(79, 70, 229, 0.4)',
+                                                    transform: 'translateY(-1px)'
+                                                }
+                                            }}
+                                        >
+                                            Upload File
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<RefreshIcon />}
+                                            sx={{
+                                                borderColor: 'rgba(79, 70, 229, 0.5)',
+                                                color: '#4f46e5',
+                                                borderRadius: 2,
+                                                px: 3,
+                                                py: 1,
+                                                textTransform: 'none',
+                                                fontWeight: 600,
+                                                '&:hover': {
+                                                    borderColor: '#4f46e5',
+                                                    backgroundColor: 'rgba(79, 70, 229, 0.1)'
+                                                }
+                                            }}
+                                        >
+                                            Refresh
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<DatasetIcon />}
+                                            sx={{
+                                                borderColor: 'rgba(6, 182, 212, 0.5)',
+                                                color: '#06b6d4',
+                                                borderRadius: 2,
+                                                px: 3,
+                                                py: 1,
+                                                textTransform: 'none',
+                                                fontWeight: 600,
+                                                '&:hover': {
+                                                    borderColor: '#06b6d4',
+                                                    backgroundColor: 'rgba(6, 182, 212, 0.1)'
+                                                }
+                                            }}
+                                        >
+                                            New Dataset
+                                        </Button>
+                                    </Box>
+
+                                    {/* Dataset Selection Controls */}
+                                    <Grid container spacing={2} sx={{ mb: 3 }}>
+                                        <Grid item xs={12} sm={3}>
+                                            <FormControl fullWidth size="small">
+                                                <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Backend</InputLabel>
+                                                <Select
+                                                    value={datasetBackendFilter === 'all' ? 'firestore' : datasetBackendFilter}
+                                                    onChange={(e) => setDatasetBackendFilter(e.target.value as any)}
+                                                    sx={{
+                                                        '& .MuiOutlinedInput-notchedOutline': {
+                                                            borderColor: 'rgba(255, 255, 255, 0.2)'
+                                                        },
+                                                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                                                            borderColor: 'rgba(79, 70, 229, 0.5)'
+                                                        },
+                                                        '& .MuiSelect-icon': {
+                                                            color: 'rgba(255, 255, 255, 0.7)'
+                                                        },
+                                                        color: 'white',
+                                                        '& .MuiMenuItem-root': {
+                                                            color: 'black'
+                                                        }
+                                                    }}
+                                                >
+                                                    <MenuItem value="firestore">Firestore</MenuItem>
+                                                    <MenuItem value="gcs">Google Cloud Storage</MenuItem>
+                                                </Select>
+                                            </FormControl>
+                                        </Grid>
+                                        
+                                        <Grid item xs={12} sm={4}>
+                                            <TextField
+                                                fullWidth
+                                                size="small"
+                                                placeholder="Search datasets..."
+                                                value={datasetSearch}
+                                                onChange={(e) => setDatasetSearch(e.target.value)}
+                                                sx={{
+                                                    '& .MuiOutlinedInput-root': {
+                                                        color: 'white',
+                                                        '& fieldset': {
+                                                            borderColor: 'rgba(255, 255, 255, 0.2)'
+                                                        },
+                                                        '&:hover fieldset': {
+                                                            borderColor: 'rgba(79, 70, 229, 0.5)'
+                                                        },
+                                                        '& input::placeholder': {
+                                                            color: 'rgba(255, 255, 255, 0.5)',
+                                                            opacity: 1
+                                                        }
+                                                    }
+                                                }}
+                                            />
+                                        </Grid>
+                                        
+                                        <Grid item xs={12} sm={3}>
+                                            <FormControl fullWidth size="small">
+                                                <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Select dataset</InputLabel>
+                                                <Select
+                                                    value={selectedDatasetId}
+                                                    onChange={(e) => setSelectedDatasetId(e.target.value)}
+                                                    sx={{
+                                                        '& .MuiOutlinedInput-notchedOutline': {
+                                                            borderColor: 'rgba(255, 255, 255, 0.2)'
+                                                        },
+                                                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                                                            borderColor: 'rgba(79, 70, 229, 0.5)'
+                                                        },
+                                                        '& .MuiSelect-icon': {
+                                                            color: 'rgba(255, 255, 255, 0.7)'
+                                                        },
+                                                        color: 'white',
+                                                        '& .MuiMenuItem-root': {
+                                                            color: 'black'
+                                                        }
+                                                    }}
+                                                >
+                                                    <MenuItem value="">Select dataset...</MenuItem>
+                                                    {availableDatasets.map((ds: any) => (
+                                                        <MenuItem key={ds.id} value={ds.id}>{ds.__label || ds.name}</MenuItem>
+                                                    ))}
+                                                </Select>
+                                            </FormControl>
+                                        </Grid>
+                                        
+                                        <Grid item xs={12} sm={2}>
+                                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                                <Button
+                                                    variant="contained"
+                                                    size="small"
+                                                    disabled={!selectedDatasetId}
+                                                    sx={{
+                                                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                                                        color: 'white',
+                                                        borderRadius: 2,
+                                                        textTransform: 'none',
+                                                        fontWeight: 600,
+                                                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                                                        '&:hover': {
+                                                            background: 'linear-gradient(135deg, #059669, #047857)',
+                                                            boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)'
+                                                        },
+                                                        '&:disabled': {
+                                                            background: 'rgba(255, 255, 255, 0.1)',
+                                                            color: 'rgba(255, 255, 255, 0.3)'
+                                                        }
+                                                    }}
+                                                >
+                                                    Assign
+                                                </Button>
+                                                <Button
+                                                    variant="outlined"
+                                                    size="small"
+                                                    onClick={async () => {
+                                                        if (!selectedProject) return;
+                                                        try {
+                                                            setDatasetsLoading(true);
+                                                            const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
+                                                            setProjectDatasets(items);
+                                                            const all = await cloudProjectIntegration.listDatasets({
+                                                                backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
+                                                                query: datasetSearch || undefined,
+                                                            });
+                                                            const labeled = all.map((ds: any) => ({
+                                                                ...ds,
+                                                                __label: `${ds.name} ${ds.storage?.backend === 'gcs' ? '(GCS)' : '(Firestore)'}`,
+                                                            }));
+                                                            setAvailableDatasets(labeled);
+                                                        } catch (e) {
+                                                            console.error('Failed to load datasets', e);
+                                                        } finally {
+                                                            setDatasetsLoading(false);
+                                                        }
+                                                    }}
+                                                    sx={{
+                                                        borderColor: 'rgba(79, 70, 229, 0.5)',
+                                                        color: '#4f46e5',
+                                                        borderRadius: 2,
+                                                        textTransform: 'none',
+                                                        fontWeight: 600,
+                                                        '&:hover': {
+                                                            borderColor: '#4f46e5',
+                                                            backgroundColor: 'rgba(79, 70, 229, 0.1)'
+                                                        }
+                                                    }}
+                                                >
+                                                    Apply Filters
+                                                </Button>
+                                            </Box>
+                                        </Grid>
+                                    </Grid>
+
+                                    {/* Currently Assigned Datasets */}
+                                    <Box>
+                                        <Typography variant="body2" sx={{ 
+                                            color: 'rgba(255, 255, 255, 0.7)', 
+                                            mb: 2,
+                                            fontWeight: 500
+                                        }}>
+                                            Currently Assigned Datasets
+                                        </Typography>
+                                        
+                                        {projectDatasets.length === 0 ? (
+                                            <Box
+                                                sx={{
+                                                    p: 4,
+                                                    textAlign: 'center',
+                                                    borderRadius: 2,
+                                                    background: 'rgba(255, 255, 255, 0.02)',
+                                                    border: '1px dashed rgba(255, 255, 255, 0.1)'
+                                                }}
+                                            >
+                                                <DatasetIcon sx={{ fontSize: 48, color: 'rgba(255, 255, 255, 0.3)', mb: 2 }} />
+                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                                                    No datasets assigned to this project
+                                                </Typography>
+                                            </Box>
+                                        ) : (
+                                            <Box
+                                                sx={{
+                                                    borderRadius: 2,
+                                                    overflow: 'hidden',
+                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                                                }}
+                                            >
+                                                {projectDatasets.map((ds: any, index: number) => (
+                                                    <Box
+                                                        key={ds.id}
+                                                        sx={{
+                                                            p: 2,
+                                                            background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)',
+                                                            borderBottom: index < projectDatasets.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            transition: 'all 0.2s ease',
+                                                            '&:hover': {
+                                                                background: 'rgba(79, 70, 229, 0.1)',
+                                                                transform: 'translateX(4px)'
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                            <Box
+                                                                sx={{
+                                                                    width: 32,
+                                                                    height: 32,
+                                                                    borderRadius: '50%',
+                                                                    background: 'linear-gradient(135deg, #f59e0b, #f97316)',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center'
+                                                                }}
+                                                            >
+                                                                <DatasetIcon sx={{ color: 'white', fontSize: 16 }} />
+                                                            </Box>
+                                                            <Box>
+                                                                <Typography variant="body1" sx={{ color: 'white', fontWeight: 500 }}>
+                                                                    {ds.name}
+                                                                </Typography>
+                                                                {ds.description && (
+                                                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                                        {ds.description}
+                                                                    </Typography>
+                                                                )}
+                                                            </Box>
+                                                        </Box>
+                                                        <Button
+                                                            variant="outlined"
+                                                            size="small"
+                                                            startIcon={<DeleteIcon />}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await cloudProjectIntegration.unassignDatasetFromProject(selectedProject!.id, ds.id);
+                                                                    setProjectDatasets(prev => prev.filter(x => x.id !== ds.id));
+                                                                    setProjectDatasetCounts(prev => ({ ...prev, [selectedProject!.id]: Math.max(0, (prev[selectedProject!.id] || 1) - 1) }));
+                                                                } catch (e) {
+                                                                    console.error('Failed to unassign dataset', e);
+                                                                }
+                                                            }}
+                                                            sx={{
+                                                                borderColor: 'rgba(239, 68, 68, 0.5)',
+                                                                color: '#ef4444',
+                                                                borderRadius: 2,
+                                                                textTransform: 'none',
+                                                                fontWeight: 600,
+                                                                '&:hover': {
+                                                                    borderColor: '#ef4444',
+                                                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                                                    transform: 'scale(1.05)'
+                                                                }
+                                                            }}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </Box>
+                                                ))}
+                                            </Box>
+                                        )}
+                                    </Box>
+                                </Box>
+                            </Box>
+
+                            {/* Team Members Section */}
+                            <Box sx={{ mt: 4 }}>
+                                <Typography variant="h6" sx={{ 
+                                    color: 'white', 
+                                    mb: 3, 
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1
+                                }}>
+                                    <Box
+                                        sx={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                            boxShadow: '0 0 8px rgba(139, 92, 246, 0.5)'
+                                        }}
+                                    />
+                                    Team Members
+                                </Typography>
+                                
+                                <Box
+                                    sx={{
+                                        p: 3,
+                                        borderRadius: 2,
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        backdropFilter: 'blur(10px)'
+                                    }}
+                                >
+                                    {/* Team Member Action Buttons */}
+                                    <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                                        <Button
+                                            variant="contained"
+                                            startIcon={<AddIcon />}
+                                            onClick={() => setShowAddTeamMemberDialog(true)}
+                                            sx={{
+                                                background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                                color: 'white',
+                                                borderRadius: 2,
+                                                px: 3,
+                                                py: 1,
+                                                textTransform: 'none',
+                                                fontWeight: 600,
+                                                boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)',
+                                                '&:hover': {
+                                                    background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+                                                    boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)',
+                                                    transform: 'translateY(-1px)'
+                                                }
+                                            }}
+                                        >
+                                            Add Team Member
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<RefreshIcon />}
+                                            onClick={() => selectedProject && loadTeamMembersForProject(selectedProject)}
+                                            disabled={teamMembersLoading}
+                                            sx={{
+                                                borderColor: 'rgba(139, 92, 246, 0.5)',
+                                                color: '#8b5cf6',
+                                                borderRadius: 2,
+                                                px: 3,
+                                                py: 1,
+                                                textTransform: 'none',
+                                                fontWeight: 600,
+                                                '&:hover': {
+                                                    borderColor: '#8b5cf6',
+                                                    backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                                                }
+                                            }}
+                                        >
+                                            {teamMembersLoading ? 'Loading...' : 'Refresh'}
+                                        </Button>
+                                    </Box>
+
+                                    {/* Currently Assigned Team Members */}
+                                    <Box>
+                                        <Typography variant="body2" sx={{ 
+                                            color: 'rgba(255, 255, 255, 0.8)', 
+                                            mb: 2,
+                                            fontWeight: 500
+                                        }}>
+                                            Project Team Members ({projectTeamMembers.length})
+                                        </Typography>
+                                        
+                                        {projectTeamMembers.length === 0 ? (
+                                            <Box
+                                                sx={{
+                                                    p: 4,
+                                                    textAlign: 'center',
+                                                    borderRadius: 2,
+                                                    background: 'rgba(255, 255, 255, 0.02)',
+                                                    border: '1px dashed rgba(255, 255, 255, 0.1)'
+                                                }}
+                                            >
+                                                <NetworkIcon sx={{ fontSize: 48, color: 'rgba(255, 255, 255, 0.3)', mb: 2 }} />
+                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                                                    No team members assigned to this project
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.4)', mt: 1 }}>
+                                                    Add licensed team members to collaborate on this project
+                                                </Typography>
+                                            </Box>
+                                        ) : (
+                                            <Box
+                                                sx={{
+                                                    borderRadius: 2,
+                                                    overflow: 'hidden',
+                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                                                }}
+                                            >
+                                                {projectTeamMembers.map((member: any, index: number) => (
+                                                    <Box
+                                                        key={member.id}
+                                                        sx={{
+                                                            p: 3,
+                                                            background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)',
+                                                            borderBottom: index < projectTeamMembers.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between',
+                                                            transition: 'all 0.2s ease',
+                                                            '&:hover': {
+                                                                background: 'rgba(139, 92, 246, 0.1)',
+                                                                transform: 'translateX(4px)'
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                            <Box
+                                                                sx={{
+                                                                    width: 40,
+                                                                    height: 40,
+                                                                    borderRadius: '50%',
+                                                                    background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    fontSize: '18px',
+                                                                    fontWeight: 600,
+                                                                    color: 'white'
+                                                                }}
+                                                            >
+                                                                {member.name?.charAt(0)?.toUpperCase() || member.email?.charAt(0)?.toUpperCase() || 'U'}
+                                                            </Box>
+                                                            <Box>
+                                                                <Typography variant="body1" sx={{ color: 'white', fontWeight: 500 }}>
+                                                                    {member.name || 'Unnamed User'}
+                                                                </Typography>
+                                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                                                                    {member.email}
+                                                                </Typography>
+                                                                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                                                    <Chip
+                                                                        size="small"
+                                                                        label={member.role || 'Member'}
+                                                                        sx={{
+                                                                            backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                                                                            color: '#c4b5fd',
+                                                                            fontSize: '11px'
+                                                                        }}
+                                                                    />
+                                                                    {member.licenseType && (
+                                                                        <Chip
+                                                                            size="small"
+                                                                            label={member.licenseType}
+                                                                            sx={{
+                                                                                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                                                                                color: '#6ee7b7',
+                                                                                fontSize: '11px'
+                                                                            }}
+                                                                        />
+                                                                    )}
+                                                                </Box>
+                                                            </Box>
+                                                        </Box>
+                                                        <Button
+                                                            variant="outlined"
+                                                            size="small"
+                                                            startIcon={<DeleteIcon />}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await cloudProjectIntegration.removeTeamMemberFromProject(selectedProject!.id, member.id);
+                                                                    setProjectTeamMembers(prev => prev.filter(m => m.id !== member.id));
+                                                                } catch (e) {
+                                                                    console.error('Failed to remove team member', e);
+                                                                }
+                                                            }}
+                                                            sx={{
+                                                                borderColor: 'rgba(239, 68, 68, 0.5)',
+                                                                color: '#ef4444',
+                                                                borderRadius: 2,
+                                                                textTransform: 'none',
+                                                                fontWeight: 600,
+                                                                '&:hover': {
+                                                                    borderColor: '#ef4444',
+                                                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                                                    transform: 'scale(1.05)'
+                                                                }
+                                                            }}
+                                                        >
+                                                            Remove
+                                                        </Button>
+                                                    </Box>
+                                                ))}
+                                            </Box>
+                                        )}
+                                    </Box>
+                                </Box>
+                            </Box>
                         </Box>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={async () => {
-                            if (!selectedProject) return;
-                            try {
-                              setDatasetsLoading(true);
-                              const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
-                              setProjectDatasets(items);
-                              // Fetch available datasets with optional filters
-                              const all = await cloudProjectIntegration.listDatasets({
-                                backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
-                                query: datasetSearch || undefined,
-                              });
-                              // Label with backend for clarity (GCS vs Firestore)
-                              const labeled = all.map((ds: any) => ({
-                                ...ds,
-                                __label: `${ds.name} ${ds.storage?.backend === 'gcs' ? '(GCS)' : '(Firestore)'}`,
-                              }));
-                              setAvailableDatasets(labeled);
-                            } catch (e) {
-                              console.error('Failed to load datasets', e);
-                            } finally {
-                              setDatasetsLoading(false);
-                            }
-                          }}
-                          sx={{ mb: 1 }}
-                        >
-                          {datasetsLoading ? 'Loading...' : 'Refresh'}
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          color="primary"
-                          onClick={() => {
-                            setCreateDatasetError(null);
-                            setShowCreateDatasetDialog(true);
-                          }}
-                          sx={{ mb: 1, ml: 1 }}
-                        >
-                          New Dataset
-                        </Button>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1, flexWrap: 'wrap' }}>
-                          <label htmlFor="dataset-backend" className="visually-hidden">Backend</label>
-                          <select
-                            id="dataset-backend"
-                            aria-label="Backend filter"
-                            value={datasetBackendFilter}
-                            onChange={(e) => setDatasetBackendFilter(e.target.value as any)}
-                          >
-                            <option value="all">All backends</option>
-                            <option value="firestore">Firestore</option>
-                            <option value="gcs">GCS</option>
-                          </select>
-                          <input
-                            type="text"
-                            placeholder="Search datasets…"
-                            value={datasetSearch}
-                            onChange={(e) => setDatasetSearch(e.target.value)}
-                            aria-label="Search datasets"
-                            className="dataset-search-input"
-                          />
-                          <label htmlFor="dataset-select" className="visually-hidden">Select dataset</label>
-                          <select
-                            id="dataset-select"
-                            aria-label="Select dataset"
-                            value={selectedDatasetId}
-                            onChange={(e) => setSelectedDatasetId(e.target.value)}
-                            className="dataset-select-input"
-                          >
-                            <option value="">Select dataset…</option>
-                            {availableDatasets.map((ds: any) => (
-                              <option key={ds.id} value={ds.id}>{ds.__label || ds.name}</option>
-                            ))}
-                          </select>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            disabled={!selectedDatasetId}
-                            onClick={async () => {
-                              if (!selectedProject || !selectedDatasetId) return;
-                              try {
-                                await cloudProjectIntegration.assignDatasetToProject(selectedProject.id, selectedDatasetId);
-                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
-                                setProjectDatasets(items);
-                                setSelectedDatasetId('');
-                              } catch (e) {
-                                console.error('Failed to assign dataset', e);
-                              }
-                            }}
-                          >Assign</Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={async () => {
-                              if (!selectedProject) return;
-                              try {
-                                setDatasetsLoading(true);
-                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
-                                setProjectDatasets(items);
-                                const all = await cloudProjectIntegration.listDatasets({
-                                  backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
-                                  query: datasetSearch || undefined,
-                                });
-                                const labeled = all.map((ds: any) => ({
-                                  ...ds,
-                                  __label: `${ds.name} ${ds.storage?.backend === 'gcs' ? '(GCS)' : '(Firestore)'}`,
-                                }));
-                                setAvailableDatasets(labeled);
-                              } catch (e) {
-                                console.error('Failed to load datasets', e);
-                              } finally {
-                                setDatasetsLoading(false);
-                              }
-                            }}
-                          >Apply Filters</Button>
-                        </Box>
-                        {projectDatasets.length === 0 ? (
-                          <Typography variant="body2" color="text.secondary">No datasets assigned</Typography>
-                        ) : (
-                          <List>
-                            {projectDatasets.map((ds: any) => (
-                              <ListItem key={ds.id} secondaryAction={
-                                <Button size="small" color="error" onClick={async () => {
-                                  try {
-                                    await cloudProjectIntegration.unassignDatasetFromProject(selectedProject!.id, ds.id);
-                                    setProjectDatasets(prev => prev.filter(x => x.id !== ds.id));
-                                       setProjectDatasetCounts(prev => ({ ...prev, [selectedProject!.id]: Math.max(0, (prev[selectedProject!.id] || 1) - 1) }));
-                                  } catch (e) {
-                                    console.error('Failed to unassign dataset', e);
-                                  }
-                                }}>Remove</Button>
-                              }>
-                                <ListItemText primary={ds.name} secondary={ds.description} />
-                              </ListItem>
-                            ))}
-                          </List>
-                        )}
-                      </Box>
                     )}
                 </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setSelectedProject(null)}>
+
+                <DialogActions
+                    sx={{
+                        p: 3,
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                        display: 'flex',
+                        justifyContent: 'space-between'
+                    }}
+                >
+                    <Button
+                        onClick={() => setSelectedProject(null)}
+                        variant="outlined"
+                        sx={{
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            borderRadius: 2,
+                            px: 4,
+                            py: 1.5,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            '&:hover': {
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }}
+                    >
                         Close
                     </Button>
+                    
                     {selectedProject && (
                         <Button
                             variant="contained"
                             onClick={() => {
                                 handleLaunchProject(selectedProject);
                                 setSelectedProject(null);
+                            }}
+                            startIcon={<LaunchIcon />}
+                            sx={{
+                                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                                color: 'white',
+                                borderRadius: 2,
+                                px: 4,
+                                py: 1.5,
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                boxShadow: '0 6px 20px rgba(79, 70, 229, 0.4)',
+                                '&:hover': {
+                                    background: 'linear-gradient(135deg, #4338ca, #6d28d9)',
+                                    boxShadow: '0 8px 25px rgba(79, 70, 229, 0.5)',
+                                    transform: 'translateY(-2px)'
+                                }
                             }}
                         >
                             Launch Project
@@ -900,6 +1535,298 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                   {createDatasetLoading ? 'Creating…' : 'Create Dataset'}
                 </Button>
               </DialogActions>
+            </Dialog>
+
+            {/* Add Team Member Dialog */}
+            <Dialog 
+                open={showAddTeamMemberDialog} 
+                onClose={() => setShowAddTeamMemberDialog(false)} 
+                maxWidth="sm" 
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 3,
+                        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
+                    }
+                }}
+            >
+                <DialogTitle
+                    sx={{
+                        background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                        color: 'white',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                        p: 3
+                    }}
+                >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box
+                            sx={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: '50%',
+                                background: 'rgba(255, 255, 255, 0.2)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
+                            <AddIcon sx={{ color: 'white' }} />
+                        </Box>
+                        <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Add Team Member
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                                Add licensed team members to this project
+                            </Typography>
+                        </Box>
+                    </Box>
+                </DialogTitle>
+                
+                <DialogContent sx={{ p: 3, background: 'transparent' }}>
+                    {addTeamMemberError && (
+                        <Alert severity="error" sx={{ mb: 3 }}>
+                            {addTeamMemberError}
+                        </Alert>
+                    )}
+                    
+                    <Box sx={{ mb: 3 }}>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2 }}>
+                            Search and select from your licensed team members:
+                        </Typography>
+                        
+                        <TextField
+                            fullWidth
+                            placeholder="Search team members by name or email..."
+                            value={teamMemberSearch}
+                            onChange={(e) => setTeamMemberSearch(e.target.value)}
+                            sx={{
+                                mb: 2,
+                                '& .MuiOutlinedInput-root': {
+                                    color: 'white',
+                                    '& fieldset': {
+                                        borderColor: 'rgba(255, 255, 255, 0.2)'
+                                    },
+                                    '&:hover fieldset': {
+                                        borderColor: 'rgba(139, 92, 246, 0.5)'
+                                    },
+                                    '& input::placeholder': {
+                                        color: 'rgba(255, 255, 255, 0.5)',
+                                        opacity: 1
+                                    }
+                                }
+                            }}
+                        />
+                        
+                        <FormControl fullWidth sx={{ mb: 2 }}>
+                            <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Select Team Member</InputLabel>
+                            <Select
+                                value={selectedTeamMemberId}
+                                onChange={(e) => setSelectedTeamMemberId(e.target.value)}
+                                sx={{
+                                    '& .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'rgba(255, 255, 255, 0.2)'
+                                    },
+                                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'rgba(139, 92, 246, 0.5)'
+                                    },
+                                    '& .MuiSelect-icon': {
+                                        color: 'rgba(255, 255, 255, 0.7)'
+                                    },
+                                    color: 'white'
+                                }}
+                            >
+                                <MenuItem value="">
+                                    <em>Select a team member...</em>
+                                </MenuItem>
+                                {availableTeamMembers.map((member: any) => (
+                                    <MenuItem key={member.id} value={member.id}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                                            <Box
+                                                sx={{
+                                                    width: 32,
+                                                    height: 32,
+                                                    borderRadius: '50%',
+                                                    background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontSize: '14px',
+                                                    fontWeight: 600,
+                                                    color: 'white'
+                                                }}
+                                            >
+                                                {member.name?.charAt(0)?.toUpperCase() || member.email?.charAt(0)?.toUpperCase() || 'U'}
+                                            </Box>
+                                                                                    <Box sx={{ flexGrow: 1 }}>
+                                            <Typography variant="body2" sx={{ fontWeight: 500, color: 'white' }}>
+                                                {member.name || 'Unnamed User'}
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                {member.email} • {member.licenseType || 'Licensed'}
+                                            </Typography>
+                                        </Box>
+                                        </Box>
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        
+                        <FormControl fullWidth>
+                            <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Project Role</InputLabel>
+                            <Select
+                                value={selectedTeamMemberRole}
+                                onChange={(e) => setSelectedTeamMemberRole(e.target.value as 'admin' | 'do_er')}
+                                sx={{
+                                    '& .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'rgba(255, 255, 255, 0.2)'
+                                    },
+                                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'rgba(139, 92, 246, 0.5)'
+                                    },
+                                    '& .MuiSelect-icon': {
+                                        color: 'rgba(255, 255, 255, 0.7)'
+                                    },
+                                    color: 'white'
+                                }}
+                            >
+                                <MenuItem value="do_er">
+                                    <Box>
+                                        <Typography variant="body2" sx={{ fontWeight: 500, color: 'black' }}>
+                                            Do_Er
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: 'rgba(0, 0, 0, 0.6)' }}>
+                                            Can create, edit, and delete data but no admin privileges
+                                        </Typography>
+                                    </Box>
+                                </MenuItem>
+                                <MenuItem value="admin">
+                                    <Box>
+                                        <Typography variant="body2" sx={{ fontWeight: 500, color: 'black' }}>
+                                            Admin
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: 'rgba(0, 0, 0, 0.6)' }}>
+                                            Full administrative access (only 1 admin per project)
+                                        </Typography>
+                                    </Box>
+                                </MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Box>
+                    
+                    {availableTeamMembers.length === 0 && !teamMembersLoading && (
+                        <Box
+                            sx={{
+                                p: 3,
+                                textAlign: 'center',
+                                borderRadius: 2,
+                                background: 'rgba(255, 255, 255, 0.02)',
+                                border: '1px dashed rgba(255, 255, 255, 0.1)'
+                            }}
+                        >
+                            <NetworkIcon sx={{ fontSize: 48, color: 'rgba(255, 255, 255, 0.3)', mb: 2 }} />
+                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                                No available team members found
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.4)', mt: 1 }}>
+                                Make sure team members have valid licenses and aren't already assigned to this project
+                            </Typography>
+                        </Box>
+                    )}
+                </DialogContent>
+                
+                <DialogActions
+                    sx={{
+                        p: 3,
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                        display: 'flex',
+                        justifyContent: 'space-between'
+                    }}
+                >
+                    <Button
+                        onClick={() => {
+                            setShowAddTeamMemberDialog(false);
+                            setSelectedTeamMemberId('');
+                            setSelectedTeamMemberRole('do_er');
+                            setTeamMemberSearch('');
+                            setAddTeamMemberError(null);
+                        }}
+                        variant="outlined"
+                        disabled={addTeamMemberLoading}
+                        sx={{
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            borderRadius: 2,
+                            px: 4,
+                            py: 1.5,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            '&:hover': {
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }}
+                    >
+                        Cancel
+                    </Button>
+                    
+                    <Button
+                        variant="contained"
+                        disabled={addTeamMemberLoading || !selectedTeamMemberId}
+                        onClick={async () => {
+                            if (!selectedProject || !selectedTeamMemberId) return;
+                            
+                            setAddTeamMemberError(null);
+                            setAddTeamMemberLoading(true);
+                            
+                            try {
+                                await cloudProjectIntegration.addTeamMemberToProject(
+                                    selectedProject.id, 
+                                    selectedTeamMemberId, 
+                                    selectedTeamMemberRole as any
+                                );
+                                
+                                // Refresh team members list
+                                await loadTeamMembersForProject(selectedProject);
+                                
+                                // Close dialog and reset
+                                setShowAddTeamMemberDialog(false);
+                                setSelectedTeamMemberId('');
+                                setSelectedTeamMemberRole('do_er');
+                                setTeamMemberSearch('');
+                            } catch (e: any) {
+                                setAddTeamMemberError(e?.message || 'Failed to add team member');
+                            } finally {
+                                setAddTeamMemberLoading(false);
+                            }
+                        }}
+                        sx={{
+                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                            color: 'white',
+                            borderRadius: 2,
+                            px: 4,
+                            py: 1.5,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+                                boxShadow: '0 8px 25px rgba(139, 92, 246, 0.5)',
+                                transform: 'translateY(-2px)'
+                            },
+                            '&:disabled': {
+                                background: 'rgba(255, 255, 255, 0.1)',
+                                color: 'rgba(255, 255, 255, 0.3)',
+                                boxShadow: 'none'
+                            }
+                        }}
+                    >
+                        {addTeamMemberLoading ? 'Adding...' : 'Add Team Member'}
+                    </Button>
+                </DialogActions>
             </Dialog>
 
             {/* Launch Options Menu */}

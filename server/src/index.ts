@@ -83,6 +83,8 @@ const allowedOrigins: (string | RegExp)[] = [
   ...corsOrigins,
   'https://dashboard-1c3a5.web.app',  // 🔧 CRITICAL FIX: Allow dashboard domain
   'https://dashboard-1c3a5.firebaseapp.com',  // Alternative Firebase domain
+  'https://backbone-client.web.app',  // 🔧 CRITICAL FIX: Allow client domain
+  'https://backbone-client.firebaseapp.com',  // Alternative client Firebase domain
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
 ];

@@ -6,6 +6,7 @@ import { Elements } from '@stripe/react-stripe-js';
 declare global {
   interface ImportMetaEnv {
     readonly VITE_STRIPE_PUBLISHABLE_KEY: string;
+    readonly VITE_STRIPE_ENABLED: string;
   }
   
   interface ImportMeta {
@@ -14,12 +15,17 @@ declare global {
 }
 
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripeEnabled = import.meta.env.VITE_STRIPE_ENABLED === 'true';
 
-if (!stripeKey || stripeKey === 'pk_test_your_stripe_publishable_key_here') {
-  console.warn('Stripe publishable key not configured. Please set VITE_STRIPE_PUBLISHABLE_KEY in your .env file.');
+// Only show warning if Stripe is enabled but key is missing
+if (stripeEnabled && (!stripeKey || stripeKey === 'pk_test_your_stripe_publishable_key_here')) {
+  console.warn('Stripe publishable key not configured. Please set VITE_STRIPE_PUBLISHABLE_KEY in your .env file or environment variables.');
 }
 
-const stripePromise = loadStripe(stripeKey || '');
+// Only load Stripe if enabled and key is valid
+const stripePromise = stripeEnabled && stripeKey && stripeKey !== 'pk_test_your_stripe_publishable_key_here' 
+  ? loadStripe(stripeKey)
+  : Promise.resolve(null);
 
 interface StripeContextType {
   stripe: Promise<Stripe | null>;

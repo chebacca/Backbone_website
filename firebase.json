@@ -87,7 +87,7 @@
           "JWT_EXPIRES_IN": "${JWT_EXPIRES_IN}",
           "JWT_REFRESH_EXPIRES_IN": "${JWT_REFRESH_EXPIRES_IN}",
           "FRONTEND_URL": "https://backbone-logic.web.app",
-          "CORS_ORIGIN": "https://backbone-logic.web.app,https://dashboard-1c3a5.web.app",
+          "CORS_ORIGIN": "https://backbone-logic.web.app,https://dashboard-1c3a5.web.app,https://backbone-client.web.app",
           "ADMIN_RESET": "${ADMIN_RESET}"
         }
       }

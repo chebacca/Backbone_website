@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -7,7 +7,9 @@ import {
   CardContent,
   Typography,
   FormGroup,
+  FormControl,
   FormControlLabel,
+  FormLabel,
   Switch,
   TextField,
   Divider,
@@ -24,6 +26,19 @@ import {
   Chip,
   Alert,
   IconButton,
+  Select,
+  MenuItem,
+  Radio,
+  RadioGroup,
+  Slider,
+  Paper,
+  Stack,
+  InputLabel,
+  OutlinedInput,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -31,6 +46,14 @@ import {
   Storage as StorageIcon,
   Computer as ComputerIcon,
   Add as AddIcon,
+  Cloud as CloudIcon,
+  Check as CheckIcon,
+  Settings as SettingsIcon,
+  Upload as UploadIcon,
+  Refresh as RefreshIcon,
+  Dataset as DatasetIcon,
+  Delete as DeleteIcon,
+  Launch as LaunchIcon,
 } from '@mui/icons-material';
 /**
  * Unified Project Creation Dialog
@@ -102,11 +125,11 @@ const DEFAULT_FORM_DATA: FormData = {
     enableLocalNetwork: false,
     networkPort: 3000,
     networkAddress: 'localhost',
-    maxNetworkUsers: 10,
+    maxNetworkUsers: 250,
     networkPassword: '',
     preferredWebsitePort: 3002,
     preferredApiPort: 3003,
-    maxCollaborators: 10,
+    maxCollaborators: 250,
     enableRealTime: true,
     enableComments: true,
     enableFileSharing: true,
@@ -193,8 +216,8 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
                     if (!formData.networkAddress.trim()) {
                         errors.networkAddress = 'Network address is required';
                     }
-                    if (formData.maxNetworkUsers < 1 || formData.maxNetworkUsers > 100) {
-                        errors.maxNetworkUsers = 'Max users must be between 1 and 100';
+                    if (formData.maxNetworkUsers < 1 || formData.maxNetworkUsers > 250) {
+                        errors.maxNetworkUsers = 'Max users must be between 1 and 250';
                     }
                 }
                 if (typeof formData.preferredWebsitePort === 'number' && (formData.preferredWebsitePort < 1024 || formData.preferredWebsitePort > 65535)) {
@@ -206,8 +229,8 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
                 break;
 
             case 3: // Collaboration Options
-                if (formData.maxCollaborators < 1 || formData.maxCollaborators > 100) {
-                    errors.maxCollaborators = 'Max collaborators must be between 1 and 100';
+                if (formData.maxCollaborators < 1 || formData.maxCollaborators > 250) {
+                    errors.maxCollaborators = 'Max collaborators must be between 1 and 250';
                 }
                 break;
         }
@@ -273,22 +296,227 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
         }
     };
 
-    const renderStepContent = (step: number) => {
-        switch (step) {
-            case 0:
-                return renderBasicInformation();
-            case 1:
-                return renderStorageConfiguration();
-            case 2:
-                return renderNetworkSettings();
-            case 3:
-                return renderCollaborationOptions();
-            case 4:
-                return renderReview();
-            default:
-                return null;
-        }
-    };
+    const renderProjectDetails = () => (
+  <Box sx={{ py: 2 }}>
+    <Typography variant="h6" gutterBottom sx={{ mb: 3, color: 'text.primary', fontWeight: 600 }}>
+      Project Configuration
+    </Typography>
+    
+    {/* Project Information Section */}
+    <Paper elevation={0} sx={{ p: 3, mb: 3, backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+      <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+        Project Information
+      </Typography>
+      
+      <Grid container spacing={3}>
+        <Grid item xs={12} sm={4}>
+          <Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Mode
+            </Typography>
+            <Chip 
+              icon={<NetworkIcon />} 
+              label="Network" 
+              size="small" 
+              color="primary" 
+              variant="outlined"
+            />
+          </Box>
+        </Grid>
+        
+        <Grid item xs={12} sm={4}>
+          <Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Storage Backend
+            </Typography>
+            <Chip 
+              icon={<StorageIcon />} 
+              label="firestore" 
+              size="small" 
+              color="secondary" 
+              variant="outlined"
+            />
+          </Box>
+        </Grid>
+        
+        <Grid item xs={12} sm={4}>
+          <Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Collaboration
+            </Typography>
+            <Chip 
+              label="Up to 10 users" 
+              size="small" 
+              color="success" 
+              variant="outlined"
+            />
+          </Box>
+        </Grid>
+      </Grid>
+    </Paper>
+
+    {/* Assigned Datasets Section */}
+    <Paper elevation={0} sx={{ p: 3, backgroundColor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+      <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+        Assigned Datasets
+      </Typography>
+      
+      {/* Action Buttons */}
+      <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+        <Button
+          variant="contained"
+          startIcon={<UploadIcon />}
+          size="small"
+          sx={{ 
+            backgroundColor: 'primary.main',
+            '&:hover': { backgroundColor: 'primary.dark' }
+          }}
+        >
+          Upload File
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<RefreshIcon />}
+          size="small"
+          sx={{ borderColor: 'primary.main', color: 'primary.main' }}
+        >
+          Refresh
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<DatasetIcon />}
+          size="small"
+          sx={{ borderColor: 'primary.main', color: 'primary.main' }}
+        >
+          New Dataset
+        </Button>
+      </Stack>
+
+      {/* Dataset Selection Controls */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={3}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Backend</InputLabel>
+            <Select
+              value="firestore"
+              label="Backend"
+              input={<OutlinedInput label="Backend" />}
+            >
+              <MenuItem value="firestore">Firestore</MenuItem>
+              <MenuItem value="gcs">Google Cloud Storage</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        
+        <Grid item xs={12} sm={4}>
+          <TextField
+            fullWidth
+            size="small"
+            label="Search datasets..."
+            placeholder="Enter dataset name..."
+            inputProps={{ style: { fontSize: '14px' } }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} sm={3}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Select dataset</InputLabel>
+            <Select
+              value=""
+              label="Select dataset"
+              input={<OutlinedInput label="Select dataset" />}
+            >
+              <MenuItem value="show-2024">The Show 2024</MenuItem>
+              <MenuItem value="show-2025">The Show 2025</MenuItem>
+              <MenuItem value="show-2026">The Show 2026</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        
+        <Grid item xs={12} sm={2}>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="contained"
+              size="small"
+              sx={{ 
+                backgroundColor: 'primary.main',
+                '&:hover': { backgroundColor: 'primary.dark' }
+              }}
+            >
+              Assign
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              sx={{ borderColor: 'primary.main', color: 'primary.main' }}
+            >
+              Apply Filters
+            </Button>
+          </Stack>
+        </Grid>
+      </Grid>
+
+      {/* Currently Assigned Datasets */}
+      <Box>
+        <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+          Currently Assigned Datasets
+        </Typography>
+        
+        <List sx={{ backgroundColor: 'background.default', borderRadius: 1, p: 0 }}>
+          <ListItem sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+            <ListItemText 
+              primary="The Show 2024"
+              primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+            />
+            <ListItemSecondaryAction>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<DeleteIcon />}
+                sx={{ 
+                  borderColor: 'error.main', 
+                  color: 'error.main',
+                  '&:hover': { 
+                    borderColor: 'error.dark', 
+                    backgroundColor: 'error.main',
+                    color: 'white'
+                  }
+                }}
+              >
+                Remove
+              </Button>
+            </ListItemSecondaryAction>
+          </ListItem>
+          
+          <ListItem>
+            <ListItemText 
+              primary="The Show 2025"
+              primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+            />
+            <ListItemSecondaryAction>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<DeleteIcon />}
+                sx={{ 
+                  borderColor: 'error.main', 
+                  color: 'error.main',
+                  '&:hover': { 
+                    borderColor: 'error.dark', 
+                    backgroundColor: 'error.main',
+                    color: 'white'
+                  }
+                }}
+              >
+                Remove
+              </Button>
+            </ListItemSecondaryAction>
+          </ListItem>
+        </List>
+      </Box>
+    </Paper>
+  </Box>
+);
 
     const renderBasicInformation = () => (
         <Box sx={{ py: 2 }}>
@@ -746,6 +974,23 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
         </Box>
     );
 
+    const renderStepContent = (step: number) => {
+        switch (step) {
+            case 0:
+                return renderBasicInformation();
+            case 1:
+                return renderStorageConfiguration();
+            case 2:
+                return renderNetworkSettings();
+            case 3:
+                return renderCollaborationOptions();
+            case 4:
+                return renderReview();
+            default:
+                return null;
+        }
+    };
+
     return (
         <Dialog
             open={open}
@@ -753,76 +998,80 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
             maxWidth="md"
             fullWidth
             PaperProps={{
-                sx: { minHeight: '70vh' }
+                sx: { 
+                    minHeight: '70vh',
+                    backgroundColor: 'background.default',
+                    '& .MuiDialogContent-root': {
+                        backgroundColor: 'background.default'
+                    }
+                }
             }}
         >
-            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="h6">
-                    Create New {mode === 'standalone' ? 'Standalone' : 'Network'} Project
-                </Typography>
+            <DialogTitle 
+                sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    backgroundColor: 'background.paper',
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    pb: 2
+                }}
+            >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SettingsIcon color="primary" />
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Project Details
+                    </Typography>
+                </Box>
                 <IconButton onClick={onClose} size="small">
                     <CloseIcon />
                 </IconButton>
             </DialogTitle>
 
-            <DialogContent>
+            <DialogContent sx={{ p: 3 }}>
                 {error && (
-                    <Alert severity="error" sx={{ mb: 2 }}>
+                    <Alert severity="error" sx={{ mb: 3 }}>
                         {error}
                     </Alert>
                 )}
 
-                <Box sx={{ width: '100%' }}>
-                    <Stepper activeStep={activeStep} orientation="vertical">
-                        {STEPS.map((label, index) => (
-                            <Step key={label}>
-                                <StepLabel>{label}</StepLabel>
-                                <StepContent>
-                                    {renderStepContent(index)}
-                                </StepContent>
-                            </Step>
-                        ))}
-                    </Stepper>
-                </Box>
+                {renderProjectDetails()}
 
                 {isLoading && <LinearProgress sx={{ mt: 2 }} />}
             </DialogContent>
 
-            <DialogActions sx={{ px: 3, pb: 2 }}>
+            <DialogActions 
+                sx={{ 
+                    px: 3, 
+                    pb: 3, 
+                    pt: 2,
+                    backgroundColor: 'background.paper',
+                    borderTop: '1px solid',
+                    borderColor: 'divider'
+                }}
+            >
                 <Button
                     onClick={onClose}
+                    variant="outlined"
                     disabled={isLoading}
+                    sx={{ borderColor: 'primary.main', color: 'primary.main' }}
                 >
-                    Cancel
+                    Close
                 </Button>
                 
-                {activeStep > 0 && (
-                    <Button
-                        onClick={handleBack}
-                        disabled={isLoading}
-                    >
-                        Back
-                    </Button>
-                )}
-
-                {activeStep < STEPS.length - 1 ? (
-                    <Button
-                        onClick={handleNext}
-                        variant="contained"
-                        disabled={isLoading}
-                    >
-                        Next
-                    </Button>
-                ) : (
-                    <Button
-                        onClick={handleCreate}
-                        variant="contained"
-                        disabled={isLoading}
-                        startIcon={<CheckIcon />}
-                    >
-                        {isLoading ? 'Creating...' : 'Create Project'}
-                    </Button>
-                )}
+                <Button
+                    onClick={handleCreate}
+                    variant="contained"
+                    disabled={isLoading}
+                    startIcon={<LaunchIcon />}
+                    sx={{ 
+                        backgroundColor: 'primary.main',
+                        '&:hover': { backgroundColor: 'primary.dark' }
+                    }}
+                >
+                    {isLoading ? 'Processing...' : 'Launch Project'}
+                </Button>
             </DialogActions>
         </Dialog>
     );

@@ -894,7 +894,7 @@ export class FirestoreService {
       encryptionEnabled: !!data.encryptionEnabled,
       // network
       allowCollaboration: !!data.allowCollaboration,
-      maxCollaborators: data.maxCollaborators ?? 10,
+      maxCollaborators: data.maxCollaborators ?? 250,
       realTimeEnabled: !!data.realTimeEnabled,
       autoSync: !!data.autoSync,
       syncInterval: data.syncInterval ?? 300,

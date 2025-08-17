@@ -93,7 +93,7 @@ export class LicenseKeyUtil {
         return {
           ...baseFeatures,
           maxProjects: -1, // unlimited
-          maxUsers: -1, // unlimited
+          maxUsers: 250, // up to 250 per license
           cloudStorage: true,
           advancedFeatures: true,
           prioritySupport: true,

@@ -571,16 +571,21 @@ class DatabaseSeeder {
     logger.info('🌱 Seeding minimal dataset (6 users)...');
     const now = new Date();
 
-    const ensureUser = async (email: string, name: string, role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING'): Promise<string> => {
+    const ensureUser = async (email: string, name: string, role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING', customPassword?: string): Promise<string> => {
       const existing = await firestoreService.getUserByEmail(email);
       if (existing) {
         const updates: any = { role, isEmailVerified: true };
+        // Update password if custom password is provided
+        if (customPassword) {
+          updates.password = await PasswordUtil.hash(customPassword);
+        }
         await firestoreService.updateUser(existing.id, updates);
         return existing.id;
       }
+      const password = customPassword || 'ChangeMe123!';
       const user = await firestoreService.createUser({
         email,
-        password: await PasswordUtil.hash('ChangeMe123!'),
+        password: await PasswordUtil.hash(password),
         name,
         role,
         isEmailVerified: true,
@@ -630,7 +635,7 @@ class DatabaseSeeder {
     const accountingId = await ensureUser('accounting@example.com', 'Accounting User', 'ACCOUNTING');
     const basicUserId = await ensureUser('basic.user@example.com', 'Basic User', 'USER');
     const proUserId = await ensureUser('pro.user@example.com', 'Pro User', 'USER');
-    const enterpriseUserId = await ensureUser('enterprise.user@example.com', 'Enterprise User', 'USER');
+    const enterpriseUserId = await ensureUser('enterprise.user@example.com', 'Enterprise User', 'USER', 'Admin1234!');
 
     // Create organizations for Pro and Enterprise (team-capable) and set owner membership
     const proOrg = await firestoreService.createOrganization({ name: 'Pro User Org', ownerUserId: proUserId, tier: 'PRO' } as any);

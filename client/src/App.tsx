@@ -58,6 +58,9 @@ const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
 // Startup workflow components
 const StartupWorkflow = React.lazy(() => import('@/components/StartupWorkflow'));
 
+// Auth bridge for webonly mode
+import CloudProjectAuthBridge from '@/components/CloudProjectAuthBridge';
+
 // Protected route wrapper
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -138,6 +141,7 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary>
+        <CloudProjectAuthBridge />
         <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default', color: 'text.primary', }} >
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>

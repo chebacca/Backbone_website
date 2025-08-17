@@ -16,9 +16,17 @@ const createProjectSchema = z.object({
   applicationMode: z.enum(['standalone', 'shared_network']).optional(),
   visibility: z.enum(['private', 'organization', 'public']).optional(),
   organizationId: z.string().optional(),
-  storageBackend: z.enum(['firestore', 'gcs']).optional(),
+  storageBackend: z.enum(['firestore', 'gcs', 's3', 'local', 'azure-blob']).optional(),
   gcsBucket: z.string().optional(),
   gcsPrefix: z.string().optional(),
+  // AWS S3 fields
+  s3Bucket: z.string().optional(),
+  s3Region: z.string().optional(),
+  s3Prefix: z.string().optional(),
+  // Azure Blob Storage fields
+  azureStorageAccount: z.string().optional(),
+  azureContainer: z.string().optional(),
+  azurePrefix: z.string().optional(),
   // Standalone
   filePath: z.string().optional(),
   offlineMode: z.boolean().optional(),
@@ -77,6 +85,12 @@ function transformProject(p: any, participants: any[] = []) {
     storageBackend: p.storageBackend || 'firestore',
     gcsBucket: p.gcsBucket,
     gcsPrefix: p.gcsPrefix,
+    s3Bucket: p.s3Bucket,
+    s3Region: p.s3Region,
+    s3Prefix: p.s3Prefix,
+    azureStorageAccount: p.azureStorageAccount,
+    azureContainer: p.azureContainer,
+    azurePrefix: p.azurePrefix,
     filePath: p.filePath,
     fileSize: p.fileSize,
     lastSyncedAt: p.lastSyncedAt,
@@ -188,6 +202,7 @@ router.post('/', authenticateToken, async (req: any, res) => {
   try {
     const payload = createProjectSchema.parse(req.body);
     const userId = req.user.id;
+    
     // Allow SUPERADMIN/ADMIN to create projects regardless of license; otherwise require active license
     const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
     const hasActive = isAdmin ? true : await firestoreService.userHasActiveLicense(userId);
@@ -195,6 +210,46 @@ router.post('/', authenticateToken, async (req: any, res) => {
       res.status(403).json({ success: false, error: 'Active license required' });
       return;
     }
+
+    // Get user's license type to enforce collaboration limits
+    let maxAllowedCollaborators = 250; // Default to Enterprise limit
+    if (!isAdmin) {
+      try {
+        const userLicenseType = await firestoreService.getUserLicenseType(userId);
+        console.log(`🔍 [Projects Routes] User ${userId} license type:`, userLicenseType);
+        if (userLicenseType) {
+          // Set collaboration limits based on license type
+          if (userLicenseType === 'PROFESSIONAL') {
+            maxAllowedCollaborators = 50;
+          } else if (userLicenseType === 'ENTERPRISE') {
+            maxAllowedCollaborators = 250;
+          } else {
+            maxAllowedCollaborators = 10; // Basic license
+          }
+        }
+        console.log(`🔍 [Projects Routes] User ${userId} maxAllowedCollaborators:`, maxAllowedCollaborators);
+      } catch (error) {
+        logger.warn(`Failed to get user license for ${userId}, using default limit:`, error);
+        maxAllowedCollaborators = 10; // Fallback to basic limit
+      }
+    }
+
+    // Validate maxCollaborators against license limit
+    if (payload.maxCollaborators && payload.maxCollaborators > maxAllowedCollaborators) {
+      res.status(400).json({ 
+        success: false, 
+        error: `Maximum collaborators (${payload.maxCollaborators}) exceeds your license limit of ${maxAllowedCollaborators}`,
+        code: 'LICENSE_LIMIT_EXCEEDED',
+        limit: maxAllowedCollaborators
+      });
+      return;
+    }
+
+    // If no maxCollaborators specified, set it to the license limit
+    if (!payload.maxCollaborators && payload.allowCollaboration) {
+      payload.maxCollaborators = maxAllowedCollaborators;
+    }
+
     let orgId = payload.organizationId;
     if (orgId) {
       const ok = await firestoreService.verifyOrgMembership(userId, orgId, ['ADMIN', 'MANAGER', 'OWNER']);
@@ -203,6 +258,7 @@ router.post('/', authenticateToken, async (req: any, res) => {
         return;
       }
     }
+    
     const created = await firestoreService.createProject({
       ...payload,
       ownerId: userId,
@@ -430,6 +486,116 @@ router.post('/:id/storage/record', authenticateToken, async (req: any, res) => {
     logger.error('storage record failed', e);
     const code = e?.name === 'ZodError' ? 400 : 500;
     res.status(code).json({ success: false, error: e?.message || 'Failed to record file metadata' });
+  }
+});
+
+// Get team members for a project
+router.get('/:id/team-members', authenticateToken, async (req: any, res) => {
+  try {
+    const projectId = req.params.id as string;
+    const userId = req.user?.id as string;
+
+    // Authorization - ensure user can access project
+    const project = await firestoreService.getProjectByIdAuthorized(projectId, userId);
+    if (!project) {
+      res.status(404).json({ success: false, error: 'Project not found' });
+      return;
+    }
+
+    // Get project team members from Firestore
+    const teamMembers = await firestoreService.getProjectTeamMembers(projectId);
+    
+    res.json({ success: true, data: teamMembers });
+  } catch (e: any) {
+    logger.error('get project team members failed', e);
+    res.status(500).json({ success: false, error: e?.message || 'Failed to get project team members' });
+  }
+});
+
+// Add team member to project
+router.post('/:id/team-members', authenticateToken, async (req: any, res) => {
+  try {
+    const schema = z.object({
+      teamMemberId: z.string().min(1),
+      role: z.enum(['ADMIN', 'MANAGER', 'DO_ER', 'VIEWER']).default('DO_ER'),
+    });
+    const { teamMemberId, role } = schema.parse(req.body || {});
+
+    const projectId = req.params.id as string;
+    const userId = req.user?.id as string;
+
+    // Authorization - ensure user can manage project (owner or admin)
+    const project = await firestoreService.getProjectByIdAuthorized(projectId, userId);
+    if (!project) {
+      res.status(404).json({ success: false, error: 'Project not found' });
+      return;
+    }
+
+    // Check if user has permission to add team members (owner or admin)
+    if (project.ownerId !== userId) {
+      const userRole = await firestoreService.getUserProjectRole(projectId, userId);
+      if (userRole !== 'ADMIN') {
+        res.status(403).json({ success: false, error: 'Insufficient permissions to add team members' });
+        return;
+      }
+    }
+
+    // Check if adding this team member would exceed the project's collaboration limit
+    if (project.allowCollaboration && project.maxCollaborators) {
+      const currentTeamMembers = await firestoreService.getProjectTeamMembers(projectId);
+      if (currentTeamMembers.length >= project.maxCollaborators) {
+        res.status(400).json({ 
+          success: false, 
+          error: `Cannot add team member: project has reached its collaboration limit of ${project.maxCollaborators} users`,
+          code: 'COLLABORATION_LIMIT_REACHED',
+          limit: project.maxCollaborators,
+          current: currentTeamMembers.length
+        });
+        return;
+      }
+    }
+
+    // Add team member to project
+    const projectTeamMember = await firestoreService.addTeamMemberToProject(projectId, teamMemberId, role, userId);
+    
+    res.status(201).json({ success: true, data: projectTeamMember });
+  } catch (e: any) {
+    logger.error('add team member to project failed', e);
+    const code = e?.name === 'ZodError' ? 400 : 500;
+    res.status(code).json({ success: false, error: e?.message || 'Failed to add team member to project' });
+  }
+});
+
+// Remove team member from project
+router.delete('/:id/team-members/:teamMemberId', authenticateToken, async (req: any, res) => {
+  try {
+    const projectId = req.params.id as string;
+    const teamMemberId = req.params.teamMemberId as string;
+    const userId = req.user?.id as string;
+
+    // Authorization - ensure user can manage project
+    const project = await firestoreService.getProjectByIdAuthorized(projectId, userId);
+    if (!project) {
+      res.status(404).json({ success: false, error: 'Project not found' });
+      return;
+    }
+
+    // Check permissions
+    if (project.ownerId !== userId) {
+      const userRole = await firestoreService.getUserProjectRole(projectId, userId);
+      if (userRole !== 'ADMIN') {
+        res.status(403).json({ success: false, error: 'Insufficient permissions to remove team members' });
+        return;
+      }
+    }
+
+    // Remove team member from project
+    await firestoreService.removeTeamMemberFromProject(projectId, teamMemberId);
+    
+    res.json({ success: true, message: 'Team member removed from project' });
+  } catch (e: any) {
+    logger.error('remove team member from project failed', e);
+    res.status(500).json({ success: false, error: e?.message || 'Failed to remove team member from project' });
   }
 });
 

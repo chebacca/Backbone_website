@@ -17,6 +17,7 @@ import { organizationsRouter } from './routes/organizations.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { accountingRouter } from './routes/accounting.js';
 import invoicesRouter from './routes/invoices.js';
+import { teamMembersRouter } from './routes/team-members.js';
 // Dashboard API routes for compatibility
 import { sessionsRouter } from './routes/sessions.js';
 import { callsheetsRouter } from './routes/callsheets.js';
@@ -42,18 +43,26 @@ app.use(helmet({
   hsts: config.isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
+      defaultSrc: ["'self'", "data:", "blob:"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:", "https://m.stripe.network", "https://q.stripe.com"],
       scriptSrc: [
         "'self'",
+        "'unsafe-inline'",
         "'unsafe-eval'",
         "'wasm-unsafe-eval'",
         "https://js.stripe.com",
         "https://m.stripe.network",
         "https://accounts.google.com",
-        "https://appleid.cdn-apple.com"
+        "https://appleid.cdn-apple.com",
+        "https://apis.google.com",
+        "https://www.gstatic.com",
+        "https://cdn.socket.io",
+        "https://maps.googleapis.com",
+        "https://maps.google.com",
+        "https://cdn.jsdelivr.net",
+        "https://unpkg.com"
       ],
       connectSrc: [
         "'self'",
@@ -62,7 +71,21 @@ app.use(helmet({
         "https://m.stripe.network",
         "https://q.stripe.com",
         "https://accounts.google.com",
-        "https://appleid.apple.com"
+        "https://appleid.apple.com",
+        "https://*.firebaseapp.com",
+        "https://*.googleapis.com",
+        "https://us-central1-backbone-logic.cloudfunctions.net",
+        "https://backbone-logic.web.app",
+        "https://apis.google.com",
+        "https://www.gstatic.com",
+        "https://maps.googleapis.com",
+        "https://maps.google.com",
+        "https://cdn.jsdelivr.net",
+        "https://unpkg.com",
+        "https://rpc.cosmos.directory",
+        "https://rest.cosmos.directory",
+        "https://lcd-juno.itastakers.com",
+        "https://rpc-juno.itastakers.com"
       ],
       frameSrc: [
         "'self'",
@@ -71,7 +94,10 @@ app.use(helmet({
         "https://accounts.google.com"
       ],
       frameAncestors: ["'self'"],
-      workerSrc: ["'self'", "blob:"],
+      workerSrc: ["'self'", "blob:", "data:"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
     },
   },
 }));
@@ -181,6 +207,7 @@ app.use('/api/accounting', accountingRouter);
 // Prefer named export to satisfy TS named typing if needed, but default remains for compatibility
 app.use('/api/projects', projectsRouter);
 app.use('/api/datasets', datasetsRouter);
+app.use('/api/team-members', teamMembersRouter);
 
 // Dashboard API routes for compatibility (return empty data for licensing website)
 app.use('/api/sessions', sessionsRouter);

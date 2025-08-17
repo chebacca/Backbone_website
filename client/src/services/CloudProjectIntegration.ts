@@ -31,14 +31,21 @@ interface CloudProject {
     type: string;
     applicationMode: ApplicationMode;
     visibility: 'private' | 'organization' | 'public';
-    storageBackend: 'firestore' | 'gcs';
+    storageBackend: 'firestore' | 'gcs' | 's3' | 'local' | 'azure-blob';
     gcsBucket?: string;
     gcsPrefix?: string;
+    s3Bucket?: string;
+    s3Region?: string;
+    s3Prefix?: string;
+    azureStorageAccount?: string;
+    azureContainer?: string;
+    azurePrefix?: string;
     ownerId: string;
     organizationId?: string;
     createdAt: string;
     lastAccessedAt: string;
     isActive: boolean;
+    isArchived?: boolean;
 
     // Network mode settings
     allowCollaboration?: boolean;
@@ -61,9 +68,15 @@ interface CloudProjectCreatePayload {
     type: 'standalone' | 'networked' | 'network' | 'hybrid';
     applicationMode: ApplicationMode;
     visibility: 'private' | 'organization' | 'public';
-    storageBackend: 'firestore' | 'gcs';
+    storageBackend: 'firestore' | 'gcs' | 's3' | 'local' | 'azure-blob';
     gcsBucket?: string;
     gcsPrefix?: string;
+    s3Bucket?: string;
+    s3Region?: string;
+    s3Prefix?: string;
+    azureStorageAccount?: string;
+    azureContainer?: string;
+    azurePrefix?: string;
 
     // Network collaboration settings
     allowCollaboration?: boolean;
@@ -109,9 +122,23 @@ export interface CloudDataset {
     tags?: string[];
     schema?: any;
     storage?: {
-        backend: 'firestore' | 'gcs' | 's3' | 'local';
+        backend: 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local';
+        // Google Cloud Storage
         gcsBucket?: string;
         gcsPrefix?: string;
+        // Amazon S3
+        s3Bucket?: string;
+        s3Region?: string;
+        s3Prefix?: string;
+        // AWS Services
+        awsBucket?: string;
+        awsRegion?: string;
+        awsPrefix?: string;
+        // Azure Blob Storage
+        azureStorageAccount?: string;
+        azureContainer?: string;
+        azurePrefix?: string;
+        // Local/Generic
         path?: string;
     };
     createdAt: string;
@@ -199,6 +226,18 @@ class CloudProjectIntegrationService {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };
+
+        // Include application mode for mode-aware backend behavior
+        try {
+            const { simplifiedStartupSequencer } = await import('./SimplifiedStartupSequencer');
+            const state = simplifiedStartupSequencer.getState();
+            const selectedMode = state.selectedMode || (localStorage.getItem('preferredApplicationMode') as any) || 'shared_network';
+            if (selectedMode) {
+                headers['X-Application-Mode'] = String(selectedMode);
+            }
+        } catch {
+            // no-op
+        }
 
         const token = this.getAuthToken();
         // Debug logging removed for production
@@ -354,14 +393,25 @@ class CloudProjectIntegrationService {
      */
     private mapToCloudProjectPayload(options: ProjectCreationOptions): CloudProjectCreatePayload {
         const currentState = simplifiedStartupSequencer.getState();
-        const selectedMode: ApplicationMode = (currentState.selectedMode || 'shared_network') as ApplicationMode;
+
+        // Infer application mode if not present in startup state
+        let selectedMode: ApplicationMode = (currentState.selectedMode || 'shared_network') as ApplicationMode;
+        if (!currentState.selectedMode) {
+            // If local network is enabled, assume shared network; otherwise standalone for local projects
+            if ((options as any)?.localNetworkConfig?.enabled) {
+                selectedMode = 'shared_network';
+            } else if (options.storageMode === 'local') {
+                selectedMode = 'standalone';
+            }
+        }
 
         const payload: CloudProjectCreatePayload = {
             name: options.name,
             description: options.description,
             type: this.mapApplicationModeToType(selectedMode),
             applicationMode: selectedMode,
-            visibility: 'private', // Default, could be configurable
+            // Allow caller to pass visibility; default to private
+            visibility: ((options as any)?.visibility as any) || 'private',
             storageBackend: this.mapStorageModeToBackend(currentState.storageMode),
         };
 
@@ -371,6 +421,16 @@ class CloudProjectIntegrationService {
                 payload.storageBackend = 'gcs';
                 payload.gcsBucket = options.cloudConfig.bucket;
                 payload.gcsPrefix = options.cloudConfig.prefix;
+            } else if (options.cloudConfig.provider === 's3') {
+                payload.storageBackend = 's3';
+                payload.s3Bucket = options.cloudConfig.bucket;
+                payload.s3Region = (options.cloudConfig as any).region || 'us-east-1';
+                payload.s3Prefix = options.cloudConfig.prefix;
+            } else if (options.cloudConfig.provider === 'azure-blob') {
+                payload.storageBackend = 'azure-blob';
+                payload.azureStorageAccount = (options.cloudConfig as any).storageAccount;
+                payload.azureContainer = options.cloudConfig.bucket; // Using bucket field for container
+                payload.azurePrefix = options.cloudConfig.prefix;
             } else {
                 payload.storageBackend = 'firestore';
             }
@@ -540,14 +600,20 @@ class CloudProjectIntegrationService {
     public async getUserProjects(): Promise<CloudProject[]> {
         try {
             // Always use the authenticated endpoint - the apiRequest method handles auth
-            const endpoint = 'projects';
+            // Include archived projects so they can be displayed in the UI
+            const endpoint = 'projects?includeArchived=true';
             const result = await this.apiRequest<CloudProject[]>(endpoint);
             // Debug logging removed for production
             return result || [];
         } catch (error) {
             console.error('Failed to fetch user projects:', error);
-            // If authentication fails, return empty array instead of crashing
-            return [];
+            // Fallback: try public projects for browsing if auth-protected endpoint fails
+            try {
+                const publicProjects = await this.apiRequest<CloudProject[]>('projects/public');
+                return publicProjects || [];
+            } catch (e) {
+                return [];
+            }
         }
     }
 
@@ -709,7 +775,7 @@ class CloudProjectIntegrationService {
     // Datasets
     // ==========================
 
-    public async listDatasets(params?: { organizationId?: string; visibility?: 'private' | 'organization' | 'public'; backend?: 'firestore' | 'gcs' | 's3' | 'local'; query?: string }): Promise<CloudDataset[]> {
+    public async listDatasets(params?: { organizationId?: string; visibility?: 'private' | 'organization' | 'public'; backend?: 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local'; query?: string }): Promise<CloudDataset[]> {
         const qs = new URLSearchParams();
         if (params?.organizationId) qs.append('organizationId', params.organizationId);
         if (params?.visibility) qs.append('visibility', params.visibility);
@@ -764,12 +830,19 @@ class CloudProjectIntegrationService {
     public async getProjectTeamMembers(projectId: string): Promise<ProjectTeamMember[]> {
         try {
             const result = await this.apiRequest<ProjectTeamMember[]>(`projects/${projectId}/team-members`);
+            console.log('✅ Team members API call successful:', result);
             return result || [];
         } catch (error: any) {
-            console.warn('Team member API endpoint not yet implemented, using fallback data:', error?.message);
+            console.error('❌ Team member API call failed:', error);
             
-            // Return fallback/mock data until backend endpoints are implemented
-            return this.getFallbackTeamMembers(projectId);
+            // Only use fallback for 404 errors (endpoint not found)
+            if (error?.message?.includes('404') || error?.status === 404) {
+                console.warn('Using fallback data due to 404 error');
+                return this.getFallbackTeamMembers(projectId);
+            }
+            
+            // For other errors, throw to let the UI handle it
+            throw error;
         }
     }
 
@@ -811,12 +884,19 @@ class CloudProjectIntegrationService {
 
             const endpoint = `team-members/licensed${params.toString() ? `?${params.toString()}` : ''}`;
             const result = await this.apiRequest<any[]>(endpoint);
+            console.log('✅ Licensed team members API call successful:', result);
             return result || [];
         } catch (error: any) {
-            console.warn('Licensed team members API endpoint not yet implemented, using fallback data:', error?.message);
+            console.error('❌ Licensed team members API call failed:', error);
             
-            // Return fallback team member data from what we see in Team Management
-            return this.getFallbackLicensedTeamMembers(options);
+            // Only use fallback for 404 errors (endpoint not found)
+            if (error?.message?.includes('404') || error?.status === 404) {
+                console.warn('Using fallback data due to 404 error');
+                return this.getFallbackLicensedTeamMembers(options);
+            }
+            
+            // For other errors, throw to let the UI handle it
+            throw error;
         }
     }
 

@@ -17,13 +17,13 @@ declare global {
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripeEnabled = import.meta.env.VITE_STRIPE_ENABLED === 'true';
 
-// Only show warning if Stripe is enabled but key is missing
-if (stripeEnabled && (!stripeKey || stripeKey === 'pk_test_your_stripe_publishable_key_here')) {
+// Only show warning if Stripe is enabled but key is missing or using placeholder
+if (stripeEnabled && (!stripeKey || stripeKey === 'pk_test_your_stripe_publishable_key_here' || stripeKey === 'pk_test_disabled')) {
   console.warn('Stripe publishable key not configured. Please set VITE_STRIPE_PUBLISHABLE_KEY in your .env file or environment variables.');
 }
 
 // Only load Stripe if enabled and key is valid
-const stripePromise = stripeEnabled && stripeKey && stripeKey !== 'pk_test_your_stripe_publishable_key_here' 
+const stripePromise = stripeEnabled && stripeKey && stripeKey !== 'pk_test_your_stripe_publishable_key_here' && stripeKey !== 'pk_test_disabled'
   ? loadStripe(stripeKey)
   : Promise.resolve(null);
 

@@ -6,6 +6,7 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { LoadingProvider } from './context/LoadingContext';
 import { StripeProvider } from './context/StripeContext';
+import { ReactError301Prevention } from './utils/reactErrorPrevention';
 import './index.css';
 
 // Inject Google and Apple scripts (deferred) and set up Google callback
@@ -58,6 +59,9 @@ const injectAuthProviderScripts = () => {
 };
 
 injectAuthProviderScripts();
+
+// Initialize React error prevention system
+ReactError301Prevention.getInstance().initialize();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

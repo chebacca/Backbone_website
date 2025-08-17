@@ -203,12 +203,18 @@ export interface FirestoreOrgMember {
   orgId: string;
   email: string;
   userId?: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
   role: 'OWNER' | 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER';
   status: 'INVITED' | 'ACTIVE' | 'REMOVED';
   seatReserved: boolean;
+  licenseType?: 'BASIC' | 'PROFESSIONAL' | 'ENTERPRISE' | 'NONE';
+  department?: string;
   invitedByUserId?: string;
   invitedAt?: Date;
   joinedAt?: Date;
+  lastActiveAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -465,8 +471,28 @@ export class FirestoreService {
   }
 
   async getOrgMembers(orgId: string): Promise<FirestoreOrgMember[]> {
+    console.log(`🔍 [getOrgMembers] Querying org_members collection for orgId: ${orgId}`);
     const snap = await db.collection('org_members').where('orgId', '==', orgId).get();
-    return snap.docs.map(d => d.data() as FirestoreOrgMember);
+    console.log(`📊 [getOrgMembers] Query result: ${snap.docs.length} documents found`);
+    
+    if (snap.empty) {
+      console.log(`⚠️ [getOrgMembers] No documents found for orgId: ${orgId}`);
+      return [];
+    }
+    
+    const members = snap.docs.map(d => {
+      const data = d.data();
+      console.log(`👤 [getOrgMembers] Member ${d.id}:`, { 
+        email: data.email, 
+        status: data.status, 
+        role: data.role, 
+        licenseType: data.licenseType 
+      });
+      return { id: d.id, ...data } as FirestoreOrgMember;
+    });
+    
+    console.log(`✅ [getOrgMembers] Returning ${members.length} members for orgId: ${orgId}`);
+    return members;
   }
 
   async getOrgMemberByEmail(orgId: string, email: string): Promise<FirestoreOrgMember | null> {
@@ -846,6 +872,94 @@ export class FirestoreService {
     });
   }
 
+  async getUserLicenseType(userId: string): Promise<string | null> {
+    const now = new Date();
+    console.log(`🔍 [FirestoreService] Getting license type for user ${userId}`);
+    
+    // First, check for active subscriptions (they take priority)
+    try {
+      const subscriptions = await this.getSubscriptionsByUserId(userId);
+      console.log(`🔍 [FirestoreService] Found ${subscriptions.length} subscriptions for user ${userId}:`, subscriptions.map(s => ({ id: s.id, tier: s.tier, status: s.status, currentPeriodEnd: s.currentPeriodEnd })));
+      
+      const activeSubscription = subscriptions.find(sub => 
+        sub.status === 'ACTIVE' && 
+        (!sub.currentPeriodEnd || new Date(sub.currentPeriodEnd) > now)
+      );
+      
+      if (activeSubscription) {
+        console.log(`🔍 [FirestoreService] Found active subscription for user ${userId}:`, { tier: activeSubscription.tier, status: activeSubscription.status });
+        // Map subscription tier to license type
+        switch (activeSubscription.tier) {
+          case 'ENTERPRISE':
+            return 'ENTERPRISE';
+          case 'PRO':
+            return 'PROFESSIONAL';
+          case 'BASIC':
+            return 'BASIC';
+          default:
+            return 'BASIC';
+        }
+      } else {
+        console.log(`🔍 [FirestoreService] No active subscription found for user ${userId}`);
+      }
+    } catch (error) {
+      // If subscription check fails, fall back to license check
+      console.warn('Failed to check subscriptions for user', userId, error);
+    }
+    
+    // Fallback to license check
+    console.log(`🔍 [FirestoreService] Checking licenses for user ${userId}`);
+    const snap = await db
+      .collection('licenses')
+      .where('userId', '==', userId)
+      .where('status', 'in', ['ACTIVE', 'PENDING'])
+      .get();
+    
+    console.log(`🔍 [FirestoreService] Found ${snap.docs.length} licenses for user ${userId}`);
+    
+    if (snap.empty) {
+      console.log(`🔍 [FirestoreService] No licenses found for user ${userId}, returning null`);
+      return null;
+    }
+    
+    // Get the most recent active license
+    const activeLicenses = snap.docs
+      .map(d => {
+        const lic = d.data() as any;
+        const rawExp = lic.expiresAt;
+        let exp: Date | null = null;
+        if (rawExp) {
+          if (typeof rawExp.toDate === 'function') {
+            exp = rawExp.toDate();
+          } else if (typeof rawExp.toMillis === 'function') {
+            exp = new Date(rawExp.toMillis());
+          } else {
+            exp = new Date(rawExp);
+          }
+        }
+        return { ...lic, expiresAt: exp };
+      })
+      .filter(lic => !lic.expiresAt || lic.expiresAt > now)
+      .sort((a, b) => {
+        // Sort by creation date, newest first
+        const aDate = a.createdAt?.toDate?.() || a.createdAt || new Date(0);
+        const bDate = b.createdAt?.toDate?.() || b.createdAt || new Date(0);
+        return bDate.getTime() - aDate.getTime();
+      });
+    
+    console.log(`🔍 [FirestoreService] Active licenses for user ${userId}:`, activeLicenses.map(l => ({ licenseType: l.licenseType, expiresAt: l.expiresAt })));
+    
+    if (activeLicenses.length === 0) {
+      console.log(`🔍 [FirestoreService] No active licenses found for user ${userId}, returning null`);
+      return null;
+    }
+    
+    // Return the license type from the most recent active license
+    const result = activeLicenses[0].licenseType || 'BASIC';
+    console.log(`🔍 [FirestoreService] Returning license type for user ${userId}:`, result);
+    return result;
+  }
+
   async verifyOrgMembership(userId: string, orgId: string, allowedRoles: string[]): Promise<boolean> {
     const snap = await db
       .collection('org_members')
@@ -884,6 +998,14 @@ export class FirestoreService {
       storageBackend: data.storageBackend || 'firestore',
       gcsBucket: data.gcsBucket || null,
       gcsPrefix: data.gcsPrefix || null,
+      // AWS S3 storage
+      s3Bucket: data.s3Bucket || null,
+      s3Region: data.s3Region || null,
+      s3Prefix: data.s3Prefix || null,
+      // Azure Blob storage
+      azureStorageAccount: data.azureStorageAccount || null,
+      azureContainer: data.azureContainer || null,
+      azurePrefix: data.azurePrefix || null,
       // standalone
       filePath: data.filePath || null,
       fileSize: data.fileSize || null,
@@ -979,7 +1101,7 @@ export class FirestoreService {
     ownerSnap.forEach(d => results.set(d.id, d.data()));
 
     // Participant
-    const partSnap = await db.collection('project_participants').where('userId', '==', userId).where('isActive', '==', true).get();
+    const partSnap = await db.collection('project_participants').where('userId', '==', userId).get();
     const projectIds = partSnap.docs.map(d => (d.data() as any).projectId);
     if (projectIds.length) {
       const chunks: string[][] = [];
@@ -1448,6 +1570,269 @@ export class FirestoreService {
       .where('projectId', '==', projectId).where('datasetId', '==', datasetId).limit(1).get();
     if (snap.empty) return;
     await db.collection('project_datasets').doc(snap.docs[0].id).delete();
+  }
+
+  // Team member management methods
+  async getProjectTeamMembers(projectId: string): Promise<any[]> {
+    const snap = await db.collection('project_team_members').where('projectId', '==', projectId).get();
+    const teamMembers = [];
+    
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      // Get the actual team member details
+      const teamMember = await this.getTeamMemberById(data.teamMemberId);
+      if (teamMember) {
+        teamMembers.push({
+          id: doc.id,
+          projectId: data.projectId,
+          teamMemberId: data.teamMemberId,
+          role: data.role,
+          // Flatten the team member data for easier frontend access
+          name: teamMember.name,
+          email: teamMember.email,
+          firstName: teamMember.firstName,
+          lastName: teamMember.lastName,
+          licenseType: teamMember.licenseType,
+          status: teamMember.status,
+          organizationId: teamMember.organizationId,
+          department: teamMember.department,
+          // Keep the nested structure for backward compatibility
+          teamMember,
+          assignedAt: data.assignedAt,
+          assignedBy: data.assignedBy,
+          isActive: data.isActive !== false
+        });
+      }
+    }
+    
+    return teamMembers;
+  }
+
+  async addTeamMemberToProject(projectId: string, teamMemberId: string, role: string, assignedBy: string): Promise<any> {
+    // Check if team member is already assigned to this project
+    const existing = await db.collection('project_team_members')
+      .where('projectId', '==', projectId)
+      .where('teamMemberId', '==', teamMemberId)
+      .limit(1)
+      .get();
+    
+    if (!existing.empty) {
+      throw new Error('Team member is already assigned to this project');
+    }
+
+    // Check if role is ADMIN and there's already an admin
+    if (role === 'ADMIN') {
+      const adminCheck = await db.collection('project_team_members')
+        .where('projectId', '==', projectId)
+        .where('role', '==', 'ADMIN')
+        .limit(1)
+        .get();
+      
+      if (!adminCheck.empty) {
+        throw new Error('Only one Admin is allowed per project. Please remove the existing Admin first.');
+      }
+    }
+
+    const ref = db.collection('project_team_members').doc();
+    const projectTeamMember = {
+      id: ref.id,
+      projectId,
+      teamMemberId,
+      role,
+      assignedAt: new Date(),
+      assignedBy,
+      isActive: true
+    };
+
+    await ref.set(projectTeamMember);
+    
+    // Get the team member details to return
+    const teamMember = await this.getTeamMemberById(teamMemberId);
+    return {
+      ...projectTeamMember,
+      teamMember
+    };
+  }
+
+  async removeTeamMemberFromProject(projectId: string, teamMemberId: string): Promise<void> {
+    const snap = await db.collection('project_team_members')
+      .where('projectId', '==', projectId)
+      .where('teamMemberId', '==', teamMemberId)
+      .limit(1)
+      .get();
+    
+    if (!snap.empty) {
+      await db.collection('project_team_members').doc(snap.docs[0].id).delete();
+    }
+  }
+
+  async getUserProjectRole(projectId: string, userId: string): Promise<string | null> {
+    const snap = await db.collection('project_team_members')
+      .where('projectId', '==', projectId)
+      .where('teamMemberId', '==', userId)
+      .limit(1)
+      .get();
+    
+    if (snap.empty) return null;
+    return snap.docs[0].data().role;
+  }
+
+  async getTeamMemberById(teamMemberId: string): Promise<any | null> {
+    // First try to get from org_members collection
+    const orgMemberSnap = await db.collection('org_members').doc(teamMemberId).get();
+    if (orgMemberSnap.exists) {
+      const data = orgMemberSnap.data();
+      
+      // Generate a better display name
+      let displayName = data?.name;
+      if (!displayName) {
+        if (data?.firstName && data?.lastName) {
+          displayName = `${data.firstName} ${data.lastName}`;
+        } else if (data?.firstName) {
+          displayName = data.firstName;
+        } else if (data?.lastName) {
+          displayName = data.lastName;
+        } else {
+          // If no name fields at all, create a name from email
+          const emailParts = data?.email?.split('@') || [];
+          const username = emailParts[0];
+          if (username) {
+            // Convert username to title case (e.g., "john.doe" -> "John Doe")
+            displayName = username.split(/[._-]/).map((part: string) => 
+              part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+            ).join(' ');
+          } else {
+            displayName = 'Unknown User';
+          }
+        }
+      }
+      
+      // Determine license type from organization
+      let licenseType = data?.licenseType;
+      if (!licenseType && data?.orgId) {
+        try {
+          const orgSnap = await db.collection('organizations').doc(data.orgId).get();
+          if (orgSnap.exists) {
+            const orgData = orgSnap.data();
+            // Set license type based on organization tier
+            if (orgData?.tier === 'ENTERPRISE') {
+              licenseType = 'ENTERPRISE';
+            } else if (orgData?.tier === 'PROFESSIONAL') {
+              licenseType = 'PROFESSIONAL';
+            } else {
+              licenseType = 'BASIC';
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to get organization details for ${data.orgId}:`, error);
+        }
+      }
+      
+      return {
+        id: orgMemberSnap.id,
+        name: displayName,
+        email: data?.email,
+        firstName: data?.firstName,
+        lastName: data?.lastName,
+        licenseType: licenseType || 'PROFESSIONAL',
+        status: data?.status,
+        organizationId: data?.orgId,
+        department: data?.department || 'Not assigned',
+        createdAt: data?.createdAt,
+        updatedAt: data?.updatedAt,
+        lastActive: data?.lastActiveAt || data?.updatedAt
+      };
+    }
+
+    // Fallback to users collection
+    const userSnap = await db.collection('users').doc(teamMemberId).get();
+    if (userSnap.exists) {
+      const data = userSnap.data();
+      
+      // Generate display name for users too
+      let displayName = data?.name;
+      if (!displayName) {
+        if (data?.firstName && data?.lastName) {
+          displayName = `${data.firstName} ${data.lastName}`;
+        } else if (data?.firstName) {
+          displayName = data.firstName;
+        } else if (data?.lastName) {
+          displayName = data.lastName;
+        } else {
+          const emailParts = data?.email?.split('@') || [];
+          const username = emailParts[0];
+          if (username) {
+            displayName = username.split(/[._-]/).map((part: string) => 
+              part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+            ).join(' ');
+          } else {
+            displayName = 'Unknown User';
+          }
+        }
+      }
+      
+      return {
+        id: userSnap.id,
+        name: displayName,
+        email: data?.email,
+        firstName: data?.firstName,
+        lastName: data?.lastName,
+        licenseType: 'PROFESSIONAL', // Default for users
+        status: 'ACTIVE',
+        organizationId: null,
+        department: 'Not assigned',
+        createdAt: data?.createdAt,
+        updatedAt: data?.updatedAt,
+        lastActive: data?.lastLoginAt || data?.updatedAt
+      };
+    }
+
+    return null;
+  }
+
+  async getOrganizationsForUser(userId: string): Promise<FirestoreOrganization[]> {
+    console.log(`🔍 [getOrganizationsForUser] Looking for organizations for userId: ${userId}`);
+    
+    // Get organizations where user is a member
+    const memberSnap = await db.collection('org_members').where('userId', '==', userId).get();
+    console.log(`📊 [getOrganizationsForUser] Found ${memberSnap.docs.length} org_members entries for userId: ${userId}`);
+    
+    if (memberSnap.empty) {
+      console.log(`⚠️ [getOrganizationsForUser] No org_members found for userId: ${userId}`);
+      return [];
+    }
+    
+    const orgIds = memberSnap.docs.map(doc => {
+      const data = doc.data();
+      console.log(`🏢 [getOrganizationsForUser] User ${userId} is member of org: ${data.orgId} with role: ${data.role} and status: ${data.status}`);
+      return data.orgId;
+    });
+    
+    console.log(`📋 [getOrganizationsForUser] Organization IDs found: ${orgIds.join(', ')}`);
+    
+    if (orgIds.length === 0) {
+      console.log(`⚠️ [getOrganizationsForUser] No valid orgIds found for userId: ${userId}`);
+      return [];
+    }
+    
+    // Get organization details
+    const orgs = [];
+    for (const orgId of orgIds) {
+      console.log(`🔍 [getOrganizationsForUser] Fetching details for org: ${orgId}`);
+      const orgSnap = await db.collection('organizations').doc(orgId).get();
+      if (orgSnap.exists) {
+        const orgData = orgSnap.data();
+        if (orgData) {
+          console.log(`✅ [getOrganizationsForUser] Found org: ${orgId}`, { name: orgData.name, tier: orgData.tier });
+          orgs.push({ id: orgSnap.id, ...orgData } as FirestoreOrganization);
+        }
+      } else {
+        console.log(`❌ [getOrganizationsForUser] Organization ${orgId} not found in organizations collection`);
+      }
+    }
+    
+    console.log(`🎯 [getOrganizationsForUser] Returning ${orgs.length} organizations for userId: ${userId}`);
+    return orgs;
   }
 }
 

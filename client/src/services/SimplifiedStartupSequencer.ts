@@ -32,6 +32,7 @@ export interface StartupState {
 export interface ProjectCreationOptions {
     name: string;
     description?: string;
+    visibility?: 'private' | 'organization' | 'public';
     storageMode: StorageMode;
     preferredPorts?: {
         website?: number;
@@ -44,9 +45,11 @@ export interface ProjectCreationOptions {
         maxUsers: number;
     };
     cloudConfig?: {
-        provider: 'firestore' | 'gcs';
+        provider: 'firestore' | 'gcs' | 's3' | 'azure-blob';
         bucket?: string;
         prefix?: string;
+        region?: string;
+        storageAccount?: string;
     };
     collaborationSettings?: {
         maxCollaborators: number;

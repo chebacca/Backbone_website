@@ -327,11 +327,17 @@ router.post('/login', [
 
   const { email, password } = req.body;
   const requestInfo = (req as any).requestInfo;
-  const user = await firestoreService.getUserByEmail(email);
+  
+  // Find regular user (license owners only - no team member authentication on licensing website)
+  let user = await firestoreService.getUserByEmail(email);
+  
   if (!user) throw createApiError('Invalid credentials', 401);
 
-  const ok = await PasswordUtil.compare(password, user.password);
-  if (!ok) throw createApiError('Invalid credentials', 401);
+  // Validate password for regular users
+  if (user.password) {
+    const ok = await PasswordUtil.compare(password, user.password);
+    if (!ok) throw createApiError('Invalid credentials', 401);
+  }
 
   if (user.twoFactorEnabled) {
     const interimToken = JwtUtil.generateInterimToken({ userId: user.id, email: user.email, role: user.role });
@@ -342,11 +348,16 @@ router.post('/login', [
   }
 
   const tokens = JwtUtil.generateTokens({ userId: user.id, email: user.email, role: user.role });
+  
+  // Update last login time
   await firestoreService.updateUser(user.id, { lastLoginAt: new Date() });
+  
   await ComplianceService.createAuditLog(user.id, 'LOGIN', 'User logged in successfully', { email }, requestInfo);
   logger.info(`User logged in successfully: ${email}`, { userId: user.id });
 
   const requiresLegalAcceptance = (user.termsVersionAccepted !== config.legal.termsVersion) || (user.privacyPolicyVersionAccepted !== config.legal.privacyVersion);
+
+  // No team member data needed for licensing website
 
   // Add hybrid context for desktop/web routing: org and active license summary
   const [ownedOrgs, memberOrgs] = await Promise.all([
@@ -369,11 +380,18 @@ router.post('/login', [
     success: true,
     message: 'Login successful',
     data: {
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified },
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        role: user.role, 
+        isEmailVerified: user.isEmailVerified,
+        organizationId: user.organizationId
+      },
       tokens,
       requiresLegalAcceptance,
       requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },
-      orgContext: { primaryOrgId, activeOrgSubscription },
+      orgContext: { primaryOrgId, activeOrgSubscription }
     }
   });
   return;

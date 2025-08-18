@@ -36,7 +36,7 @@ export interface FirestoreUser {
   email: string;
   name: string;
   password: string;
-  role: 'SUPERADMIN' | 'USER' | 'ADMIN' | 'ACCOUNTING';
+  role: 'SUPERADMIN' | 'USER' | 'ADMIN' | 'ACCOUNTING' | 'TEAM_MEMBER';
   isEmailVerified: boolean;
   emailVerifyToken?: string;
   passwordResetToken?: string;
@@ -67,6 +67,40 @@ export interface FirestoreUser {
   userAgent?: string;
   registrationSource?: string;
   organizationId?: string;
+  // Team member properties
+  isTeamMember?: boolean;
+  licenseType?: string;
+  status?: string;
+  // Demo-related properties
+  isDemoUser?: boolean;
+  demoSessionCount?: number;
+  demoAppUsageMinutes?: number;
+  demoFeaturesUsed?: string[];
+  demoRemindersSent?: number;
+  demoLastActivityAt?: Date;
+  demoStartedAt?: Date;
+  demoExpiresAt?: Date;
+}
+
+export interface FirestoreTeamMember {
+  id: string;
+  email: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  licenseType: string;
+  status: string;
+  organizationId: string;
+  department?: string;
+  company?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lastActive?: Date;
+  hashedPassword?: string;
+  lastLoginAt?: Date;
+  avatar?: string;
+  bio?: string;
 }
 
 export interface FirestoreSubscription {
@@ -243,9 +277,18 @@ export interface FirestoreDataset {
   tags?: string[];
   schema?: any;
   storage?: {
-    backend: 'firestore' | 'gcs' | 's3' | 'local';
+    backend: 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local';
     gcsBucket?: string;
     gcsPrefix?: string;
+    s3Bucket?: string;
+    s3Region?: string;
+    s3Prefix?: string;
+    awsBucket?: string;
+    awsRegion?: string;
+    awsPrefix?: string;
+    azureAccount?: string;
+    azureContainer?: string;
+    azurePrefix?: string;
     path?: string;
   };
   createdAt: Date;
@@ -1447,7 +1490,7 @@ export class FirestoreService {
 
   async listUserDatasets(
     userId: string,
-    filter: { organizationId?: string; visibility?: 'private' | 'organization' | 'public'; backend?: 'firestore' | 'gcs' | 's3' | 'local'; query?: string } = {}
+    filter: { organizationId?: string; visibility?: 'private' | 'organization' | 'public'; backend?: 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local'; query?: string } = {}
   ): Promise<FirestoreDataset[]> {
     const { organizationId, visibility, backend, query } = filter;
     const results: Map<string, FirestoreDataset> = new Map();
@@ -1748,18 +1791,19 @@ export class FirestoreService {
     const userSnap = await db.collection('users').doc(teamMemberId).get();
     if (userSnap.exists) {
       const data = userSnap.data();
+      if (!data) return null;
       
       // Generate display name for users too
-      let displayName = data?.name;
+      let displayName = data.name;
       if (!displayName) {
-        if (data?.firstName && data?.lastName) {
+        if (data.firstName && data.lastName) {
           displayName = `${data.firstName} ${data.lastName}`;
-        } else if (data?.firstName) {
+        } else if (data.firstName) {
           displayName = data.firstName;
-        } else if (data?.lastName) {
+        } else if (data.lastName) {
           displayName = data.lastName;
         } else {
-          const emailParts = data?.email?.split('@') || [];
+          const emailParts = data.email?.split('@') || [];
           const username = emailParts[0];
           if (username) {
             displayName = username.split(/[._-]/).map((part: string) => 
@@ -1774,16 +1818,16 @@ export class FirestoreService {
       return {
         id: userSnap.id,
         name: displayName,
-        email: data?.email,
-        firstName: data?.firstName,
-        lastName: data?.lastName,
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
         licenseType: 'PROFESSIONAL', // Default for users
         status: 'ACTIVE',
         organizationId: null,
         department: 'Not assigned',
-        createdAt: data?.createdAt,
-        updatedAt: data?.updatedAt,
-        lastActive: data?.lastLoginAt || data?.updatedAt
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        lastActive: data.lastLoginAt || data.updatedAt
       };
     }
 
@@ -1833,6 +1877,147 @@ export class FirestoreService {
     
     console.log(`🎯 [getOrganizationsForUser] Returning ${orgs.length} organizations for userId: ${userId}`);
     return orgs;
+  }
+
+
+
+  async getTeamMemberByEmail(email: string): Promise<any | null> {
+    try {
+      // First check the team_members collection
+      const teamMemberSnap = await db.collection('team_members').where('email', '==', email).limit(1).get();
+      if (!teamMemberSnap.empty) {
+        const doc = teamMemberSnap.docs[0];
+        return { id: doc.id, ...doc.data() };
+      }
+
+      // If not found in team_members, check if there's a user with team member role
+      const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
+      if (!userSnap.empty) {
+        const doc = userSnap.docs[0];
+        const data = doc.data();
+        // Check if this user has team member characteristics
+        if (data.role === 'TEAM_MEMBER' || data.isTeamMember || data.licenseType) {
+          return { id: doc.id, ...data };
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting team member by email:', error);
+      return null;
+    }
+  }
+
+  async updateTeamMember(id: string, updates: any): Promise<void> {
+    try {
+      // Try to update in team_members collection first
+      const teamMemberRef = db.collection('team_members').doc(id);
+      const teamMemberDoc = await teamMemberRef.get();
+      
+      if (teamMemberDoc.exists) {
+        await teamMemberRef.update({
+          ...updates,
+          updatedAt: new Date()
+        });
+        return;
+      }
+
+      // If not found in team_members, try users collection
+      const userRef = db.collection('users').doc(id);
+      const userDoc = await userRef.get();
+      
+      if (userDoc.exists) {
+        await userRef.update({
+          ...updates,
+          updatedAt: new Date()
+        });
+        return;
+      }
+
+      throw new Error(`Team member with ID ${id} not found`);
+    } catch (error) {
+      console.error('Error updating team member:', error);
+      throw error;
+    }
+  }
+
+  async getTeamMemberProjectAccess(teamMemberId: string): Promise<any[]> {
+    try {
+      // Get project assignments for this team member
+      const assignmentsSnap = await db.collection('project_team_members')
+        .where('teamMemberId', '==', teamMemberId)
+        .get();
+
+      if (assignmentsSnap.empty) {
+        return [];
+      }
+
+      const projectAccess = [];
+      for (const assignment of assignmentsSnap.docs) {
+        const data = assignment.data();
+        const projectSnap = await db.collection('projects').doc(data.projectId).get();
+        
+        if (projectSnap.exists) {
+          const projectData = projectSnap.data();
+          projectAccess.push({
+            projectId: data.projectId,
+            projectName: projectData?.name || 'Unknown Project',
+            role: data.role || 'MEMBER',
+            accessLevel: data.accessLevel || 'read',
+            assignedAt: data.assignedAt,
+            project: {
+              id: data.projectId,
+              name: projectData?.name,
+              description: projectData?.description,
+              type: projectData?.type,
+              applicationMode: projectData?.applicationMode,
+              visibility: projectData?.visibility
+            }
+          });
+        }
+      }
+
+      return projectAccess;
+    } catch (error) {
+      console.error('Error getting team member project access:', error);
+      return [];
+    }
+  }
+
+  async getTeamMemberLicenses(teamMemberId: string): Promise<any[]> {
+    try {
+      // Get licenses associated with this team member
+      const licensesSnap = await db.collection('licenses')
+        .where('userId', '==', teamMemberId)
+        .get();
+
+      if (licensesSnap.empty) {
+        // Check if there are organization-level licenses
+        const teamMember = await this.getTeamMemberById(teamMemberId);
+        if (teamMember?.organizationId) {
+          const orgLicensesSnap = await db.collection('licenses')
+            .where('organizationId', '==', teamMember.organizationId)
+            .get();
+          
+          if (!orgLicensesSnap.empty) {
+            return orgLicensesSnap.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+              isOrganizationLicense: true
+            }));
+          }
+        }
+        return [];
+      }
+
+      return licensesSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
+      console.error('Error getting team member licenses:', error);
+      return [];
+    }
   }
 }
 

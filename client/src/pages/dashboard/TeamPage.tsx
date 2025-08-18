@@ -50,10 +50,14 @@ import {
   Star,
   Visibility,
   VisibilityOff,
+  People,
+  Person,
+  GroupAdd,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import MetricCard from '@/components/common/MetricCard';
 
 interface TeamMember {
   id: string;
@@ -714,119 +718,41 @@ const TeamPage: React.FC = () => {
       {/* Team Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Box>
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)',
-                border: '1px solid rgba(0, 212, 255, 0.2)',
-              }}
-            >
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'primary.main' }}>
-                    <Group />
-                  </Avatar>
-                </Box>
-                <Typography variant="h3" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                  {stats.totalMembers}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Members
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Total Members"
+            value={stats.totalMembers}
+            icon={<People />}
+            color="primary"
+            trend={{ value: 12, direction: 'up' }}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Box>
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%)',
-                border: '1px solid rgba(76, 175, 80, 0.2)',
-              }}
-            >
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'success.main' }}>
-                    <CheckCircle />
-                  </Avatar>
-                </Box>
-                <Typography variant="h3" sx={{ fontWeight: 700, color: 'success.main' }}>
-                  {stats.activeMembers}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Active Members
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Active Members"
+            value={stats.activeMembers}
+            icon={<CheckCircle />}
+            color="success"
+            trend={{ value: 8, direction: 'up' }}
+          />
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Box>
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(255, 152, 0, 0.05) 100%)',
-                border: '1px solid rgba(255, 152, 0, 0.2)',
-              }}
-            >
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'warning.main' }}>
-                    <Schedule />
-                  </Avatar>
-                </Box>
-                <Typography variant="h3" sx={{ fontWeight: 700, color: 'warning.main' }}>
-                  {stats.pendingInvites}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Pending Invites
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Pending Invites"
+            value={stats.pendingInvites}
+            icon={<Schedule />}
+            color="warning"
+          />
         </Grid>
 
         <Grid item xs={12} sm={6} md={3}>
-          <Box>
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
-                border: '1px solid rgba(255,255,255,0.1)',
-              }}
-            >
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'secondary.main' }}>
-                    <Star />
-                  </Avatar>
-                </Box>
-                <Typography variant="h3" sx={{ fontWeight: 700 }}>
-                  {stats.availableSeats}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Available Seats
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={utilization}
-                  sx={{
-                    mt: 1,
-                    height: 4,
-                    borderRadius: 2,
-                    backgroundColor: 'rgba(255,255,255,0.1)',
-                    '& .MuiLinearProgress-bar': {
-                      borderRadius: 2,
-                      background: utilization > 80 
-                        ? 'linear-gradient(90deg, #ff9800 0%, #f44336 100%)'
-                        : 'linear-gradient(90deg, #00d4ff 0%, #667eea 100%)',
-                    },
-                  }}
-                />
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Available Seats"
+            value={stats.availableSeats}
+            icon={<Star />}
+            color="secondary"
+          />
         </Grid>
       </Grid>
 

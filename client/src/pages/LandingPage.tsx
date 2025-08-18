@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Container,
@@ -11,6 +11,8 @@ import {
   Stack,
   IconButton,
   Paper,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import {
   PlayArrow,
@@ -23,16 +25,32 @@ import {
   CheckCircle,
   Star,
   AdminPanelSettings,
+  RocketLaunch,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { Navigation } from '@/components/layout/Navigation';
 import { Footer } from '@/components/layout/Footer';
 import { useAuth } from '@/context/AuthContext';
+import { DemoRegistrationModal } from '@/components/DemoRegistrationModal';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, hasActiveLicense, hasActiveSubscription } = useAuth();
   const isSuperAdmin = isAuthenticated && String(user?.role || '').toUpperCase() === 'SUPERADMIN';
+  
+  // Check if user has active license or subscription
+  const hasActiveAccess = hasActiveLicense() || hasActiveSubscription();
+  
+  const [demoModalOpen, setDemoModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const handleDemoSuccess = (userData: any) => {
+    setSuccessMessage(`🎉 Welcome to your 14-day demo trial, ${userData.user.name || userData.user.email}! Check your email for next steps.`);
+    // Optionally redirect to dashboard
+    setTimeout(() => {
+      window.open('https://dashboard-1c3a5.web.app/login', '_blank');
+    }, 2000);
+  };
 
   const features = [
     {
@@ -155,13 +173,60 @@ const LandingPage: React.FC = () => {
                    {isSuperAdmin ? (
                      // SUPERADMIN: no CTA buttons here; access Admin from toolbar menu
                      <></>
+                   ) : hasActiveAccess ? (
+                     // User has active license/subscription - show dashboard access
+                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 4 }}>
+                       <Button
+                         variant="contained"
+                         size="large"
+                         startIcon={<CheckCircle />}
+                         onClick={() => navigate('/dashboard')}
+                         sx={{
+                           px: 4,
+                           py: 1.5,
+                           fontSize: '1.1rem',
+                           borderRadius: 2,
+                           background: 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)',
+                           color: 'white',
+                           '&:hover': {
+                             background: 'linear-gradient(135deg, #66bb6a 0%, #4caf50 100%)',
+                             transform: 'translateY(-2px)',
+                             boxShadow: '0 8px 25px rgba(76, 175, 80, 0.4)',
+                           },
+                         }}
+                       >
+                         Access Dashboard
+                       </Button>
+                       
+                       <Button
+                         variant="outlined"
+                         size="large"
+                         onClick={() => navigate('/dashboard/settings')}
+                         sx={{
+                           px: 4,
+                           py: 1.5,
+                           fontSize: '1.1rem',
+                           borderRadius: 2,
+                           borderColor: 'rgba(255, 255, 255, 0.3)',
+                           color: 'white',
+                           '&:hover': {
+                             borderColor: 'primary.main',
+                             backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                             transform: 'translateY(-2px)',
+                           },
+                         }}
+                       >
+                         Account Settings
+                       </Button>
+                     </Stack>
                    ) : (
+                     // New user - show demo and pricing options
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 4 }}>
                       <Button
                         variant="contained"
                         size="large"
-                        startIcon={<PlayArrow />}
-                        onClick={() => navigate('/pricing')}
+                        startIcon={<RocketLaunch />}
+                        onClick={() => setDemoModalOpen(true)}
                         sx={{
                           px: 4,
                           py: 1.5,
@@ -176,7 +241,7 @@ const LandingPage: React.FC = () => {
                           },
                         }}
                       >
-                        Start Free Trial
+                        Start 14-Day Demo Trial
                       </Button>
                       
                       <Button
@@ -193,30 +258,11 @@ const LandingPage: React.FC = () => {
                           '&:hover': {
                             borderColor: 'primary.main',
                             backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                            transform: 'translateY(-2px)',
                           },
                         }}
                       >
                         View Pricing
-                      </Button>
-                      
-                      <Button
-                        variant="outlined"
-                        size="large"
-                        onClick={() => navigate('/startup-demo')}
-                        sx={{
-                          px: 4,
-                          py: 1.5,
-                          fontSize: '1.1rem',
-                          borderRadius: 2,
-                          borderColor: 'rgba(255, 255, 255, 0.3)',
-                          color: 'white',
-                          '&:hover': {
-                            borderColor: 'secondary.main',
-                            backgroundColor: 'rgba(118, 75, 162, 0.1)',
-                          },
-                        }}
-                      >
-                        🚀 Startup Demo
                       </Button>
                     </Stack>
                   )}
@@ -432,7 +478,7 @@ const LandingPage: React.FC = () => {
                 mb: 2,
               }}
             >
-              Ready to Transform Your Workflow?
+              {hasActiveAccess ? 'Welcome Back!' : 'Ready to Transform Your Workflow?'}
             </Typography>
             
             <Typography
@@ -440,14 +486,17 @@ const LandingPage: React.FC = () => {
               color="text.secondary"
               sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}
             >
-              Join thousands of professionals who have revolutionized their
-              production process with BackboneLogic, Inc.
+              {hasActiveAccess 
+                ? 'Continue building amazing projects with your active subscription. Access all features and collaborate with your team.'
+                : 'Join thousands of professionals who have revolutionized their production process with BackboneLogic, Inc.'
+              }
             </Typography>
             
             {isSuperAdmin ? (
               // SUPERADMIN: no CTA button here
               <></>
-            ) : (
+            ) : hasActiveAccess ? (
+              // User has active license/subscription - show dashboard access
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 spacing={2}
@@ -456,8 +505,46 @@ const LandingPage: React.FC = () => {
                 <Button
                   variant="contained"
                   size="large"
-                  endIcon={<ArrowForward />}
-                  onClick={() => navigate('/register')}
+                  endIcon={<CheckCircle />}
+                  onClick={() => navigate('/dashboard')}
+                  sx={{
+                    px: 4,
+                    py: 1.5,
+                    fontSize: '1.1rem',
+                    background: 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)',
+                    color: 'white',
+                  }}
+                >
+                  Access Dashboard
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => navigate('/dashboard/settings')}
+                  sx={{
+                    px: 4,
+                    py: 1.5,
+                    fontSize: '1.1rem',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    color: 'white',
+                  }}
+                >
+                  Account Settings
+                </Button>
+              </Stack>
+            ) : (
+              // New user - show demo and pricing options
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                justifyContent="center"
+              >
+                <Button
+                  variant="contained"
+                  size="large"
+                  endIcon={<RocketLaunch />}
+                  onClick={() => setDemoModalOpen(true)}
                   sx={{
                     px: 4,
                     py: 1.5,
@@ -466,7 +553,7 @@ const LandingPage: React.FC = () => {
                     color: '#000',
                   }}
                 >
-                  Start Your Free Trial
+                  Start Your 14-Day Demo
                 </Button>
                 
                 <Button
@@ -486,17 +573,52 @@ const LandingPage: React.FC = () => {
               </Stack>
             )}
             
-            <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-              <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
-              <Typography variant="body2" color="text.secondary">
-                No credit card required • 14-day free trial • Cancel anytime
-              </Typography>
-            </Box>
+            {!hasActiveAccess && (
+              <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
+                <Typography variant="body2" color="text.secondary">
+                  No credit card required • 14-day free trial • Cancel anytime
+                </Typography>
+              </Box>
+            )}
+            
+            {hasActiveAccess && (
+              <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
+                <Typography variant="body2" color="text.secondary">
+                  Active subscription • Full access • Premium support
+                </Typography>
+              </Box>
+            )}
           </Paper>
         </Box>
       </Container>
 
       <Footer />
+
+      {/* Demo Registration Modal */}
+      <DemoRegistrationModal
+        open={demoModalOpen}
+        onClose={() => setDemoModalOpen(false)}
+        onSuccess={handleDemoSuccess}
+      />
+
+      {/* Success Message */}
+      <Snackbar
+        open={!!successMessage}
+        autoHideDuration={6000}
+        onClose={() => setSuccessMessage(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setSuccessMessage(null)} 
+          severity="success"
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {successMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

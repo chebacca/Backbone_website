@@ -1,10 +1,132 @@
-import type { Router as ExpressRouter } from 'express';
+import type { Router as ExpressRouter, Request, Response } from 'express';
 import { Router } from 'express';
+import { body, validationResult } from 'express-validator';
 import { authenticateToken } from '../middleware/auth.js';
 import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
+import { PasswordUtil } from '../utils/password.js';
+import { JwtUtil } from '../utils/jwt.js';
+import { ComplianceService } from '../services/complianceService.js';
+import { 
+  asyncHandler, 
+  validationErrorHandler, 
+  createApiError 
+} from '../middleware/errorHandler.js';
 
 const router: ExpressRouter = Router();
+
+/**
+ * Team Member Authentication - Only for Desktop/Web App, NOT for licensing website
+ * This endpoint allows team members to authenticate into the actual Backbone application
+ */
+router.post('/auth/login', [
+  body('email').isEmail().normalizeEmail(),
+  body('password').notEmpty(),
+], asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
+
+  const { email, password } = req.body;
+  const requestInfo = (req as any).requestInfo;
+  
+  // Find team member by email
+  const teamMember = await firestoreService.getTeamMemberByEmail(email);
+  if (!teamMember) {
+    throw createApiError('Invalid credentials', 401);
+  }
+
+  // Validate team member password
+  let isValidPassword = false;
+  if (teamMember.hashedPassword) {
+    isValidPassword = await PasswordUtil.compare(password, teamMember.hashedPassword);
+  } else {
+    // For development/testing, accept any password for team members without hashed passwords
+    if (process.env.NODE_ENV === 'development' || process.env.ALLOW_TEAM_MEMBER_DEV_LOGIN === 'true') {
+      isValidPassword = true;
+    }
+  }
+
+  if (!isValidPassword) {
+    throw createApiError('Invalid credentials', 401);
+  }
+
+  // Create user object for JWT token generation
+  const user = {
+    id: teamMember.id,
+    email: teamMember.email,
+    name: teamMember.name || `${teamMember.firstName} ${teamMember.lastName}`.trim(),
+    role: 'TEAM_MEMBER' as const
+  };
+
+  // Generate tokens
+  const tokens = JwtUtil.generateTokens({ 
+    userId: user.id, 
+    email: user.email, 
+    role: user.role 
+  });
+  
+  // Update last login time
+  await firestoreService.updateTeamMember(teamMember.id, { lastLoginAt: new Date() });
+  
+  // Create audit log
+  await ComplianceService.createAuditLog(
+    teamMember.id, 
+    'LOGIN', 
+    'Team member logged in successfully', 
+    { email, isTeamMember: true }, 
+    requestInfo
+  );
+  
+  logger.info(`Team member logged in successfully: ${email}`, { 
+    teamMemberId: teamMember.id, 
+    organizationId: teamMember.organizationId 
+  });
+
+  // Get team member's project access and licenses
+  let teamMemberData = null;
+  try {
+    const projectAccess = await firestoreService.getTeamMemberProjectAccess(teamMember.id);
+    const licenses = await firestoreService.getTeamMemberLicenses(teamMember.id);
+    
+    teamMemberData = {
+      projectAccess,
+      licenses,
+      organizationId: teamMember.organizationId,
+      licenseType: teamMember.licenseType,
+      status: teamMember.status
+    };
+  } catch (error) {
+    logger.warn('Error fetching team member data:', error);
+    teamMemberData = {
+      projectAccess: [],
+      licenses: [],
+      organizationId: teamMember.organizationId,
+      licenseType: teamMember.licenseType,
+      status: teamMember.status
+    };
+  }
+
+  res.json({
+    success: true,
+    message: 'Team member login successful',
+    data: {
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        role: user.role, 
+        isEmailVerified: true,
+        isTeamMember: true,
+        organizationId: teamMember.organizationId,
+        licenseType: teamMember.licenseType,
+        status: teamMember.status
+      },
+      tokens,
+      teamMemberData
+    }
+  });
+  return;
+}));
 
 // Get licensed team members (available for assignment to projects)
 router.get('/licensed', authenticateToken, async (req: any, res) => {

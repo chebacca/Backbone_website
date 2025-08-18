@@ -1,0 +1,172 @@
+# Production Firestore Index Synchronization Summary
+
+## Overview
+- **Production Indexes**: 37
+- **Generated Indexes**: 374
+- **Final Indexes**: 409
+- **Sync Date**: 2025-08-17T22:51:10.681Z
+
+## Status
+✅ **SYNCHRONIZED** - Local firestore.indexes.json now matches production state
+
+## What Was Done
+1. Loaded current production indexes (37 indexes)
+2. Preserved all existing production indexes to prevent conflicts
+3. Added 372 new indexes from generated schema
+4. Created backup of previous local file
+
+## Next Steps
+- Deploy with `firebase deploy --only firestore:indexes`
+- No conflicts should occur as all production indexes are preserved
+- New indexes will be created for enhanced schema parity
+
+## Collections Covered
+- activities
+- agent_function_logs
+- agent_memorys
+- agents
+- asset_price_historys
+- asset_setup_checklists
+- assets
+- audit_log
+- automation_executions
+- brain_chat_messages
+- brain_chat_sessions
+- budgets
+- call_sheet_department_call_times
+- call_sheet_locations
+- call_sheet_personnels
+- call_sheet_schedules
+- call_sheet_vendors
+- call_sheet_walkie_channels
+- call_sheets
+- chapter_markers
+- chat_participants
+- command_center_layouts
+- contact_group_memberships
+- contact_groups
+- contacts
+- conversation_patterns
+- custom_roles
+- cut_approvals
+- daily_call_sheet_department_call_times
+- daily_call_sheet_locations
+- daily_call_sheet_personnels
+- daily_call_sheet_records
+- daily_call_sheet_schedules
+- daily_call_sheet_vendors
+- daily_call_sheet_walkie_channels
+- domain_knowledges
+- ebsocket_sessionss
+- file_checklists
+- inventory_assignment_historys
+- inventory_historys
+- invoice_attachments
+- invoice_items
+- invoice_payments
+- invoices
+- license_delivery_logs
+- licenses
+- map_datas
+- map_layouts
+- map_locations
+- media_file_tags
+- media_indexs
+- memory_slots
+- memory_system_metricss
+- message_participants
+- message_reads
+- messages
+- network_i_p_assignments
+- network_i_p_ranges
+- notes
+- notifications
+- org_members
+- p_b_m_daily_statuss
+- p_b_m_payscales
+- p_b_m_projects
+- p_b_m_schedules
+- payments
+- pod_assignments
+- portfolio_allocations
+- portfolio_performances
+- portfolio_tax_summarys
+- portfolios
+- post_production_tasks
+- post_production_workflow_correlations
+- privacy_consents
+- production_crew_members
+- production_departments
+- production_roles
+- production_session_archived_by_to_users
+- production_session_to_projects
+- production_session_to_stages
+- production_session_to_users
+- production_stages
+- production_sub_departments
+- production_task_assigned_to_users
+- production_task_assignees
+- production_task_created_bys
+- production_task_last_updated_bys
+- production_task_to_roles
+- production_task_to_session_assignments
+- production_tasks
+- project_activitys
+- project_participants
+- project_team_members
+- projects
+- qc_checklist_items
+- qc_statuss
+- real_time_presences
+- relationship_anchors
+- reports
+- research_sessions
+- review_approvals
+- review_file_paths
+- review_notes
+- review_sections
+- review_session_reviewers
+- rwa_documents
+- saved_project_paths
+- scheduler_event_assignments
+- scheduler_events
+- scheduler_tasks
+- schema_fields
+- sdk_versions
+- servers
+- session_assignments
+- session_files
+- session_message_reads
+- session_messages
+- session_on_hold_bys
+- session_stepss
+- session_workflow_task_integrations
+- session_workflows
+- sessions
+- setup_checklists
+- slack_integrations
+- subscriptions
+- task_assignees
+- task_notifications
+- tax_lots
+- team_members
+- timecard_approval_flows
+- timecard_assistance_dismissals
+- timecard_configurations
+- transactions
+- unified_session_assignments
+- unified_step_events
+- usage_analytics
+- user_direct_reports
+- user_group_memberships
+- user_groups
+- user_memory_profiles
+- user_settingss
+- user_time_cards
+- user_timecard_assignments
+- users
+- webhook_events
+- workflow_assignments
+- workflow_dependencys
+- workflow_diagrams
+- workflow_notifications

@@ -25,6 +25,8 @@ enum SubscriptionStatus {
   CANCELLED
   PAST_DUE
   TRIALING
+  DEMO_ACTIVE
+  DEMO_EXPIRED
 }
 
 enum LicenseStatus {
@@ -56,6 +58,21 @@ enum Severity {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+enum DemoStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  ABANDONED
+}
+
+enum DemoConversionSource {
+  COUNTDOWN_TIMER
+  FEATURE_RESTRICTION
+  UPGRADE_PROMPT
+  EMAIL_CAMPAIGN
+  MANUAL
 }
 
 model User {
@@ -91,6 +108,21 @@ model User {
   userAgent                String?
   registrationSource       String?
   organizationId           String?
+  
+  // Demo mode fields
+  isDemoUser               Boolean    @default(false)
+  demoStartedAt            DateTime?
+  demoExpiresAt            DateTime?
+  demoStatus               DemoStatus?
+  demoTier                 SubscriptionTier?
+  demoFeatureAccess        Json?
+  demoConvertedAt          DateTime?
+  demoConversionSource     DemoConversionSource?
+  demoSessionCount         Int        @default(0)
+  demoLastActivityAt       DateTime?
+  demoRemindersSent        Int        @default(0)
+  demoAppUsageMinutes      Int        @default(0)
+  demoFeaturesUsed         String[]   @default([])
 
   subscriptions  Subscription[]
   licenses       License[]
@@ -99,6 +131,8 @@ model User {
   consents       PrivacyConsent[]
   analytics      UsageAnalytics[]
   compliance     ComplianceEvent[]
+  demoSessions   DemoSession[]
+  demoActivities DemoActivity[]
 }
 
 model Subscription {
@@ -308,6 +342,59 @@ model WebhookEvent {
   updatedAt  DateTime @updatedAt
 
   @@index([processed, retryCount])
+}
+
+model DemoSession {
+  id                    String               @id @default(uuid())
+  userId                String
+  sessionId             String               @unique
+  startedAt             DateTime             @default(now())
+  expiresAt             DateTime
+  status                DemoStatus           @default(ACTIVE)
+  tier                  SubscriptionTier     @default(BASIC)
+  durationMinutes       Int                  @default(0)
+  featuresAccessed      String[]            @default([])
+  restrictionsHit       String[]            @default([])
+  upgradePromptShown    Int                 @default(0)
+  lastActivityAt        DateTime            @default(now())
+  conversionAttempts    Int                 @default(0)
+  emailRemindersSent    Int                 @default(0)
+  deviceInfo            Json?
+  ipAddress             String?
+  userAgent             String?
+  referralSource        String?
+  utmSource             String?
+  utmCampaign           String?
+  utmMedium             String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  user         User           @relation(fields: [userId], references: [id])
+  activities   DemoActivity[]
+
+  @@index([userId])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+}
+
+model DemoActivity {
+  id              String        @id @default(uuid())
+  userId          String
+  demoSessionId   String
+  activityType    String        // e.g., "LOGIN", "FEATURE_ACCESS", "RESTRICTION_HIT", "UPGRADE_PROMPT", "CONVERSION_ATTEMPT"
+  featureName     String?
+  restrictionType String?       // e.g., "FEATURE_LOCKED", "TIME_LIMIT", "USAGE_LIMIT"
+  metadata        Json?
+  ipAddress       String?
+  userAgent       String?
+  timestamp       DateTime      @default(now())
+
+  user        User        @relation(fields: [userId], references: [id])
+  demoSession DemoSession @relation(fields: [demoSessionId], references: [id])
+
+  @@index([userId, timestamp])
+  @@index([demoSessionId, timestamp])
+  @@index([activityType, timestamp])
 }
 
 

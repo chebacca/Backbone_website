@@ -18,7 +18,10 @@ export type AuditAction =
   | 'DATA_EXPORT'
   | 'DATA_DELETE'
   | 'CONSENT_GRANT'
-  | 'CONSENT_WITHDRAW';
+  | 'CONSENT_WITHDRAW'
+  | 'DEMO_REGISTER'
+  | 'DEMO_CONVERT'
+  | 'DEMO_EXTEND';
 
 export type ComplianceEventType =
   | 'AML_ALERT'
@@ -438,6 +441,9 @@ export class ComplianceService {
       DATA_DELETE: 'All Data Categories',
       CONSENT_GRANT: 'Consent Data',
       CONSENT_WITHDRAW: 'Consent Data',
+      DEMO_REGISTER: 'Personal Data',
+      DEMO_CONVERT: 'Personal Data',
+      DEMO_EXTEND: 'Personal Data',
     };
     
     return mapping[action] || 'General Data';
@@ -461,6 +467,9 @@ export class ComplianceService {
       DATA_DELETE: 'Data Deletion',
       CONSENT_GRANT: 'Consent Management',
       CONSENT_WITHDRAW: 'Consent Management',
+      DEMO_REGISTER: 'Demo Account Creation',
+      DEMO_CONVERT: 'Demo Account Conversion',
+      DEMO_EXTEND: 'Demo Account Extension',
     };
     
     return mapping[action] || 'General Processing';
@@ -484,6 +493,9 @@ export class ComplianceService {
       DATA_DELETE: 'Legal Obligation',
       CONSENT_GRANT: 'Consent',
       CONSENT_WITHDRAW: 'Consent',
+      DEMO_REGISTER: 'Consent',
+      DEMO_CONVERT: 'Contract',
+      DEMO_EXTEND: 'Contract',
     };
     
     return mapping[action] || 'Legitimate Interest';

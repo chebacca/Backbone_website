@@ -53,6 +53,21 @@ export enum Severity {
   CRITICAL = 'CRITICAL'
 }
 
+export enum DemoStatus {
+  ACTIVE = 'ACTIVE',
+  EXPIRED = 'EXPIRED',
+  CONVERTED = 'CONVERTED',
+  ABANDONED = 'ABANDONED'
+}
+
+export enum DemoConversionSource {
+  COUNTDOWN_TIMER = 'COUNTDOWN_TIMER',
+  FEATURE_RESTRICTION = 'FEATURE_RESTRICTION',
+  UPGRADE_PROMPT = 'UPGRADE_PROMPT',
+  EMAIL_CAMPAIGN = 'EMAIL_CAMPAIGN',
+  MANUAL = 'MANUAL'
+}
+
 // Core User model matching Prisma schema
 export interface User {
   id: string;
@@ -86,6 +101,21 @@ export interface User {
   userAgent?: string;
   registrationSource?: string;
   organizationId?: string;
+  
+  // Demo mode fields
+  isDemoUser?: boolean;
+  demoStartedAt?: Date;
+  demoExpiresAt?: Date;
+  demoStatus?: DemoStatus;
+  demoTier?: SubscriptionTier;
+  demoFeatureAccess?: any;
+  demoConvertedAt?: Date;
+  demoConversionSource?: DemoConversionSource;
+  demoSessionCount?: number;
+  demoLastActivityAt?: Date;
+  demoRemindersSent?: number;
+  demoAppUsageMinutes?: number;
+  demoFeaturesUsed?: string[];
   
   // Relations
   subscriptions?: Subscription[];
@@ -377,6 +407,54 @@ export interface CloudConfig {
     aiFeatures: boolean;
     analytics: boolean;
   };
+}
+
+// Demo mode types
+export interface DemoSession {
+  id: string;
+  userId: string;
+  sessionId: string;
+  startedAt: Date;
+  expiresAt: Date;
+  status: DemoStatus;
+  tier: SubscriptionTier;
+  durationMinutes: number;
+  featuresAccessed: string[];
+  restrictionsHit: string[];
+  upgradePromptShown: number;
+  lastActivityAt: Date;
+  conversionAttempts: number;
+  emailRemindersSent: number;
+  deviceInfo?: any;
+  ipAddress?: string;
+  userAgent?: string;
+  referralSource?: string;
+  utmSource?: string;
+  utmCampaign?: string;
+  utmMedium?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Relations
+  user?: User;
+  activities?: DemoActivity[];
+}
+
+export interface DemoActivity {
+  id: string;
+  userId: string;
+  demoSessionId: string;
+  activityType: string;
+  featureName?: string;
+  restrictionType?: string;
+  metadata?: any;
+  ipAddress?: string;
+  userAgent?: string;
+  timestamp: Date;
+  
+  // Relations
+  user?: User;
+  demoSession?: DemoSession;
 }
 
 // Dashboard specific types

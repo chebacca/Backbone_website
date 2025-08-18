@@ -65,14 +65,15 @@ import {
     TrendingUp as TrendingUpIcon,
     Archive as ArchiveIcon,
     Group as GroupIcon,
-    Assessment as AssessmentIcon
+    Assessment as AssessmentIcon,
+
 } from '@mui/icons-material';
 import { cloudProjectIntegration } from '../services/CloudProjectIntegration';
-import { simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
+
 import UnifiedProjectCreationDialog from './UnifiedProjectCreationDialog';
 import DatasetCreationWizard from './DatasetCreationWizard';
 import { ErrorBoundary } from './common/ErrorBoundary';
-import styles from './DashboardCloudProjectsBridge.module.css';
+
 
 interface CloudProject {
     id: string;
@@ -103,7 +104,6 @@ interface CloudProject {
 }
 
 interface DashboardCloudProjectsBridgeProps {
-    onProjectLaunch?: (projectId: string) => void;
 }
 
 // Function to get collaboration limit based on user's license
@@ -136,9 +136,7 @@ const getCollaborationLimit = (user: any): number => {
     return 10;
 };
 
-export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridgeProps> = ({
-    onProjectLaunch
-}) => {
+export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridgeProps> = () => {
     const { user } = useAuth();
     const { setLoading } = useLoading();
     const [projects, setProjects] = useState<CloudProject[]>([]);
@@ -154,10 +152,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
   const [datasetBackendFilter, setDatasetBackendFilter] = useState<'all' | 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local'>('all');
   const [datasetSearch, setDatasetSearch] = useState<string>('');
-  const [launchMenuAnchorEl, setLaunchMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const [launchMenuProject, setLaunchMenuProject] = useState<CloudProject | null>(null);
   const [projectDatasetCounts, setProjectDatasetCounts] = useState<Record<string, number>>({});
-  const [launchPrefs, setLaunchPrefs] = useState<Record<string, 'web' | 'desktop'>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
@@ -295,14 +290,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             
             const cloudProjects = await cloudProjectIntegration.getUserProjects();
             setProjects(cloudProjects);
-        // Initialize launch preferences from localStorage
-        const prefs: Record<string, 'web' | 'desktop'> = {};
-        for (const p of cloudProjects) {
-          const key = `launch_pref_${p.id}`;
-          const val = (localStorage.getItem(key) as 'web' | 'desktop' | null) || 'web';
-          prefs[p.id] = val;
-        }
-        setLaunchPrefs(prefs);
+
         } catch (err: any) {
             setError(err?.message || 'Failed to load projects');
         } finally {
@@ -310,61 +298,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         }
     };
 
-    const handleLaunchProject = async (project: CloudProject) => {
-        try {
-            // Ensure the startup sequencer has a mode set before selecting a project
-            await simplifiedStartupSequencer.selectMode(project.applicationMode as any, 'cloud');
-            // Use the simplified startup sequencer to launch the project
-            // This ensures consistency with the startup flow
-            await simplifiedStartupSequencer.selectProject(project.id);
-            
-            onProjectLaunch?.(project.id);
-        } catch (error) {
-            console.error('Failed to launch project:', error);
-            setError('Failed to launch project');
-        }
-    };
 
-    const openLaunchMenu = (evt: React.MouseEvent<HTMLElement>, project: CloudProject) => {
-      setLaunchMenuAnchorEl(evt.currentTarget);
-      setLaunchMenuProject(project);
-    };
-
-    const closeLaunchMenu = () => {
-      setLaunchMenuAnchorEl(null);
-      setLaunchMenuProject(null);
-    };
 
     const handleLaunchWeb = async () => {
-      if (!launchMenuProject) return;
       try {
-        localStorage.setItem(`launch_pref_${launchMenuProject.id}`, 'web');
-        setLaunchPrefs(prev => ({ ...prev, [launchMenuProject.id]: 'web' }));
-        // Compute Backbone Web App base URL with project-preferred/local dev preference
-        let base = '';
-        try {
-          const projectPort = launchMenuProject.settings?.preferredPorts?.website;
-          const portPrefStr = localStorage.getItem('preferred_website_port');
-          const portPref = portPrefStr ? Number(portPrefStr) : 0;
-          const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-          if (projectPort && projectPort >= 1024 && projectPort <= 65535) {
-            base = `http://localhost:${projectPort}`;
-          } else if (portPref && portPref >= 1024 && portPref <= 65535) {
-            base = `http://localhost:${portPref}`;
-          } else if (isLocal) {
-            base = 'http://localhost:3002';
-          } else {
-            base = ((import.meta.env as any).VITE_WEB_APP_URL || window.location.origin) as string;
-          }
-        } catch {
-          base = ((import.meta.env as any).VITE_WEB_APP_URL || window.location.origin) as string;
-        }
-        base = String(base).replace(/\/$/, '');
-        // For localhost, use hash route to avoid history 404s; hosted uses root
-        const isLocalHost = /^http:\/\/localhost:\d+$/i.test(base);
-        const url = isLocalHost
-          ? `${base}/#/?projectId=${encodeURIComponent(launchMenuProject.id)}&mode=${encodeURIComponent(launchMenuProject.applicationMode)}`
-          : `${base}/?projectId=${encodeURIComponent(launchMenuProject.id)}&mode=${encodeURIComponent(launchMenuProject.applicationMode)}`;
+        // Launch to the correct Backbone Logic authentication page
+        const url = 'https://backbone-client.web.app/auth/login';
+        
         // Open via anchor click (more reliable than window.open in some blockers)
         let opened = false;
         try {
@@ -381,32 +321,22 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
           // Fallback: same-tab navigation
           window.location.href = url;
         }
-        // Fire-and-forget: update startup sequencer for internal state
-        void (async () => {
-          try {
-            await simplifiedStartupSequencer.selectMode(launchMenuProject.applicationMode as any, 'cloud');
-            await simplifiedStartupSequencer.selectProject(launchMenuProject.id);
-          } catch {}
-        })();
-      } catch {}
-      closeLaunchMenu();
+      } catch (e) {
+        console.error('Failed to launch web app', e);
+        setError('Unable to open web app. Please try again.');
+      }
     };
 
     const handleLaunchDesktop = () => {
-      if (!launchMenuProject) return;
       try {
-        localStorage.setItem(`launch_pref_${launchMenuProject.id}`, 'desktop');
-        setLaunchPrefs(prev => ({ ...prev, [launchMenuProject.id]: 'desktop' }));
         const scheme = (import.meta.env as any).VITE_DESKTOP_DEEP_LINK_SCHEME || 'dashboardv14';
-        const action = (import.meta.env as any).VITE_DESKTOP_DEEP_LINK_ACTION || 'open-project';
-        const url = `${scheme}://${action}?id=${encodeURIComponent(launchMenuProject.id)}`;
+        const action = (import.meta.env as any).VITE_DESKTOP_DEEP_LINK_ACTION || 'open-app';
+        const url = `${scheme}://${action}`;
         // Attempt deep link
         window.location.href = url;
       } catch (e) {
         console.error('Failed to open desktop deep link', e);
         setError('Unable to open Desktop app. Please ensure it is installed.');
-      } finally {
-        closeLaunchMenu();
       }
     };
 
@@ -431,12 +361,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     const handleProjectCreated = async (projectId: string) => {
         setShowCreateDialog(false);
         await loadProjects(); // Refresh the list
-        // Launch the newly created project once the list is refreshed
-        // Find from the latest state after refresh
-        setTimeout(() => {
-            const latest = (tab === 0 ? activeProjects : archivedProjects).find(p => p.id === projectId) || projects.find(p => p.id === projectId);
-            if (latest) handleLaunchProject(latest);
-        }, 0);
+        // Project created successfully - no need to auto-launch
     };
 
     const getStorageIcon = (storageBackend: string) => {
@@ -490,9 +415,9 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     };
 
     return (
-        <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box sx={{ py: 4, px: 3 }}>
             {/* Header */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
                 <Box>
                     <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
                         Cloud Projects
@@ -538,11 +463,67 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 </Box>
             </Box>
 
+            {/* Global Launch Buttons */}
+            <Box sx={{ mb: 4, p: 3, backgroundColor: 'rgba(79, 70, 229, 0.05)', borderRadius: 3, border: '1px solid rgba(79, 70, 229, 0.1)' }}>
+                <Typography variant="h6" sx={{ mb: 2, color: 'primary.main', fontWeight: 600 }}>
+                    🚀 Launch Applications
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Launch the Backbone Logic applications to start working with your projects
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                    <Button
+                        variant="contained"
+                        startIcon={<LaunchIcon />}
+                        onClick={handleLaunchWeb}
+                        sx={{
+                            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                            color: 'white',
+                            borderRadius: 2,
+                            px: 4,
+                            py: 1.5,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            boxShadow: '0 6px 20px rgba(79, 70, 229, 0.4)',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #4338ca, #6d28d9)',
+                                boxShadow: '0 8px 25px rgba(79, 70, 229, 0.5)',
+                                transform: 'translateY(-2px)'
+                            }
+                        }}
+                    >
+                        Launch Web App
+                    </Button>
+                    <Button
+                        variant="contained"
+                        startIcon={<LaunchIcon />}
+                        onClick={handleLaunchDesktop}
+                        sx={{
+                            background: 'linear-gradient(135deg, #059669, #10b981)',
+                            color: 'white',
+                            borderRadius: 2,
+                            px: 4,
+                            py: 1.5,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            boxShadow: '0 6px 20px rgba(5, 150, 105, 0.4)',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #047857, #059669)',
+                                boxShadow: '0 8px 25px rgba(5, 150, 105, 0.5)',
+                                transform: 'translateY(-2px)'
+                            }
+                        }}
+                    >
+                        Launch Desktop App
+                    </Button>
+                </Box>
+            </Box>
+
             {/* Analytics Cards */}
             {loading ? (
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     {[1, 2, 3, 4].map((item) => (
-                        <Grid item xs={12} sm={6} md={3} key={item}>
+                        <Grid item xs={12} sm={6} lg={3} key={item}>
                             <Card sx={{ height: '100%' }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -560,7 +541,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             ) : (
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     {/* Total Projects Card */}
-                    <Grid item xs={12} sm={6} md={3}>
+                    <Grid item xs={12} sm={6} lg={3}>
                         <Card sx={{ 
                             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                             color: 'white',
@@ -589,7 +570,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     </Grid>
 
                     {/* Active Projects Card */}
-                    <Grid item xs={12} sm={6} md={3}>
+                    <Grid item xs={12} sm={6} lg={3}>
                         <Card 
                             sx={{ 
                                 background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
@@ -621,7 +602,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     </Grid>
 
                     {/* Archived Projects Card */}
-                    <Grid item xs={12} sm={6} md={3}>
+                    <Grid item xs={12} sm={6} lg={3}>
                         <Card 
                             sx={{ 
                                 background: 'linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%)',
@@ -653,7 +634,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     </Grid>
 
                     {/* Collaborative Projects Card */}
-                    <Grid item xs={12} sm={6} md={3}>
+                    <Grid item xs={12} sm={6} lg={3}>
                         <Card sx={{ 
                             background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
                             color: 'white',
@@ -687,7 +668,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             {loading ? (
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     {[1, 2].map((item) => (
-                        <Grid item xs={12} md={6} key={item}>
+                        <Grid item xs={12} lg={6} key={item}>
                             <Card sx={{ height: '100%' }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -711,7 +692,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             ) : (
                 <Grid container spacing={3} sx={{ mb: 4 }}>
                     {/* Storage Breakdown Card */}
-                    <Grid item xs={12} md={6}>
+                    <Grid item xs={12} lg={6}>
                         <Card sx={{ 
                             height: '100%',
                             transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
@@ -755,7 +736,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     </Grid>
 
                     {/* Application Mode Breakdown Card */}
-                    <Grid item xs={12} md={6}>
+                    <Grid item xs={12} lg={6}>
                         <Card sx={{ 
                             height: '100%',
                             transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
@@ -821,7 +802,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             )}
 
             {/* Integration Status */}
-            <Alert severity="info" sx={{ mb: 3 }}>
+            <Alert severity="info" sx={{ mb: 4 }}>
                 <Typography variant="body2">
                     <strong>Integrated Startup System:</strong> Projects created here will automatically 
                     integrate with the unified startup flow and support both standalone and network modes 
@@ -831,7 +812,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
 
             {/* Error Display */}
             {error && (
-                <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+                <Alert severity="error" sx={{ mb: 4 }} onClose={() => setError(null)}>
                     {error}
                 </Alert>
             )}
@@ -840,14 +821,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             <Tabs
                 value={tab}
                 onChange={(_, newValue) => setTab(newValue)}
-                sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
+                sx={{ borderBottom: 1, borderColor: 'divider', mb: 4 }}
             >
                 <Tab label={`Active Projects (${activeProjects.length})`} />
                 <Tab label={`Archived (${archivedProjects.length})`} />
             </Tabs>
 
             {/* Search Bar */}
-            <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Box sx={{ mb: 4, display: 'flex', gap: 3, alignItems: 'center' }}>
                 <TextField
                     fullWidth
                     placeholder="Search projects by name, description, storage backend, or mode..."
@@ -873,7 +854,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     variant="outlined"
                     startIcon={<RefreshIcon />}
                     onClick={loadProjects}
-                    sx={{ minWidth: 'auto', px: 2 }}
+                    sx={{ minWidth: 'auto', px: 3 }}
                     title="Refresh projects list"
                 >
                     Refresh
@@ -915,10 +896,11 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 borderRadius: 2, 
                                 overflow: 'auto',
                                 boxShadow: 2,
-                                maxHeight: '70vh'
+                                maxHeight: '70vh',
+                                width: '100%'
                             }}
                         >
-                            <Table sx={{ minWidth: 650 }} stickyHeader>
+                            <Table sx={{ width: '100%' }} stickyHeader>
                                 <TableHead>
                                     <TableRow sx={{ backgroundColor: 'primary.main' }}>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Project</TableCell>
@@ -1007,29 +989,21 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                                                     <Button
                                                         size="small"
-                                                        variant="contained"
-                                                        startIcon={<LaunchIcon />}
-                                                        onClick={(e) => openLaunchMenu(e, project)}
-                                                        disabled={project.isArchived}
-                                                        sx={{ minWidth: 'auto' }}
-                                                    >
-                                                        {project.isArchived ? 'Archived' : 'Launch'}
-                                                    </Button>
-                                                    <IconButton 
-                                                        size="small" 
+                                                        variant="outlined"
                                                         onClick={() => setSelectedProject(project)}
                                                         sx={{ 
-                                                            border: '1px solid',
-                                                            borderColor: 'divider',
+                                                            borderColor: 'primary.main',
+                                                            color: 'primary.main',
+                                                            minWidth: 'auto',
                                                             '&:hover': {
-                                                                borderColor: 'primary.main',
+                                                                borderColor: 'primary.dark',
                                                                 backgroundColor: 'primary.main',
                                                                 color: 'white'
                                                             }
                                                         }}
                                                     >
-                                                        <SettingsIcon />
-                                                    </IconButton>
+                                                        Details
+                                                    </Button>
                                                     <Button
                                                         size="small"
                                                         variant="outlined"
@@ -1996,35 +1970,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         Close
                     </Button>
                     
-                    {selectedProject && (
-                        <Button
-                            variant="contained"
-                            onClick={() => {
-                                if (selectedProject) {
-                                    handleLaunchProject(selectedProject);
-                                    setSelectedProject(null);
-                                }
-                            }}
-                            startIcon={<LaunchIcon />}
-                            sx={{
-                                background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                                color: 'white',
-                                borderRadius: 2,
-                                px: 4,
-                                py: 1.5,
-                                textTransform: 'none',
-                                fontWeight: 600,
-                                boxShadow: '0 6px 20px rgba(79, 70, 229, 0.4)',
-                                '&:hover': {
-                                    background: 'linear-gradient(135deg, #4338ca, #6d28d9)',
-                                    boxShadow: '0 8px 25px rgba(79, 70, 229, 0.5)',
-                                    transform: 'translateY(-2px)'
-                                }
-                            }}
-                        >
-                            Launch Project
-                        </Button>
-                    )}
+
                 </DialogActions>
             </Dialog>
 
@@ -2349,18 +2295,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
               </DialogActions>
             </Dialog>
 
-            {/* Launch Options Menu */}
-            <Menu
-              anchorEl={launchMenuAnchorEl}
-              open={Boolean(launchMenuAnchorEl)}
-              onClose={closeLaunchMenu}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-            >
-              <MenuItem onClick={handleLaunchWeb}>Launch (Web)</MenuItem>
-              <MenuItem onClick={handleLaunchDesktop}>Launch (Desktop)</MenuItem>
-            </Menu>
-        </Container>
+
+        </Box>
     );
 };
 

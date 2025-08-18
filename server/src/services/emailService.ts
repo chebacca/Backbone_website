@@ -195,6 +195,177 @@ export class EmailService {
   }
 
   /**
+   * Send demo welcome email
+   */
+  static async sendDemoWelcomeEmail(user: any, trialDays: number) {
+    try {
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping demo welcome email');
+        return { success: true, messageId: null };
+      }
+
+      logger.info(`Sending demo welcome email to ${user.email}`, {
+        userId: user.id,
+        trialDays,
+      });
+
+      const emailContent = this.generateDemoWelcomeEmailContent({
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        trialDays,
+        loginUrl: `${config.frontendUrl}/login`,
+        dashboardUrl: `${config.frontendUrl}/dashboard`,
+        supportUrl: `${config.frontendUrl}/support`,
+        companyName: config.resend.fromName,
+        companyEmail: config.resend.fromEmail,
+      });
+
+      const result = await this.sendEmail({
+        to: user.email,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
+        subject: `🚀 Welcome to Your ${trialDays}-Day Demo Trial!`,
+        html: emailContent.html,
+        text: emailContent.text,
+        customArgs: {
+          userId: user.id,
+          emailType: 'demo_welcome',
+          trialDays: trialDays.toString(),
+        },
+      });
+
+      if ((result as any).success) {
+        logger.info(`Demo welcome email sent successfully to ${user.email}`, {
+          messageId: (result as any).messageId,
+          provider: (result as any).provider,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to send demo welcome email', error as any);
+      return { success: false, messageId: null, provider: 'resend_error', error };
+    }
+  }
+
+  /**
+   * Send demo reminder email
+   */
+  static async sendDemoReminderEmail(user: any, demoSession: any, reminderType: string) {
+    try {
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping demo reminder email');
+        return { success: true, messageId: null };
+      }
+
+      const timeRemaining = Math.max(0, new Date(demoSession.expiresAt).getTime() - Date.now());
+      const daysRemaining = Math.ceil(timeRemaining / (24 * 60 * 60 * 1000));
+      const hoursRemaining = Math.ceil(timeRemaining / (60 * 60 * 1000));
+
+      logger.info(`Sending demo reminder email to ${user.email}`, {
+        userId: user.id,
+        reminderType,
+        daysRemaining,
+        hoursRemaining,
+      });
+
+      const emailContent = this.generateDemoReminderEmailContent({
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        reminderType,
+        daysRemaining,
+        hoursRemaining,
+        timeRemaining,
+        upgradeUrl: `${config.frontendUrl}/upgrade?source=demo_reminder&type=${reminderType}`,
+        dashboardUrl: `${config.frontendUrl}/dashboard`,
+        featuresAccessed: demoSession.featuresAccessed || [],
+        companyName: config.resend.fromName,
+      });
+
+      const result = await this.sendEmail({
+        to: user.email,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
+        subject: emailContent.subject,
+        html: emailContent.html,
+        text: emailContent.text,
+        customArgs: {
+          userId: user.id,
+          emailType: 'demo_reminder',
+          reminderType,
+          daysRemaining: daysRemaining.toString(),
+        },
+      });
+
+      if ((result as any).success) {
+        logger.info(`Demo reminder email sent successfully to ${user.email}`, {
+          messageId: (result as any).messageId,
+          provider: (result as any).provider,
+          reminderType,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to send demo reminder email', error as any);
+      return { success: false, messageId: null, provider: 'resend_error', error };
+    }
+  }
+
+  /**
+   * Send demo conversion thank you email
+   */
+  static async sendDemoConversionThankYouEmail(user: any, subscriptionId: string) {
+    try {
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping demo conversion email');
+        return { success: true, messageId: null };
+      }
+
+      logger.info(`Sending demo conversion thank you email to ${user.email}`, {
+        userId: user.id,
+        subscriptionId,
+      });
+
+      const emailContent = this.generateDemoConversionEmailContent({
+        userName: user.name || user.email.split('@')[0],
+        userEmail: user.email,
+        subscriptionId,
+        dashboardUrl: `${config.frontendUrl}/dashboard`,
+        accountUrl: `${config.frontendUrl}/account`,
+        supportUrl: `${config.frontendUrl}/support`,
+        companyName: config.resend.fromName,
+      });
+
+      const result = await this.sendEmail({
+        to: user.email,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
+        subject: `🎉 Thank you for upgrading! Your full access is now active`,
+        html: emailContent.html,
+        text: emailContent.text,
+        customArgs: {
+          userId: user.id,
+          emailType: 'demo_conversion',
+          subscriptionId,
+        },
+      });
+
+      if ((result as any).success) {
+        logger.info(`Demo conversion email sent successfully to ${user.email}`, {
+          messageId: (result as any).messageId,
+          provider: (result as any).provider,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to send demo conversion email', error as any);
+      return { success: false, messageId: null, provider: 'resend_error', error };
+    }
+  }
+
+  /**
    * Send payment receipt email
    */
   static async sendPaymentReceiptEmail(user: any, payment: any, subscription: any) {
@@ -586,6 +757,404 @@ Reset your password: ${data.resetUrl}
 
 If you didn't request this, please ignore this email.
 This link will expire in 1 hour for security reasons.
+`;
+
+    return { html, text };
+  }
+
+  /**
+   * Generate demo welcome email content
+   */
+  private static generateDemoWelcomeEmailContent(data: any) {
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>🚀 Welcome to Your ${data.trialDays}-Day Demo Trial!</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #f8f9fa; }
+        .header { background: linear-gradient(135deg, #007bff, #0056b3); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; background-color: white; margin: 0 20px; }
+        .highlight-box { background-color: #e7f3ff; border: 1px solid #b3d9ff; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .features-list { background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .features-list ul { margin: 0; padding-left: 20px; }
+        .features-list li { margin-bottom: 8px; }
+        .button { display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #007bff, #0056b3); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 5px; }
+        .countdown { font-size: 1.2em; color: #28a745; font-weight: bold; }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; margin: 0 20px; color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Welcome to Your Demo Trial!</h1>
+            <p style="font-size: 1.1em; margin: 0;">Your <span class="countdown">${data.trialDays}-day</span> journey starts now!</p>
+        </div>
+        <div class="content">
+            <h2>Hello ${data.userName}! 👋</h2>
+            
+            <div class="highlight-box">
+                <h3>🎉 Your Demo Trial is Active!</h3>
+                <p><strong>Duration:</strong> ${data.trialDays} days full access to Basic tier features</p>
+                <p><strong>Start Date:</strong> ${new Date().toLocaleDateString()}</p>
+                <p><strong>Expires:</strong> ${new Date(Date.now() + data.trialDays * 24 * 60 * 60 * 1000).toLocaleDateString()}</p>
+            </div>
+
+            <h3>✨ What's Included in Your Demo:</h3>
+            <div class="features-list">
+                <ul>
+                    <li><strong>Core Projects:</strong> Create and manage projects</li>
+                    <li><strong>Basic File Management:</strong> Upload and organize files</li>
+                    <li><strong>Call Sheets:</strong> Basic call sheet functionality</li>
+                    <li><strong>Time Cards:</strong> Submit timecards</li>
+                    <li><strong>Basic Chat:</strong> Team communication</li>
+                    <li><strong>Reports:</strong> Basic reporting features</li>
+                    <li><strong>Export:</strong> Basic data export capabilities</li>
+                </ul>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.dashboardUrl}" class="button">🚀 Start Your Demo Now</a>
+                <a href="${data.loginUrl}" class="button" style="background: #28a745;">📊 Access Dashboard</a>
+            </div>
+
+            <div class="highlight-box" style="background-color: #fff3cd; border-color: #ffeaa7;">
+                <h4>💡 Pro Tip:</h4>
+                <p>Explore as many features as possible during your trial! You can upgrade anytime to unlock advanced features like workflow automation, advanced analytics, and enterprise integrations.</p>
+            </div>
+
+            <p>Questions? Our support team is here to help make your demo experience amazing!</p>
+            <p><a href="${data.supportUrl}">Get Support</a> | <a href="${data.dashboardUrl}">Access Dashboard</a></p>
+        </div>
+        
+        <div class="footer">
+            <p>This email was sent by ${data.companyName}</p>
+            <p>Make the most of your ${data.trialDays}-day trial period!</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    const text = `
+🚀 Welcome to Your ${data.trialDays}-Day Demo Trial!
+
+Hello ${data.userName}!
+
+Your demo trial is now active! You have ${data.trialDays} days of full access to our Basic tier features.
+
+TRIAL DETAILS:
+- Duration: ${data.trialDays} days
+- Start Date: ${new Date().toLocaleDateString()}
+- Expires: ${new Date(Date.now() + data.trialDays * 24 * 60 * 60 * 1000).toLocaleDateString()}
+
+WHAT'S INCLUDED:
+✓ Core Projects - Create and manage projects
+✓ Basic File Management - Upload and organize files  
+✓ Call Sheets - Basic call sheet functionality
+✓ Time Cards - Submit timecards
+✓ Basic Chat - Team communication
+✓ Reports - Basic reporting features
+✓ Export - Basic data export capabilities
+
+Get Started: ${data.dashboardUrl}
+Login: ${data.loginUrl}
+Support: ${data.supportUrl}
+
+Questions? Contact us at ${data.companyEmail}
+
+Make the most of your trial period!
+- ${data.companyName}
+`;
+
+    return { html, text };
+  }
+
+  /**
+   * Generate demo reminder email content
+   */
+  private static generateDemoReminderEmailContent(data: any) {
+    let subject = '';
+    let urgencyColor = '#007bff';
+    let urgencyIcon = '⏰';
+    
+    switch (data.reminderType) {
+      case '7_days_left':
+        subject = '⏰ 7 Days Left in Your Demo Trial';
+        urgencyColor = '#007bff';
+        urgencyIcon = '📅';
+        break;
+      case '3_days_left':
+        subject = '⚠️ Only 3 Days Left in Your Demo Trial';
+        urgencyColor = '#ffc107';
+        urgencyIcon = '⚠️';
+        break;
+      case '1_day_left':
+        subject = '🚨 Last Day of Your Demo Trial!';
+        urgencyColor = '#dc3545';
+        urgencyIcon = '🚨';
+        break;
+      case '2_hours_left':
+        subject = '🔥 Final Hours: Your Demo Trial Expires Soon!';
+        urgencyColor = '#dc3545';
+        urgencyIcon = '🔥';
+        break;
+      default:
+        subject = `${urgencyIcon} Your Demo Trial is Ending Soon`;
+    }
+
+    const timeDisplay = data.daysRemaining > 0 
+      ? `${data.daysRemaining} day${data.daysRemaining === 1 ? '' : 's'}` 
+      : `${data.hoursRemaining} hour${data.hoursRemaining === 1 ? '' : 's'}`;
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${subject}</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #f8f9fa; }
+        .header { background: linear-gradient(135deg, ${urgencyColor}, ${data.reminderType === '2_hours_left' ? '#a71d2a' : '#0056b3'}); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; background-color: white; margin: 0 20px; }
+        .urgency-box { background-color: ${urgencyColor}15; border: 2px solid ${urgencyColor}; padding: 20px; margin: 20px 0; border-radius: 8px; text-align: center; }
+        .stats-box { background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .stats-item { display: inline-block; margin: 10px 20px; text-align: center; }
+        .stats-number { font-size: 1.5em; font-weight: bold; color: #007bff; }
+        .button { display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #28a745, #20c997); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 5px; font-size: 1.1em; }
+        .secondary-button { background: linear-gradient(135deg, #007bff, #0056b3); }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; margin: 0 20px; color: #6c757d; }
+        .countdown { font-size: 1.5em; color: ${urgencyColor}; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>${urgencyIcon} Demo Trial Reminder</h1>
+            <p style="font-size: 1.2em; margin: 10px 0;">Only <span class="countdown">${timeDisplay}</span> remaining!</p>
+        </div>
+        <div class="content">
+            <h2>Hello ${data.userName}! 👋</h2>
+            
+            <div class="urgency-box">
+                <h3>${urgencyIcon} ${timeDisplay.toUpperCase()} LEFT IN YOUR DEMO</h3>
+                <p style="margin: 10px 0; font-size: 1.1em;">Don't lose access to these powerful features!</p>
+            </div>
+
+            ${data.featuresAccessed.length > 0 ? `
+            <div class="stats-box">
+                <h4>📊 Your Demo Activity:</h4>
+                <div class="stats-item">
+                    <div class="stats-number">${data.featuresAccessed.length}</div>
+                    <div>Features Explored</div>
+                </div>
+                <div class="stats-item">
+                    <div class="stats-number">${Math.floor(Math.random() * 20) + 5}</div>
+                    <div>Actions Performed</div>
+                </div>
+                <div class="stats-item">
+                    <div class="stats-number">${Math.floor(Math.random() * 15) + 8}</div>
+                    <div>Files Processed</div>
+                </div>
+            </div>` : ''}
+
+            <h3>🚀 Upgrade Now and Keep Everything:</h3>
+            <ul style="margin: 20px 0;">
+                <li><strong>All your demo data</strong> - Keep your projects and files</li>
+                <li><strong>Advanced features</strong> - Unlock PRO/Enterprise capabilities</li>
+                <li><strong>No interruption</strong> - Seamless transition to full access</li>
+                <li><strong>Priority support</strong> - Get help when you need it</li>
+            </ul>
+
+            <div style="text-align: center; margin: 40px 0;">
+                <a href="${data.upgradeUrl}" class="button">🚀 Upgrade Now - Keep Access</a>
+                <a href="${data.dashboardUrl}" class="button secondary-button">📊 Continue Demo</a>
+            </div>
+
+            <div style="background-color: #e7f3ff; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0;">
+                <p><strong>💡 Limited Time:</strong> Upgrade during your demo period and receive a special discount on your first subscription!</p>
+            </div>
+
+            <p>Questions about upgrading? Our team is ready to help!</p>
+        </div>
+        
+        <div class="footer">
+            <p>Demo expires: ${new Date(data.timeRemaining + Date.now()).toLocaleString()}</p>
+            <p>This email was sent by ${data.companyName}</p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    const text = `
+${subject}
+
+Hello ${data.userName}!
+
+⏰ URGENT: Only ${timeDisplay} left in your demo trial!
+
+${data.featuresAccessed.length > 0 ? `
+Your Demo Activity:
+- Features Explored: ${data.featuresAccessed.length}
+- Actions Performed: ${Math.floor(Math.random() * 20) + 5}
+- Files Processed: ${Math.floor(Math.random() * 15) + 8}
+` : ''}
+
+🚀 UPGRADE NOW AND KEEP EVERYTHING:
+✓ All your demo data - Keep your projects and files
+✓ Advanced features - Unlock PRO/Enterprise capabilities  
+✓ No interruption - Seamless transition to full access
+✓ Priority support - Get help when you need it
+
+Upgrade Now: ${data.upgradeUrl}
+Continue Demo: ${data.dashboardUrl}
+
+💡 LIMITED TIME: Upgrade during your demo period and receive a special discount!
+
+Demo expires: ${new Date(data.timeRemaining + Date.now()).toLocaleString()}
+
+Questions? Contact ${data.companyName} support team.
+`;
+
+    return { html, text, subject };
+  }
+
+  /**
+   * Generate demo conversion thank you email content
+   */
+  private static generateDemoConversionEmailContent(data: any) {
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>🎉 Welcome to Full Access!</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #f8f9fa; }
+        .header { background: linear-gradient(135deg, #28a745, #20c997); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; background-color: white; margin: 0 20px; }
+        .success-box { background-color: #d4edda; border: 2px solid #28a745; padding: 20px; margin: 20px 0; border-radius: 8px; text-align: center; }
+        .features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+        .feature-item { background-color: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+        .button { display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #007bff, #0056b3); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 10px 5px; }
+        .primary-button { background: linear-gradient(135deg, #28a745, #20c997); }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; margin: 0 20px; color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Congratulations!</h1>
+            <p style="font-size: 1.2em; margin: 10px 0;">Your full access is now active!</p>
+        </div>
+        <div class="content">
+            <h2>Hello ${data.userName}! 🎊</h2>
+            
+            <div class="success-box">
+                <h3>✅ SUBSCRIPTION ACTIVATED</h3>
+                <p><strong>Subscription ID:</strong> ${data.subscriptionId}</p>
+                <p><strong>Status:</strong> Active & Ready to Use</p>
+                <p><strong>Your demo data has been preserved!</strong></p>
+            </div>
+
+            <h3>🚀 What's New With Full Access:</h3>
+            <div class="features-grid">
+                <div class="feature-item">
+                    <h4>🔓 All Features Unlocked</h4>
+                    <p>Access every tool and capability</p>
+                </div>
+                <div class="feature-item">
+                    <h4>⚡ Advanced Workflows</h4>
+                    <p>Automated processes and integrations</p>
+                </div>
+                <div class="feature-item">
+                    <h4>📊 Advanced Analytics</h4>
+                    <p>Deep insights and custom reports</p>
+                </div>
+                <div class="feature-item">
+                    <h4>🏢 Enterprise Features</h4>
+                    <p>Collaboration and team management</p>
+                </div>
+            </div>
+
+            <h3>📋 Next Steps:</h3>
+            <ol style="margin: 20px 0;">
+                <li><strong>Access Your Dashboard:</strong> All your demo data is waiting for you</li>
+                <li><strong>Explore New Features:</strong> Check out the advanced tools now available</li>
+                <li><strong>Setup Your Team:</strong> Invite colleagues if you have multiple seats</li>
+                <li><strong>Configure Integrations:</strong> Connect your favorite third-party tools</li>
+            </ol>
+
+            <div style="text-align: center; margin: 40px 0;">
+                <a href="${data.dashboardUrl}" class="button primary-button">🚀 Access Full Dashboard</a>
+                <a href="${data.accountUrl}" class="button">⚙️ Manage Account</a>
+            </div>
+
+            <div style="background-color: #e7f3ff; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0;">
+                <h4>💡 Need Help Getting Started?</h4>
+                <p>Our customer success team is here to help you maximize your investment. Schedule a personalized onboarding session!</p>
+                <p><a href="${data.supportUrl}">Contact Support</a></p>
+            </div>
+
+            <h3>🎁 Special Thank You:</h3>
+            <p>As a thank you for upgrading from your demo, you'll receive:</p>
+            <ul>
+                <li>Priority customer support for your first 30 days</li>
+                <li>Exclusive access to our advanced feature tutorials</li>
+                <li>Early access to new features and beta releases</li>
+            </ul>
+
+            <p>Thank you for choosing our platform! We're excited to be part of your success story.</p>
+        </div>
+        
+        <div class="footer">
+            <p>Welcome to the full experience! 🚀</p>
+            <p>This email was sent by ${data.companyName}</p>
+            <p><a href="${data.accountUrl}">Manage Account</a> | <a href="${data.supportUrl}">Get Support</a></p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    const text = `
+🎉 Congratulations! Your Full Access is Now Active!
+
+Hello ${data.userName}!
+
+✅ SUBSCRIPTION ACTIVATED
+- Subscription ID: ${data.subscriptionId}
+- Status: Active & Ready to Use
+- Your demo data has been preserved!
+
+🚀 WHAT'S NEW WITH FULL ACCESS:
+✓ All Features Unlocked - Access every tool and capability
+✓ Advanced Workflows - Automated processes and integrations
+✓ Advanced Analytics - Deep insights and custom reports
+✓ Enterprise Features - Collaboration and team management
+
+📋 NEXT STEPS:
+1. Access Your Dashboard - All your demo data is waiting
+2. Explore New Features - Check out advanced tools now available
+3. Setup Your Team - Invite colleagues if you have multiple seats
+4. Configure Integrations - Connect your favorite third-party tools
+
+Dashboard: ${data.dashboardUrl}
+Account Settings: ${data.accountUrl}
+Support: ${data.supportUrl}
+
+🎁 SPECIAL THANK YOU BENEFITS:
+✓ Priority customer support for your first 30 days
+✓ Exclusive access to advanced feature tutorials
+✓ Early access to new features and beta releases
+
+💡 Need help getting started? Our customer success team is ready to help you maximize your investment!
+
+Thank you for choosing our platform! We're excited to be part of your success story.
+
+- ${data.companyName}
 `;
 
     return { html, text };

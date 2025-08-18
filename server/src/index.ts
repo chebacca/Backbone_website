@@ -18,6 +18,8 @@ import { webhooksRouter } from './routes/webhooks.js';
 import { accountingRouter } from './routes/accounting.js';
 import invoicesRouter from './routes/invoices.js';
 import { teamMembersRouter } from './routes/team-members.js';
+import storageRouter from './routes/storage.js';
+import demoRouter from './routes/demo.js';
 // Dashboard API routes for compatibility
 import { sessionsRouter } from './routes/sessions.js';
 import { callsheetsRouter } from './routes/callsheets.js';
@@ -208,6 +210,8 @@ app.use('/api/accounting', accountingRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/datasets', datasetsRouter);
 app.use('/api/team-members', teamMembersRouter);
+app.use('/api/storage', storageRouter);
+app.use('/api/demo', demoRouter);
 
 // Dashboard API routes for compatibility (return empty data for licensing website)
 app.use('/api/sessions', sessionsRouter);

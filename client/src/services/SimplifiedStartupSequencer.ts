@@ -179,8 +179,33 @@ class SimplifiedStartupSequencer {
                 storageMode: storageMode
             });
 
+            // For network mode, proactively discover Edge Hub if cloud is unreachable
+            if (mode === 'shared_network') {
+                try {
+                    const { cloudProjectIntegration } = await import('./CloudProjectIntegration');
+                    
+                    // Quick cloud health check (non-blocking)
+                    const cloudHealthy = await this.checkCloudHealth().catch(() => false);
+                    
+                    if (!cloudHealthy) {
+                        // Try to discover Edge Hub
+                        const edgeUrl = await (cloudProjectIntegration as any).discoverEdgeBaseURL?.(800).catch(() => null);
+                        if (edgeUrl) {
+                            console.log('Cloud unreachable, switching to Edge Hub:', edgeUrl);
+                            cloudProjectIntegration.setBaseUrl(edgeUrl);
+                            // Update storage mode to hybrid for Edge
+                            this.updateState({ storageMode: 'hybrid' });
+                            localStorage.setItem('preferredStorageMode', 'hybrid');
+                        }
+                    }
+                } catch (edgeError) {
+                    console.warn('Edge discovery failed:', edgeError);
+                    // Continue with normal flow
+                }
+            }
+
             // Check if authentication is required
-            if (this.isAuthRequired(mode, storageMode)) {
+            if (this.isAuthRequired(mode, this.state.storageMode)) {
                 if (this.state.isAuthenticated) {
                     // Already authenticated, proceed to project selection
                     this.updateState({
@@ -207,6 +232,24 @@ class SimplifiedStartupSequencer {
                 error: 'Failed to select mode',
                 isLoading: false
             });
+        }
+    }
+
+    private async checkCloudHealth(): Promise<boolean> {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort('timeout'), 1500);
+            
+            const cloudUrl = (import.meta.env as any).VITE_API_BASE_URL || '/api';
+            const response = await fetch(`${cloudUrl}/health`, { 
+                signal: controller.signal,
+                method: 'GET'
+            });
+            
+            clearTimeout(timeout);
+            return response.ok;
+        } catch {
+            return false;
         }
     }
 

@@ -45,10 +45,15 @@ import {
   Add,
   FilterList,
   Search,
+  VpnKey,
+  CardMembership,
+  Schedule,
+  Key,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import MetricCard from '@/components/common/MetricCard';
 
 interface License {
   id: string;
@@ -315,97 +320,38 @@ const LicensesPage: React.FC = () => {
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Box >
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(102, 126, 234, 0.1) 100%)',
-                border: '1px solid rgba(0, 212, 255, 0.2)',
-              }}
-            >
-              <CardContent>
-                <Typography variant="h3" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                  {activeLicenses}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Active Licenses
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Active Licenses"
+            value={activeLicenses}
+            icon={<VpnKey />}
+            color="primary"
+            trend={{ value: 12, direction: 'up' }}
+          />
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
-          <Box >
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-              }}
-            >
-              <CardContent>
-                <Typography variant="h3" sx={{ fontWeight: 700 }}>
-                  {totalLicenses}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Licenses
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Total Licenses"
+            value={totalLicenses}
+            icon={<CardMembership />}
+            color="secondary"
+          />
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
-          <Box >
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-              }}
-            >
-              <CardContent>
-                <Typography variant="h3" sx={{ fontWeight: 700 }}>
-                  {utilizationRate}%
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Utilization Rate
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={utilizationRate}
-                  sx={{
-                    mt: 1,
-                    height: 4,
-                    borderRadius: 2,
-                    backgroundColor: 'rgba(255,255,255,0.1)',
-                    '& .MuiLinearProgress-bar': {
-                      borderRadius: 2,
-                      background: 'linear-gradient(90deg, #00d4ff 0%, #667eea 100%)',
-                    },
-                  }}
-                />
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Utilization Rate"
+            value={`${utilizationRate}%`}
+            icon={<Key />}
+            color="success"
+            trend={{ value: utilizationRate, direction: 'up' }}
+          />
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
-          <Box >
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-              }}
-            >
-              <CardContent>
-                <Typography variant="h3" sx={{ fontWeight: 700 }}>
-                  15
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Days to Renewal
-                </Typography>
-              </CardContent>
-            </Card>
-          </Box>
+          <MetricCard
+            title="Days to Renewal"
+            value={15}
+            icon={<Schedule />}
+            color="warning"
+          />
         </Grid>
       </Grid>
 

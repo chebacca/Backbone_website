@@ -1,0 +1,1275 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User collection
+    match /users/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // UserSettings collection
+    match /user_settingss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // CustomRole collection
+    match /custom_roles/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // WorkflowDiagram collection
+    match /workflow_diagrams/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // UserGroup collection
+    match /user_groups/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // UserGroupMembership collection
+    match /user_group_memberships/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Stage collection
+    match /stages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionRole collection
+    match /session_roles/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Role collection
+    match /roles/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionSession collection
+    match /production_sessions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionStage collection
+    match /production_stages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionTask collection
+    match /production_tasks/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionTaskAssignee collection
+    match /production_task_assignees/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // ProductionCrewMember collection
+    match /production_crew_members/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // ProductionWorkflowCorrelation collection
+    match /production_workflow_correlations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionAssignment collection
+    match /session_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // UnifiedWorkflowInstance collection
+    match /unified_workflow_instances/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // UnifiedSessionAssignment collection
+    match /unified_session_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // UnifiedSessionStep collection
+    match /unified_session_steps/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // FileChecklist collection
+    match /file_checklists/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PostProductionStage collection
+    match /post_production_stages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PostProductionTask collection
+    match /post_production_tasks/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // TaskAssignee collection
+    match /task_assignees/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // ReviewSession collection
+    match /review_sessions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ReviewNote collection
+    match /review_notes/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ReviewApproval collection
+    match /review_approvals/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ReviewAssignment collection
+    match /review_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ReviewSessionReviewer collection
+    match /review_session_reviewers/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // ReviewSection collection
+    match /review_sections/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CutApproval collection
+    match /cut_approvals/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CutType collection
+    match /cut_types/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Notification collection
+    match /notifications/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Portfolio collection
+    match /portfolios/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Asset collection
+    match /assets/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // RWADetails collection
+    match /r_w_a_detailss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // RwaDocument collection
+    match /rwa_documents/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // TaxLot collection
+    match /tax_lots/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // AssetPerformance collection
+    match /asset_performances/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // AssetPriceHistory collection
+    match /asset_price_historys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PortfolioPerformance collection
+    match /portfolio_performances/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PortfolioTaxSummary collection
+    match /portfolio_tax_summarys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PortfolioAllocation collection
+    match /portfolio_allocations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Budget collection
+    match /budgets/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Transaction collection
+    match /transactions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Contact collection
+    match /contacts/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Invoice collection
+    match /invoices/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // InvoiceItem collection
+    match /invoice_items/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // InvoicePayment collection
+    match /invoice_payments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // InvoiceAttachment collection
+    match /invoice_attachments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Report collection
+    match /reports/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // ContactGroup collection
+    match /contact_groups/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // ContactGroupMembership collection
+    match /contact_group_memberships/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Chat collection
+    match /chats/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ChatParticipant collection
+    match /chat_participants/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Message collection
+    match /messages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // MessageRead collection
+    match /message_reads/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Agent collection
+    match /agents/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // AgentMemory collection
+    match /agent_memorys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // AgentFunctionLog collection
+    match /agent_function_logs/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ResearchSession collection
+    match /research_sessions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // SchedulerEvent collection
+    match /scheduler_events/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // SchedulerEventAssignment collection
+    match /scheduler_event_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // SchedulerTask collection
+    match /scheduler_tasks/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // Note collection
+    match /notes/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // TestModel collection
+    match /test_models/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // MessageSession collection
+    match /message_sessions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // MessageParticipant collection
+    match /message_participants/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // SessionMessage collection
+    match /session_messages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionMessageRead collection
+    match /session_message_reads/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // InventoryItem collection
+    match /inventory_items/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Schema collection
+    match /schemas/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SchemaField collection
+    match /schema_fields/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // NetworkIPAssignment collection
+    match /network_i_p_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // InventoryHistory collection
+    match /inventory_historys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // InventoryAssignmentHistory collection
+    match /inventory_assignment_historys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Server collection
+    match /servers/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // AssetSetup collection
+    match /asset_setups/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SetupProfile collection
+    match /setup_profiles/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SetupChecklist collection
+    match /setup_checklists/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // AssetSetupChecklist collection
+    match /asset_setup_checklists/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ChapterMarker collection
+    match /chapter_markers/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Project collection
+    match /projects/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProjectParticipant collection
+    match /project_participants/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // QcStatus collection
+    match /qc_statuss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // QcSession collection
+    match /qc_sessions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // QcChecklistItem collection
+    match /qc_checklist_items/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // QcFinding collection
+    match /qc_findings/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // QcReport collection
+    match /qc_reports/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // QcActivity collection
+    match /qc_activitys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionArchive collection
+    match /session_archives/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionFile collection
+    match /session_files/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // TaskNotification collection
+    match /task_notifications/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Network collection
+    match /networks/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // NetworkIPRange collection
+    match /network_i_p_ranges/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PodAssignment collection
+    match /pod_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SystemAsset collection
+    match /system_assets/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // TenantStorageUsage collection
+    match /tenant_storage_usages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // InventoryMap collection
+    match /inventory_maps/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // MapData collection
+    match /map_datas/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // MapLayout collection
+    match /map_layouts/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // MapLocation collection
+    match /map_locations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CommandCenterLayout collection
+    match /command_center_layouts/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // SlackIntegration collection
+    match /slack_integrations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // WorkflowStep collection
+    match /workflow_steps/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // WorkflowDependency collection
+    match /workflow_dependencys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // WorkflowTrigger collection
+    match /workflow_triggers/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionWorkflow collection
+    match /session_workflows/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // WorkflowNotification collection
+    match /workflow_notifications/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // WorkflowActivity collection
+    match /workflow_activitys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionWorkflowTaskIntegration collection
+    match /session_workflow_task_integrations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PostProductionWorkflowCorrelation collection
+    match /post_production_workflow_correlations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // Team collection
+    match /teams/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionSteps collection
+    match /session_stepss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // UnifiedStepProgression collection
+    match /unified_step_progressions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // UnifiedStepEvent collection
+    match /unified_step_events/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionElement collection
+    match /session_elements/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ElementActivity collection
+    match /element_activitys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ElementReview collection
+    match /element_reviews/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ElementFile collection
+    match /element_files/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ElementDependency collection
+    match /element_dependencys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // MediaFileTag collection
+    match /media_file_tags/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // MediaFile collection
+    match /media_files/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ReviewFilePath collection
+    match /review_file_paths/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // MediaIndex collection
+    match /media_indexs/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // MediaIndexItem collection
+    match /media_index_items/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionSessionToProject collection
+    match /production_session_to_projects/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionSessionToStage collection
+    match /production_session_to_stages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionSessionToUser collection
+    match /production_session_to_users/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionSession_archivedByToUser collection
+    match /production_session_archived_by_to_users/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionTaskAssignedToUser collection
+    match /production_task_assigned_to_users/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionTaskCreatedBy collection
+    match /production_task_created_bys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionTaskLastUpdatedBy collection
+    match /production_task_last_updated_bys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionTaskToRole collection
+    match /production_task_to_roles/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionTaskToSessionAssignment collection
+    match /production_task_to_session_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionOnHoldBy collection
+    match /session_on_hold_bys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // websocket_servers collection
+    match /ebsocket_serverss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // websocket_sessions collection
+    match /ebsocket_sessionss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // AutomationAlertAcknowledgment collection
+    match /automation_alert_acknowledgments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // LifecycleRule collection
+    match /lifecycle_rules/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // AutomationExecution collection
+    match /automation_executions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionPhaseTransition collection
+    match /session_phase_transitions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SessionLifecycleState collection
+    match /session_lifecycle_states/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // UserTimeCard collection
+    match /user_time_cards/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // TimecardTemplate collection
+    match /timecard_templates/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // UserTimecardAssignment collection
+    match /user_timecard_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // TimecardConfiguration collection
+    match /timecard_configurations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // UserDirectReport collection
+    match /user_direct_reports/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // TimecardApprovalFlow collection
+    match /timecard_approval_flows/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // TimecardAssistanceDismissal collection
+    match /timecard_assistance_dismissals/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // WorkflowAssignment collection
+    match /workflow_assignments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CallSheet collection
+    match /call_sheets/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // DailyCallSheetRecord collection
+    match /daily_call_sheet_records/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // DailyCallSheetLocation collection
+    match /daily_call_sheet_locations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // DailyCallSheetPersonnel collection
+    match /daily_call_sheet_personnels/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // DailyCallSheetDepartmentCallTime collection
+    match /daily_call_sheet_department_call_times/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // DailyCallSheetSchedule collection
+    match /daily_call_sheet_schedules/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // DailyCallSheetVendor collection
+    match /daily_call_sheet_vendors/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // DailyCallSheetWalkieChannel collection
+    match /daily_call_sheet_walkie_channels/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionDepartment collection
+    match /production_departments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionSubDepartment collection
+    match /production_sub_departments/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProductionRole collection
+    match /production_roles/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CallSheetLocation collection
+    match /call_sheet_locations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CallSheetPersonnel collection
+    match /call_sheet_personnels/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // CallSheetDepartmentCallTime collection
+    match /call_sheet_department_call_times/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CallSheetSchedule collection
+    match /call_sheet_schedules/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CallSheetVendor collection
+    match /call_sheet_vendors/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // CallSheetWalkieChannel collection
+    match /call_sheet_walkie_channels/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PBMProject collection
+    match /p_b_m_projects/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PBMSchedule collection
+    match /p_b_m_schedules/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PBMPayscale collection
+    match /p_b_m_payscales/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // PBMDailyStatus collection
+    match /p_b_m_daily_statuss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // BrainChatSession collection
+    match /brain_chat_sessions/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // BrainChatMessage collection
+    match /brain_chat_messages/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // SavedProjectPath collection
+    match /saved_project_paths/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // UserMemoryProfile collection
+    match /user_memory_profiles/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // ConversationPattern collection
+    match /conversation_patterns/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // DomainKnowledge collection
+    match /domain_knowledges/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // RelationshipAnchor collection
+    match /relationship_anchors/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // MemorySlot collection
+    match /memory_slots/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // MemorySystemMetrics collection
+    match /memory_system_metricss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // CollaborationInvitation collection
+    match /collaboration_invitations/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProjectCollaborationSettings collection
+    match /project_collaboration_settingss/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProjectActivity collection
+    match /project_activitys/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // RealTimePresence collection
+    match /real_time_presences/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+      // User-specific data access
+      allow read, write: if request.auth.uid == resource.data.userId;
+      
+    }
+    // TeamMember collection
+    match /team_members/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+    // ProjectTeamMember collection
+    match /project_team_members/{documentId} {
+      allow read, write: if request.auth != null;
+      
+      
+    }
+  }
+}

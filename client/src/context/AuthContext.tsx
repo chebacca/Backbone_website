@@ -36,6 +36,8 @@ interface AuthContextType extends AuthState {
   updateUser: (userData: Partial<User>) => void;
   loginWithGoogle: (idToken: string) => Promise<User>;
   loginWithApple: (idToken: string) => Promise<User>;
+  hasActiveLicense: () => boolean;
+  hasActiveSubscription: () => boolean;
 }
 
 interface RegisterData {
@@ -276,6 +278,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }));
   };
 
+  // Helper function to check if user has an active license
+  const hasActiveLicense = (): boolean => {
+    if (!authState.user) return false;
+    
+    // Check if user has any active licenses
+    if (authState.user.licenses && authState.user.licenses.length > 0) {
+      return authState.user.licenses.some(license => 
+        license.status === 'ACTIVE' && 
+        new Date(license.expiresAt) > new Date()
+      );
+    }
+    
+    return false;
+  };
+
+  // Helper function to check if user has an active subscription
+  const hasActiveSubscription = (): boolean => {
+    if (!authState.user) return false;
+    
+    // Check if user has an active subscription
+    if (authState.user.subscription) {
+      return authState.user.subscription.status === 'ACTIVE' || 
+             authState.user.subscription.status === 'TRIALING';
+    }
+    
+    return false;
+  };
+
   const contextValue: AuthContextType = {
     ...authState,
     login,
@@ -285,6 +315,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     refreshUser,
     updateUser,
+    hasActiveLicense,
+    hasActiveSubscription,
   };
 
   return (

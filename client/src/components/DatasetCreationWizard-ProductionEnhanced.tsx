@@ -24,7 +24,10 @@ export interface UserLicense {
     tier: LicenseTier;
     maxCollaborators: number;
     allowedStorageBackends: string[];
-    maxStorageQuota: number; // in GB
+    maxStorageQuota: number; // in GB, -1 for unlimited
+    storageWarningEnabled?: boolean;
+    additionalStorageAvailable?: boolean;
+    additionalStoragePrice?: number; // per GB per month
     features: {
         cloudStorage: boolean;
         localStorage: boolean;
@@ -45,13 +48,22 @@ export interface ProductionModeConfig {
     maxDatasetSize: number;
 }
 
-// License tier configurations
+// Storage capacity warning thresholds
+export const STORAGE_WARNING_THRESHOLDS = {
+    warning: 0.85, // 85%
+    critical: 0.95, // 95%
+    emergency: 0.98 // 98%
+} as const;
+
+// License tier configurations with enhanced storage management
 export const LICENSE_CONFIGURATIONS: Record<LicenseTier, UserLicense> = {
     free: {
         tier: 'free',
         maxCollaborators: 2,
         allowedStorageBackends: ['firestore'],
         maxStorageQuota: 1, // 1GB
+        storageWarningEnabled: true,
+        additionalStorageAvailable: false, // Cannot purchase additional storage on free tier
         features: {
             cloudStorage: true,
             localStorage: false, // Not available in free tier
@@ -66,6 +78,9 @@ export const LICENSE_CONFIGURATIONS: Record<LicenseTier, UserLicense> = {
         maxCollaborators: 10,
         allowedStorageBackends: ['firestore', 'gcs', 's3'],
         maxStorageQuota: 50, // 50GB
+        storageWarningEnabled: true,
+        additionalStorageAvailable: true, // Can purchase additional storage
+        additionalStoragePrice: 0.10, // $0.10 per GB per month
         features: {
             cloudStorage: true,
             localStorage: true, // Available in desktop mode
@@ -80,6 +95,9 @@ export const LICENSE_CONFIGURATIONS: Record<LicenseTier, UserLicense> = {
         maxCollaborators: -1, // Unlimited
         allowedStorageBackends: ['firestore', 'gcs', 's3', 'aws', 'azure', 'local'],
         maxStorageQuota: -1, // Unlimited
+        storageWarningEnabled: false, // No warnings for unlimited storage
+        additionalStorageAvailable: true, // Custom pricing available
+        additionalStoragePrice: 0.08, // $0.08 per GB per month (volume discount)
         features: {
             cloudStorage: true,
             localStorage: true,
@@ -94,6 +112,8 @@ export const LICENSE_CONFIGURATIONS: Record<LicenseTier, UserLicense> = {
         maxCollaborators: -1, // Unlimited
         allowedStorageBackends: ['local', 'private-cloud'],
         maxStorageQuota: -1, // Unlimited
+        storageWarningEnabled: false, // No cloud storage warnings for on-premises
+        additionalStorageAvailable: false, // Managed by customer
         features: {
             cloudStorage: false, // No external cloud
             localStorage: true,

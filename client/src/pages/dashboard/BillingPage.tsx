@@ -47,10 +47,14 @@ import {
   Payment,
   Star,
   Security,
+  AccountBalance,
+  MonetizationOn,
+  ReceiptLong,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { paymentService } from '@/services/paymentService';
 import { api, endpoints } from '@/services/api';
+import MetricCard from '@/components/common/MetricCard';
 
 interface PaymentMethod {
   id: string;
@@ -316,6 +320,43 @@ const BillingPage: React.FC = () => {
           </Button>
         </Box>
       </Box>
+
+      {/* Billing Overview Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <MetricCard
+            title="Monthly Cost"
+            value={formatCurrency(subscription.amount)}
+            icon={<MonetizationOn />}
+            color="primary"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <MetricCard
+            title="Total Seats"
+            value={subscription.seats}
+            icon={<AccountBalance />}
+            color="secondary"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <MetricCard
+            title="Days to Renewal"
+            value={daysUntilRenewal}
+            icon={<Schedule />}
+            color="warning"
+            trend={{ value: Math.max(0, 30 - daysUntilRenewal), direction: 'down' }}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <MetricCard
+            title="Active Invoices"
+            value={invoices.filter(inv => inv.status === 'paid' || inv.status === 'pending').length}
+            icon={<ReceiptLong />}
+            color="success"
+          />
+        </Grid>
+      </Grid>
 
       {/* Subscription Overview */}
       <Box >

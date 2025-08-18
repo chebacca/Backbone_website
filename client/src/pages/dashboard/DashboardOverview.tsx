@@ -15,6 +15,9 @@ import {
   ListItemIcon,
   Divider,
   Paper,
+  Tooltip,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -28,10 +31,15 @@ import {
   Notifications,
   Update,
   Star,
+  Assessment,
+  Cloud,
+  ArrowForward,
+  Router,
 } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import api, { endpoints } from '@/services/api';
+import { cloudProjectIntegration } from '@/services/CloudProjectIntegration';
 import { 
   Subscription, 
   License, 
@@ -39,62 +47,10 @@ import {
   SubscriptionTier,
   LicenseStatus 
 } from '@/types';
+import MetricCard from '@/components/common/MetricCard';
+import StorageWarningCard from '@/components/StorageWarningCard';
 
-interface MetricCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ReactNode;
-  trend?: {
-    value: number;
-    direction: 'up' | 'down';
-  };
-  color?: 'primary' | 'secondary' | 'success' | 'warning' | 'error';
-}
 
-const MetricCard: React.FC<MetricCardProps> = ({ 
-  title, 
-  value, 
-  icon, 
-  trend, 
-  color = 'primary' 
-}) => (
-  <Box >
-    <Card
-      sx={{
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-        },
-        transition: 'all 0.3s ease',
-      }}
-    >
-      <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Avatar sx={{ bgcolor: `${color}.main`, width: 48, height: 48 }}>
-            {icon}
-          </Avatar>
-          {trend && (
-            <Chip
-              label={`${trend.direction === 'up' ? '+' : '-'}${trend.value}%`}
-              size="small"
-              color={trend.direction === 'up' ? 'success' : 'error'}
-              sx={{ fontWeight: 600 }}
-            />
-          )}
-        </Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          {value}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {title}
-        </Typography>
-      </CardContent>
-    </Card>
-  </Box>
-);
 
 interface ActivityItem {
   type: 'license' | 'payment' | 'user' | 'security';
@@ -156,6 +112,7 @@ const getStatusColor = (status?: string) => {
 
 const DashboardOverview: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState<boolean>(true);
   const [activeLicenses, setActiveLicenses] = useState<number>(0);
@@ -165,7 +122,14 @@ const DashboardOverview: React.FC = () => {
   const [currentPlan, setCurrentPlan] = useState<string>('');
   const [daysUntilRenewal, setDaysUntilRenewal] = useState<string>('');
   const [hasEnterpriseFeatures, setHasEnterpriseFeatures] = useState<boolean>(false);
+  const [isEdgeMode, setIsEdgeMode] = useState<boolean>(false);
+  const [edgeBaseUrl, setEdgeBaseUrl] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<number>(0);
+  
+  // Cloud Projects Data
+  const [totalProjects, setTotalProjects] = useState<number>(0);
+  const [activeProjects, setActiveProjects] = useState<number>(0);
+  const [cloudProjectsLoading, setCloudProjectsLoading] = useState<boolean>(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -174,10 +138,11 @@ const DashboardOverview: React.FC = () => {
         setLoading(true);
         
         // Fetch all data in parallel for better performance
-        const [subsRes, analyticsRes, licensesRes] = await Promise.all([
+        const [subsRes, analyticsRes, licensesRes, cloudProjectsRes] = await Promise.all([
           api.get(endpoints.subscriptions.mySubscriptions()),
           api.get(endpoints.licenses.analytics()),
           api.get(endpoints.licenses.myLicenses()),
+          cloudProjectIntegration.getUserProjects(),
         ]);
 
         if (!isMounted) return;
@@ -226,6 +191,36 @@ const DashboardOverview: React.FC = () => {
             setTotalDownloads(analytics.downloads || 0);
           }
         }
+
+        // Process cloud projects data
+        try {
+          if (cloudProjectsRes) {
+            const totalProj = cloudProjectsRes.length;
+            const activeProj = cloudProjectsRes.filter((project: any) => 
+              project.isActive && !project.isArchived
+            ).length;
+            
+            setTotalProjects(totalProj);
+            setActiveProjects(activeProj);
+          }
+        } catch (cloudError) {
+          console.error('Error processing cloud projects data:', cloudError);
+          // Don't fail the entire dashboard for cloud projects
+          setTotalProjects(0);
+          setActiveProjects(0);
+        }
+
+        // Check if we're in Edge mode
+        try {
+          const isEdge = cloudProjectIntegration.isEdge();
+          const edgeUrl = cloudProjectIntegration.getBaseUrlIfEdge();
+          setIsEdgeMode(isEdge);
+          setEdgeBaseUrl(edgeUrl);
+        } catch (edgeError) {
+          console.warn('Edge mode detection failed:', edgeError);
+          setIsEdgeMode(false);
+          setEdgeBaseUrl(null);
+        }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
         // Fallback to zeros on error
@@ -238,6 +233,8 @@ const DashboardOverview: React.FC = () => {
         setDaysUntilRenewal('');
         setHasEnterpriseFeatures(false);
         setTeamMembers(0);
+        setTotalProjects(0);
+        setActiveProjects(0);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -264,6 +261,15 @@ const DashboardOverview: React.FC = () => {
 
   return (
     <Box>
+      {/* Edge Mode Banner */}
+      {isEdgeMode && (
+        <Alert severity="info" sx={{ mb: 3 }} icon={<Router />}>
+          <AlertTitle>Edge Mode Active</AlertTitle>
+          Running in offline LAN mode via Edge Hub at {edgeBaseUrl || 'local network'}. 
+          Projects and data are stored locally and will sync when cloud connectivity returns.
+        </Alert>
+      )}
+
       {/* Welcome Header */}
       <Box >
         <Box sx={{ mb: 4 }}>
@@ -303,24 +309,40 @@ const DashboardOverview: React.FC = () => {
           </Grid>
         )}
         <Grid item xs={12} sm={6} lg={3}>
-          <MetricCard
-            title="Monthly Usage"
-            value={monthlyUsage}
-            icon={<TrendingUp />}
-            trend={{ value: 5, direction: 'up' }}
-            color="success"
-          />
+          <Tooltip title="Click to view Cloud Projects" arrow>
+            <div>
+              <MetricCard
+                title="Total Projects"
+                value={totalProjects}
+                icon={<Assessment />}
+                trend={{ value: 15, direction: 'up' }}
+                color="success"
+                onClick={() => navigate('/dashboard/cloud-projects')}
+              />
+            </div>
+          </Tooltip>
         </Grid>
         <Grid item xs={12} sm={6} lg={3}>
-          <MetricCard
-            title="Total Downloads"
-            value={totalDownloads.toLocaleString()}
-            icon={<Download />}
-            trend={{ value: 23, direction: 'up' }}
-            color="warning"
-          />
+          <Tooltip title="Click to view Cloud Projects" arrow>
+            <div>
+              <MetricCard
+                title="Active Projects"
+                value={activeProjects}
+                icon={<Cloud />}
+                trend={{ value: 8, direction: 'up' }}
+                color="warning"
+                onClick={() => navigate('/dashboard/cloud-projects')}
+              />
+            </div>
+          </Tooltip>
         </Grid>
       </Grid>
+
+      {/* Storage Warning Card */}
+      <StorageWarningCard 
+        onUpgrade={() => navigate('/pricing')}
+        compact={true}
+      />
 
       <Grid container spacing={3}>
         {/* License Status */}

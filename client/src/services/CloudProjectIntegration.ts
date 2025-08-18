@@ -145,9 +145,29 @@ export interface CloudDataset {
     updatedAt: string;
 }
 
+// Canonical launch context shared by Web and Desktop
+export interface ProjectLaunchContext {
+    projectId: string;
+    mode: ApplicationMode;
+    storageBackend: CloudProject['storageBackend'];
+    datasetIds: string[];
+    organizationId?: string;
+    licenseId?: string;
+    origin?: 'cloud' | 'edge';
+    edgeBaseUrl?: string | null;
+    user?: {
+        id: string;
+        email?: string;
+        backboneUserRole?: string;
+        teamMemberRole?: string;
+        permissions?: string[];
+    } | null;
+}
+
 class CloudProjectIntegrationService {
     private static instance: CloudProjectIntegrationService;
     private baseURL: string;
+    private baseURLOverride: string | null = null;
     private authToken: string | null = null;
     private authTokenCallback: (() => string | null) | null = null;
 
@@ -211,6 +231,59 @@ class CloudProjectIntegrationService {
         return envBaseURL;
     }
 
+    // Runtime override for Edge Hub (offline)
+    public setBaseUrl(url: string | null): void {
+        this.baseURLOverride = url && url.trim().length > 0 ? url : null;
+        try {
+            if (this.baseURLOverride) sessionStorage.setItem('edge_base_url', this.baseURLOverride);
+            else sessionStorage.removeItem('edge_base_url');
+        } catch {}
+    }
+
+    public isEdge(): boolean {
+        return !!this.baseURLOverride && /^(http|https):\/\//i.test(this.baseURLOverride);
+    }
+
+    public getBaseUrlIfEdge(): string | null {
+        return this.isEdge() ? this.baseURLOverride : null;
+    }
+
+    private getEffectiveBase(): string {
+        const chosen = this.baseURLOverride || this.baseURL;
+        return String(chosen).replace(/\/$/, '');
+    }
+
+    private async discoverEdgeBaseURL(timeoutMs: number = 900): Promise<string | null> {
+        try {
+            const cached = sessionStorage.getItem('edge_base_url');
+            if (cached) return cached;
+        } catch {}
+
+        const candidates: string[] = [];
+        const envOne = (import.meta.env as any).VITE_EDGE_DISCOVERY_URL as string | undefined;
+        const envList = (import.meta.env as any).VITE_EDGE_CANDIDATES as string | undefined;
+        if (envOne) candidates.push(envOne);
+        if (envList) candidates.push(...envList.split(',').map(s => s.trim()).filter(Boolean));
+        candidates.push('http://edge.local:3001/api', 'http://backbone-edge.local:3001/api', 'http://localhost:3001/api');
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
+        try {
+            for (const base of candidates) {
+                try {
+                    const res = await fetch(`${String(base).replace(/\/$/, '')}/health`, { signal: controller.signal });
+                    if (res.ok) {
+                        try { sessionStorage.setItem('edge_base_url', String(base).replace(/\/$/, '')); } catch {}
+                        return String(base).replace(/\/$/, '');
+                    }
+                } catch {}
+            }
+        } finally {
+            clearTimeout(timer);
+        }
+        return null;
+    }
+
     /**
      * Make authenticated API requests
      */
@@ -219,7 +292,7 @@ class CloudProjectIntegrationService {
         method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET',
         data?: any
     ): Promise<T> {
-         const base = this.baseURL.replace(/\/$/, '');
+         const base = this.getEffectiveBase ? this.getEffectiveBase() : this.baseURL.replace(/\/$/, '');
         const path = String(endpoint || '').replace(/^\//, '');
         const url = `${base}/${path}`;
 
@@ -252,8 +325,9 @@ class CloudProjectIntegrationService {
             ...(data && { body: JSON.stringify(data) })
         };
 
+        const doFetch = async (targetUrl: string): Promise<Response> => fetch(targetUrl, config);
         try {
-            const response = await fetch(url, config);
+            let response = await doFetch(url);
 
             if (!response.ok) {
                 if (response.status === 401) {
@@ -261,6 +335,16 @@ class CloudProjectIntegrationService {
                     await this.handleAuthError();
                     throw new Error('Authentication required');
                 }
+                // Edge fallback on gateway errors
+                if (!(this as any).baseURLOverride && [502, 503, 504].includes(response.status) && (this as any).discoverEdgeBaseURL) {
+                    const edge = await (this as any).discoverEdgeBaseURL().catch(() => null);
+                    if (edge) {
+                        (this as any).setBaseUrl?.(edge);
+                        const retryBase = this.getEffectiveBase ? this.getEffectiveBase() : this.baseURL.replace(/\/$/, '');
+                        response = await doFetch(`${retryBase}/${path}`);
+                    }
+                }
+
                 // Try to parse JSON error for clearer messaging
                 let message = '';
                 let details: any = undefined;
@@ -287,7 +371,25 @@ class CloudProjectIntegrationService {
             }
 
             return result.data as T;
-        } catch (error) {
+        } catch (error: any) {
+            // Network error → one-time Edge discovery & retry
+            const isNetwork = error?.name === 'TypeError' || /NetworkError|Failed to fetch|timeout/i.test(String(error?.message || ''));
+            if (!(this as any).baseURLOverride && isNetwork && (this as any).discoverEdgeBaseURL) {
+                const edge = await (this as any).discoverEdgeBaseURL().catch(() => null);
+                if (edge) {
+                    try {
+                        (this as any).setBaseUrl?.(edge);
+                        const retryBase = this.getEffectiveBase ? this.getEffectiveBase() : this.baseURL.replace(/\/$/, '');
+                        const retryResp = await fetch(`${retryBase}/${path}`, config);
+                        if (!retryResp.ok) throw new Error(`Edge retry failed: ${retryResp.status}`);
+                        const retryJson: ApiResponse<T> = await retryResp.json();
+                        if (!retryJson.success) throw new Error(retryJson.error || retryJson.message || 'API request failed');
+                        return retryJson.data as T;
+                    } catch (retryErr) {
+                        console.error('Edge retry error:', retryErr);
+                    }
+                }
+            }
             console.error('API request error:', error);
             throw error;
         }
@@ -615,6 +717,95 @@ class CloudProjectIntegrationService {
                 return [];
             }
         }
+    }
+
+    /**
+     * Ensure project is initialized for launch in network mode and
+     * return a canonical ProjectLaunchContext. This is safe to call
+     * repeatedly (idempotent) and will:
+     *  - create a default ADMIN assignment if no admin exists
+     *  - fetch datasets and core project metadata
+     *  - map current team member to Backbone user role if applicable
+     */
+    public async ensureProjectInitialized(projectId: string): Promise<ProjectLaunchContext> {
+        // Fetch basic project data
+        const project = await this.getProject(projectId);
+        if (!project) {
+            throw new Error('Project not found');
+        }
+
+        // Get datasets
+        let datasets: CloudDataset[] = [];
+        try {
+            datasets = await this.getProjectDatasets(projectId);
+        } catch {}
+
+        // Team members and default admin enforcement
+        let teamMembers: ProjectTeamMember[] = [];
+        try {
+            teamMembers = await this.getProjectTeamMembers(projectId);
+        } catch {}
+
+        const hasAdmin = teamMembers.some(tm => (tm as any).role === TeamMemberRole.ADMIN || (tm as any).role === 'admin');
+
+        // If no admin assigned yet and current user is a team member, make them admin
+        try {
+            const currentUser: any = simplifiedStartupSequencer.getCurrentUser?.() || null;
+            const currentIsTeamMember = !!currentUser?.isTeamMember && currentUser?.id;
+            if (!hasAdmin && currentIsTeamMember) {
+                // Only attempt if not already assigned
+                const isAlreadyMember = teamMembers.some(tm => tm.teamMemberId === currentUser.id);
+                if (!isAlreadyMember) {
+                    await this.addTeamMemberToProject(projectId, currentUser.id, TeamMemberRole.ADMIN);
+                    // Refresh list (best-effort)
+                    try { teamMembers = await this.getProjectTeamMembers(projectId); } catch {}
+                } else {
+                    // Elevate role if necessary
+                    const record = teamMembers.find(tm => tm.teamMemberId === currentUser.id);
+                    if (record && (record as any).role !== TeamMemberRole.ADMIN) {
+                        await this.updateTeamMemberRole(projectId, record.teamMemberId, TeamMemberRole.ADMIN);
+                        try { teamMembers = await this.getProjectTeamMembers(projectId); } catch {}
+                    }
+                }
+            }
+        } catch (e) {
+            // Non-fatal; proceed with available context
+            console.warn('Default admin enforcement skipped:', e);
+        }
+
+        // Map current team member to Backbone app role (if applicable)
+        let userContext: ProjectLaunchContext['user'] = null;
+        try {
+            const tmCtx = await simplifiedStartupSequencer.getTeamMemberProjectContext(projectId);
+            if (tmCtx) {
+                userContext = {
+                    id: tmCtx.teamMember?.id,
+                    email: tmCtx.teamMember?.email,
+                    backboneUserRole: tmCtx.backboneUserRole,
+                    teamMemberRole: tmCtx.project?.role,
+                    permissions: tmCtx.permissions,
+                };
+            }
+        } catch {}
+
+        // Build canonical context
+        const context: ProjectLaunchContext = {
+            projectId: project.id,
+            mode: project.applicationMode,
+            storageBackend: project.storageBackend,
+            datasetIds: datasets.map(d => d.id),
+            organizationId: project.organizationId,
+            origin: (this as any).isEdge ? (this as any).isEdge() ? 'edge' : 'cloud' : 'cloud',
+            edgeBaseUrl: (this as any).getBaseUrlIfEdge ? (this as any).getBaseUrlIfEdge() : null,
+            user: userContext,
+        };
+
+        // Cache minimally for web app to hydrate on initial load (best-effort)
+        try {
+            sessionStorage.setItem(`launch_context_${projectId}`, JSON.stringify(context));
+        } catch {}
+
+        return context;
     }
 
     /**

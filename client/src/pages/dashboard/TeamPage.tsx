@@ -69,6 +69,7 @@ interface TeamMember {
   joinedAt: string;
   lastActive: string;
   licenseAssigned?: string;
+  licenseType?: string;
   department?: string;
   avatar?: string;
 }
@@ -250,7 +251,6 @@ const TeamPage: React.FC = () => {
           return;
         }
 
-        const pendingInvites = members.filter(m => m.status === 'INVITED').length;
         const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
 
         // Determine seats from active org subscription if provided by context; otherwise compute from user subs
@@ -267,7 +267,7 @@ const TeamPage: React.FC = () => {
             return sum + (s.seats || 0);
           }, 0);
         }
-        const availableSeats = Math.max(0, totalSeats - (activeMembers + pendingInvites));
+        const availableSeats = Math.max(0, totalSeats - activeMembers);
 
         // Map members to display
         const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
@@ -293,6 +293,8 @@ const TeamPage: React.FC = () => {
               email,
               role: roleMap[String(m.role)] || 'member',
               status: statusMap[String(m.status)] || 'active',
+              department: m.department || '',
+              licenseType: m.licenseType || 'PROFESSIONAL',
               joinedAt: toIsoDate(m.joinedAt),
               lastActive: toIsoDate(m.updatedAt || m.joinedAt || new Date(), { includeTime: true }),
             } as TeamMember;
@@ -302,12 +304,17 @@ const TeamPage: React.FC = () => {
         setOrgId(primaryOrg.id);
         setOrgName(primaryOrg.name || 'Organization');
         setOrgPrimaryRole(ctxRole || null);
+        
+        // Debug logging for organization ID
+        console.log('[TeamPage] Organization ID:', primaryOrg.id, 'Type:', typeof primaryOrg.id, 'Length:', String(primaryOrg.id).length);
+        console.log('[TeamPage] Organization ID characters:', Array.from(String(primaryOrg.id)).map(c => `${c}(${c.charCodeAt(0)})`).join(' '));
+        
         setActiveSubscription(activeSub ? { id: String(activeSub.id), tier: String(activeSub.tier).toUpperCase() as any, seats: Number(activeSub.seats || 0), status: String(activeSub.status || '') , organizationId: activeSub.organizationId } : null);
         setTeamMembers(derivedMembers);
         setStats({
           totalMembers: derivedMembers.length,
           activeMembers,
-          pendingInvites,
+          pendingInvites: 0, // No more pending invites since we create members directly
           availableSeats,
           totalSeats,
         });
@@ -322,6 +329,103 @@ const TeamPage: React.FC = () => {
     return () => { isMounted = false; };
   }, [user?.email]);
   
+  // Function to refresh team data
+  const refreshTeamData = async () => {
+    try {
+      // Try richer context endpoint first
+      const ctxRes = await api.get(endpoints.organizations.context()).catch(() => null as any);
+      const ctxOrg = ctxRes?.data?.data?.organization || null;
+      const ctxMembers = ctxRes?.data?.data?.members || [];
+      const ctxActiveSub = ctxRes?.data?.data?.activeSubscription || null;
+      const ctxRole = ctxRes?.data?.data?.primaryRole || null;
+
+      let primaryOrg = ctxOrg;
+      let members: any[] = ctxMembers;
+      let activeSub = ctxActiveSub;
+
+      if (!primaryOrg) {
+        // Fallback to /organizations/my if context not available
+        const orgRes = await api.get(endpoints.organizations.my());
+        const owned = orgRes?.data?.data?.owned ?? [];
+        const memberOf = orgRes?.data?.data?.memberOf ?? [];
+        primaryOrg = (owned[0] || memberOf[0]) || null;
+        members = (primaryOrg?.members || []) as any[];
+      }
+
+      if (!primaryOrg) {
+        setOrgId(null);
+        setOrgName('');
+        setTeamMembers([]);
+        setStats({ totalMembers: 0, activeMembers: 0, pendingInvites: 0, availableSeats: 0, totalSeats: 0 });
+        return;
+      }
+
+      const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
+
+      // Determine seats from active org subscription if provided by context; otherwise compute from user subs
+      let totalSeats = 0;
+      if (activeSub && activeSub.status === 'ACTIVE' && activeSub.organizationId === primaryOrg.id) {
+        totalSeats = Number(activeSub.seats || 0);
+      } else {
+        const subsRes = await api.get(endpoints.subscriptions.mySubscriptions());
+        const subscriptions = (subsRes.data?.data?.subscriptions ?? []) as any[];
+        const orgSubs = subscriptions.filter(s => s.organizationId === primaryOrg.id && s.status === 'ACTIVE');
+        totalSeats = orgSubs.reduce((sum, s) => {
+          // Prefer to remember one active subscription for seat management
+          if (!activeSub && s.status === 'ACTIVE') activeSub = s;
+          return sum + (s.seats || 0);
+        }, 0);
+      }
+      const availableSeats = Math.max(0, totalSeats - activeMembers);
+
+      // Map members to display
+      const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
+        .filter((m: any) => m && m.status !== 'REMOVED')
+        .map((m: any) => {
+          const email: string = String(m.email || 'user@example.com');
+          const username = email.split('@')[0] || 'User';
+          const roleMapDisplay: Record<string, TeamMember['role']> = {
+            OWNER: 'owner',
+            ENTERPRISE_ADMIN: 'admin',
+            MANAGER: 'manager',
+            MEMBER: 'member',
+          };
+          const statusMapDisplay: Record<string, TeamMember['status']> = {
+            INVITED: 'pending',
+            ACTIVE: 'active',
+            REMOVED: 'removed',
+          };
+          return {
+            id: String(m.id || `${email}-${Math.random().toString(36).slice(2)}`),
+            firstName: username.charAt(0).toUpperCase() + username.slice(1),
+            lastName: '',
+            email,
+            role: roleMapDisplay[String(m.role)] || 'member',
+            status: statusMapDisplay[String(m.status)] || 'active',
+            department: m.department || '',
+            licenseType: m.licenseType || 'PROFESSIONAL',
+            joinedAt: toIsoDate(m.joinedAt),
+            lastActive: toIsoDate(m.updatedAt || m.joinedAt || new Date(), { includeTime: true }),
+          } as TeamMember;
+        });
+
+      setOrgId(primaryOrg.id);
+      setOrgName(primaryOrg.name || 'Organization');
+      setOrgPrimaryRole(ctxRole || null);
+      setActiveSubscription(activeSub ? { id: String(activeSub.id), tier: String(activeSub.tier).toUpperCase() as any, seats: Number(activeSub.seats || 0), status: String(activeSub.status || '') , organizationId: activeSub.organizationId } : null);
+      setTeamMembers(derivedMembers);
+      setStats({
+        totalMembers: derivedMembers.length,
+        activeMembers,
+        pendingInvites: 0, // No more pending invites since we create members directly
+        availableSeats,
+        totalSeats,
+      });
+    } catch (error) {
+      console.error('[TeamPage] Failed to refresh team data:', error);
+    }
+  };
+  
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -333,8 +437,14 @@ const TeamPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [editForm, setEditForm] = useState<{ newPassword: string; confirmPassword: string; email: string; role: TeamMember['role']; status: TeamMember['status'] }>({ newPassword: '', confirmPassword: '', email: '', role: 'member', status: 'active' });
   
+  // Add confirmation dialog state for delete action
+  const [deleteConfirmDialogOpen, setDeleteConfirmDialogOpen] = useState(false);
+  const [memberToDelete, setMemberToDelete] = useState<TeamMember | null>(null);
+  
   const [inviteForm, setInviteForm] = useState({
     email: '',
+    firstName: '',
+    lastName: '',
     role: 'member' as TeamMember['role'],
     department: '',
     message: '',
@@ -357,62 +467,54 @@ const TeamPage: React.FC = () => {
       return;
     }
     try {
-      const roleMap: Record<TeamMember['role'], 'ENTERPRISE_ADMIN' | 'MANAGER' | 'MEMBER'> = {
-        admin: 'ENTERPRISE_ADMIN',
-        owner: 'ENTERPRISE_ADMIN',
-        manager: 'MANAGER',
-        member: 'MEMBER',
-        viewer: 'MEMBER',
+      // Create request payload, filtering out undefined/empty values
+      const requestPayload: any = {
+        email: inviteForm.email.trim(),
+        firstName: inviteForm.firstName.trim(),
+        lastName: inviteForm.lastName.trim(),
+        licenseType: 'PROFESSIONAL', // Default to professional
+        organizationId: orgId,
+        createdBy: user?.id || 'unknown', // Required by server
+        sendWelcomeEmail: true,
       };
-      await api.post(endpoints.organizations.invite(orgId), {
-        email: inviteForm.email,
-        role: roleMap[inviteForm.role] || 'MEMBER',
-      });
-      enqueueSnackbar(`Invitation sent to ${inviteForm.email}`, { variant: 'success' });
-      setInviteDialogOpen(false);
-      setInviteForm({ email: '', role: 'member', department: '', message: '' });
-      // Quick refresh
-      const orgRes = await api.get(endpoints.organizations.my());
-      const owned = orgRes?.data?.data?.owned ?? [];
-      const memberOf = orgRes?.data?.data?.memberOf ?? [];
-      const primaryOrg = [...owned, ...memberOf].find((o: any) => o.id === orgId) || owned[0] || memberOf[0];
-      if (primaryOrg) {
-         const members = (primaryOrg.members || []) as any[];
-        const derivedMembers: TeamMember[] = (Array.isArray(members) ? members : [])
-          .filter((m: any) => m && m.status !== 'REMOVED')
-          .map((m: any) => {
-            const email: string = String(m.email || 'user@example.com');
-            const username = email.split('@')[0] || 'User';
-            const roleMapDisplay: Record<string, TeamMember['role']> = {
-              OWNER: 'owner',
-              ENTERPRISE_ADMIN: 'admin',
-              MANAGER: 'manager',
-              MEMBER: 'member',
-            };
-            const statusMapDisplay: Record<string, TeamMember['status']> = {
-              INVITED: 'pending',
-              ACTIVE: 'active',
-              REMOVED: 'removed',
-            };
-            return {
-              id: String(m.id || `${email}-${Math.random().toString(36).slice(2)}`),
-              firstName: username.charAt(0).toUpperCase() + username.slice(1),
-              lastName: '',
-              email,
-              role: roleMapDisplay[String(m.role)] || 'member',
-              status: statusMapDisplay[String(m.status)] || 'active',
-              joinedAt: toIsoDate(m.joinedAt),
-              lastActive: toIsoDate(m.updatedAt || m.joinedAt || new Date(), { includeTime: true }),
-            } as TeamMember;
-          });
-        const pendingInvites = members.filter(m => m.status === 'INVITED').length;
-        const activeMembers = members.filter(m => m.status === 'ACTIVE').length;
-        setTeamMembers(derivedMembers);
-        setStats((s) => ({ ...s, totalMembers: derivedMembers.length, pendingInvites, activeMembers, availableSeats: Math.max(0, s.totalSeats - (activeMembers + pendingInvites)) }));
+      
+      // Only add department if it has a value
+      if (inviteForm.department && inviteForm.department.trim()) {
+        requestPayload.department = inviteForm.department.trim();
+      }
+      
+      console.log('[TeamPage] Creating team member with payload:', requestPayload);
+      console.log('[TeamPage] Organization ID:', orgId, 'Type:', typeof orgId);
+      console.log('[TeamPage] Organization ID validation test:', /^[a-zA-Z0-9\-_\.]+$/.test(String(orgId)));
+      console.log('[TeamPage] Organization ID characters:', Array.from(String(orgId)).map(c => `${c}(${c.charCodeAt(0)})`).join(' '));
+      
+      // Create team member directly using the automated service
+      const teamMemberResponse = await api.post(endpoints.teamMembers.create(), requestPayload);
+
+      if (teamMemberResponse.data?.success) {
+        const teamMember = teamMemberResponse.data.data.teamMember;
+        const temporaryPassword = teamMemberResponse.data.data.temporaryPassword;
+        
+        enqueueSnackbar(
+          `Team member ${teamMember.email} created successfully! Temporary password: ${temporaryPassword}`, 
+          { variant: 'success' }
+        );
+        
+        setInviteDialogOpen(false);
+        setInviteForm({ email: '', firstName: '', lastName: '', role: 'member', department: '', message: '' });
+        
+        // Refresh team data
+        await refreshTeamData();
+      } else {
+        throw new Error('Failed to create team member');
       }
     } catch (err: any) {
-      console.error('[TeamPage] Invite failed:', err);
-      const serverMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Failed to send invitation';
+      console.error('[TeamPage] Team member creation failed:', err);
+      console.error('[TeamPage] Error response:', err?.response?.data);
+      console.error('[TeamPage] Error status:', err?.response?.status);
+      console.error('[TeamPage] Error headers:', err?.response?.headers);
+      
+      const serverMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Failed to create team member';
       enqueueSnackbar(serverMsg, { variant: 'error' });
     }
   };
@@ -620,11 +722,18 @@ const TeamPage: React.FC = () => {
     }
   };
 
-  const handleRemoveMember = async () => {
-    if (!selectedMember || !orgId) return;
+  const handleRemoveMember = () => {
+    if (!selectedMember) return;
+    setMemberToDelete(selectedMember);
+    setDeleteConfirmDialogOpen(true);
+    handleMenuClose();
+  };
+
+  const handleConfirmDeleteMember = async () => {
+    if (!memberToDelete || !orgId) return;
     try {
-      await api.post(endpoints.organizations.removeMember(orgId, selectedMember.id));
-      enqueueSnackbar(`${selectedMember.email} removed from team`, { variant: 'warning' });
+      await api.post(endpoints.organizations.removeMember(orgId, memberToDelete.id));
+      enqueueSnackbar(`${memberToDelete.email} removed from team`, { variant: 'warning' });
       // Refresh
       const orgRes = await api.get(endpoints.organizations.my());
       const owned = orgRes?.data?.data?.owned ?? [];
@@ -668,8 +777,14 @@ const TeamPage: React.FC = () => {
       console.error('[TeamPage] Remove member failed:', err);
       enqueueSnackbar(err?.message || 'Failed to remove member', { variant: 'error' });
     } finally {
-      handleMenuClose();
+      setDeleteConfirmDialogOpen(false);
+      setMemberToDelete(null);
     }
+  };
+
+  const handleCancelDeleteMember = () => {
+    setDeleteConfirmDialogOpen(false);
+    setMemberToDelete(null);
   };
 
   const utilization = useMemo(() => {
@@ -686,8 +801,9 @@ const TeamPage: React.FC = () => {
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
               Team Management
             </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Manage your team members, roles, and license assignments
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+              Create and manage your team members with automatic Firebase Authentication setup. 
+              Each member gets their own account and temporary password.
             </Typography>
           </Box>
           <Button
@@ -701,7 +817,7 @@ const TeamPage: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            Invite Member
+            Add Team Member
           </Button>
           {canManageSeats && (
             <Button
@@ -719,7 +835,7 @@ const TeamPage: React.FC = () => {
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
-            title="Total Members"
+            title="Team Members"
             value={stats.totalMembers}
             icon={<People />}
             color="primary"
@@ -739,10 +855,10 @@ const TeamPage: React.FC = () => {
 
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
-            title="Pending Invites"
-            value={stats.pendingInvites}
-            icon={<Schedule />}
-            color="warning"
+            title="Total Seats"
+            value={stats.totalSeats}
+            icon={<Star />}
+            color="primary"
           />
         </Grid>
 
@@ -823,25 +939,9 @@ const TeamPage: React.FC = () => {
                   </TableCell>
 
                   <TableCell>
-                    {member.licenseAssigned ? (
-                      <Tooltip title={member.licenseAssigned}>
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            fontFamily: 'monospace',
-                            maxWidth: 120,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {member.licenseAssigned}
-                        </Typography>
-                      </Tooltip>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No license
-                      </Typography>
-                    )}
+                    <Typography variant="body2">
+                      {member.licenseType || 'PROFESSIONAL'}
+                    </Typography>
                   </TableCell>
 
                   <TableCell>
@@ -901,14 +1001,6 @@ const TeamPage: React.FC = () => {
           </ListItemIcon>
           Edit Member
         </MenuItem>
-        {selectedMember?.status === 'pending' && (
-          <MenuItem onClick={handleResendInvite}>
-            <ListItemIcon>
-              <Email fontSize="small" />
-            </ListItemIcon>
-            Resend Invite
-          </MenuItem>
-        )}
         <MenuItem onClick={handleMenuClose}>
           <ListItemIcon>
             <Block fontSize="small" />
@@ -936,8 +1028,12 @@ const TeamPage: React.FC = () => {
           },
         }}
       >
-        <DialogTitle>Invite Team Member</DialogTitle>
+        <DialogTitle>Create New Team Member</DialogTitle>
         <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Create a new team member account with automatic Firebase Authentication setup. 
+            The member will receive a welcome email with their temporary password.
+          </Typography>
           <Grid container spacing={3} sx={{ mt: 1 }}>
             {stats.availableSeats <= 0 && (
               <Grid item xs={12}>
@@ -946,6 +1042,24 @@ const TeamPage: React.FC = () => {
                 </Alert>
               </Grid>
             )}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="First Name"
+                value={inviteForm.firstName}
+                onChange={(e) => setInviteForm(prev => ({ ...prev, firstName: e.target.value }))}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Last Name"
+                value={inviteForm.lastName}
+                onChange={(e) => setInviteForm(prev => ({ ...prev, lastName: e.target.value }))}
+                required
+              />
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -953,6 +1067,7 @@ const TeamPage: React.FC = () => {
                 type="email"
                 value={inviteForm.email}
                 onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                required
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -998,9 +1113,9 @@ const TeamPage: React.FC = () => {
           <Button
             onClick={handleInviteMember}
             variant="contained"
-            disabled={!inviteForm.email || stats.availableSeats <= 0}
+            disabled={!inviteForm.email || !inviteForm.firstName || !inviteForm.lastName || stats.availableSeats <= 0}
           >
-            Send Invitation
+            Create Team Member
           </Button>
         </DialogActions>
       </Dialog>
@@ -1160,6 +1275,50 @@ const TeamPage: React.FC = () => {
           </Button>
           <Button onClick={handleSavePassword} variant="contained" disabled={isSavingEdit || !editForm.newPassword || !editForm.confirmPassword || editForm.status !== 'active'}>
             {isSavingEdit ? 'Saving…' : 'Save Password Only'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Member Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmDialogOpen}
+        onClose={handleCancelDeleteMember}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backgroundColor: 'background.paper',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+          },
+        }}
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Delete color="error" />
+            Remove Team Member
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            Are you sure you want to remove <strong>{memberToDelete?.email}</strong> from your team?
+          </Typography>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            <Typography variant="body2">
+              This action cannot be undone. The member will lose access to all organization resources and data.
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDeleteMember} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmDeleteMember}
+            color="error"
+            variant="contained"
+            startIcon={<Delete />}
+          >
+            Remove Member
           </Button>
         </DialogActions>
       </Dialog>

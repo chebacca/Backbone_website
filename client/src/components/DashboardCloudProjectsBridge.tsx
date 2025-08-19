@@ -217,10 +217,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   // Helper to load team members for selected project
   const loadTeamMembersForProject = async (project: CloudProject) => {
     try {
+      console.log('🔍 [DashboardCloudProjectsBridge] Loading team members for project:', project.name);
+      
       setTeamMembersLoading(true);
       
       // Load assigned team members for this project
       const assignedMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
+      console.log('🔍 [DashboardCloudProjectsBridge] Assigned members loaded:', assignedMembers.length);
       setProjectTeamMembers(assignedMembers);
       
       // Load all available licensed team members from owner's organization
@@ -228,10 +231,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         search: teamMemberSearch || undefined,
         excludeProjectId: project.id // Exclude already assigned members
       });
-      
+      console.log('🔍 [DashboardCloudProjectsBridge] Available licensed members:', allLicensedMembers.length);
       setAvailableTeamMembers(allLicensedMembers);
     } catch (e) {
-      console.error('Failed to load team members for project', e);
+      console.error('❌ [DashboardCloudProjectsBridge] Failed to load team members for project:', e);
+      // Set empty arrays on error to prevent UI crashes
+      setProjectTeamMembers([]);
+      setAvailableTeamMembers([]);
     } finally {
       setTeamMembersLoading(false);
     }
@@ -254,6 +260,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             loadProjects();
         };
         window.addEventListener('project:created' as any, onCreated);
+        
         return () => window.removeEventListener('project:created' as any, onCreated);
     }, []);
 
@@ -1837,6 +1844,19 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 {projectTeamMembers.map((member: any, index: number) => {
                                                     // Debug: Log the member data structure
                                                     console.log('🔍 Team member data:', member);
+                                                    
+                                                    // Extract team member details with proper fallbacks
+                                                    const teamMember = member.teamMember || member;
+                                                    const displayName = teamMember.name || 
+                                                        (teamMember.firstName && teamMember.lastName ? 
+                                                            `${teamMember.firstName} ${teamMember.lastName}` : 
+                                                            teamMember.firstName || 
+                                                            teamMember.email?.split('@')[0] || 
+                                                            'Unnamed User');
+                                                    const displayEmail = teamMember.email || member.email || 'No email';
+                                                    const displayRole = member.role || 'Member';
+                                                    const displayLicenseType = teamMember.licenseType || member.licenseType;
+                                                    
                                                     return (
                                                     <Box
                                                         key={member.id}
@@ -1869,29 +1889,29 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                                     color: 'white'
                                                                 }}
                                                             >
-                                                                {member.name?.charAt(0)?.toUpperCase() || member.email?.charAt(0)?.toUpperCase() || 'U'}
+                                                                {displayName.charAt(0).toUpperCase()}
                                                             </Box>
                                                             <Box>
                                                                 <Typography variant="body1" sx={{ color: 'white', fontWeight: 500 }}>
-                                                                    {member.name || 'Unnamed User'}
+                                                                    {displayName}
                                                                 </Typography>
                                                                 <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                                                                    {member.email}
+                                                                    {displayEmail}
                                                                 </Typography>
                                                                 <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
                                                                     <Chip
                                                                         size="small"
-                                                                        label={member.role || 'Member'}
+                                                                        label={displayRole}
                                                                         sx={{
                                                                             backgroundColor: 'rgba(139, 92, 246, 0.2)',
                                                                             color: '#c4b5fd',
                                                                             fontSize: '11px'
                                                                         }}
                                                                     />
-                                                                    {member.licenseType && (
+                                                                    {displayLicenseType && (
                                                                         <Chip
                                                                             size="small"
-                                                                            label={member.licenseType}
+                                                                            label={displayLicenseType}
                                                                             sx={{
                                                                                 backgroundColor: 'rgba(16, 185, 129, 0.2)',
                                                                                 color: '#6ee7b7',
@@ -1908,10 +1928,30 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                             startIcon={<DeleteIcon />}
                                                             onClick={async () => {
                                                                 try {
-                                                                    await cloudProjectIntegration.removeTeamMemberFromProject(selectedProject!.id, member.id);
-                                                                    setProjectTeamMembers(prev => prev.filter(m => m.id !== member.id));
-                                                                } catch (e) {
+                                                                    console.log('Removing team member:', member);
+                                                                    console.log('Project ID:', selectedProject!.id);
+                                                                    console.log('Team Member ID:', member.teamMemberId || member.id);
+                                                                    
+                                                                    // Use teamMemberId if available, otherwise fall back to id
+                                                                    const memberIdToRemove = member.teamMemberId || member.id;
+                                                                    
+                                                                    if (!memberIdToRemove) {
+                                                                        console.error('No valid team member ID found:', member);
+                                                                        alert('Error: Invalid team member ID');
+                                                                        return;
+                                                                    }
+                                                                    
+                                                                    await cloudProjectIntegration.removeTeamMemberFromProject(selectedProject!.id, memberIdToRemove);
+                                                                    
+                                                                    // Update local state
+                                                                    setProjectTeamMembers(prev => prev.filter(m => 
+                                                                        (m.teamMemberId || m.id) !== memberIdToRemove
+                                                                    ));
+                                                                    
+                                                                    console.log('Team member removed successfully');
+                                                                } catch (e: any) {
                                                                     console.error('Failed to remove team member', e);
+                                                                    alert(`Failed to remove team member: ${e?.message || 'Unknown error'}`);
                                                                 }
                                                             }}
                                                             sx={{
@@ -2249,11 +2289,19 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             setAddTeamMemberLoading(true);
                             
                             try {
+                                console.log('Adding team member to project:', {
+                                    projectId: selectedProject.id,
+                                    teamMemberId: selectedTeamMemberId,
+                                    role: selectedTeamMemberRole
+                                });
+                                
                                 await cloudProjectIntegration.addTeamMemberToProject(
                                     selectedProject.id, 
                                     selectedTeamMemberId, 
                                     selectedTeamMemberRole as any
                                 );
+                                
+                                console.log('Team member added successfully, refreshing list...');
                                 
                                 // Refresh team members list
                                 await loadTeamMembersForProject(selectedProject);
@@ -2263,7 +2311,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 setSelectedTeamMemberId('');
                                 setSelectedTeamMemberRole('DO_ER');
                                 setTeamMemberSearch('');
+                                
+                                console.log('Team member addition completed successfully');
                             } catch (e: any) {
+                                console.error('Failed to add team member:', e);
                                 setAddTeamMemberError(e?.message || 'Failed to add team member');
                             } finally {
                                 setAddTeamMemberLoading(false);

@@ -47,7 +47,7 @@ export class StorageAnalyticsService {
             // Get user's subscription and license info
             const [subscriptionRes, storageRes] = await Promise.all([
                 api.get(endpoints.subscriptions.mySubscriptions()),
-                api.get('/api/storage/usage') // New endpoint we'll need to create
+                api.get('storage/usage') // Remove leading /api/ since baseURL already includes it
             ]);
 
             const subscriptions = subscriptionRes.data?.data?.subscriptions || [];
@@ -103,7 +103,7 @@ export class StorageAnalyticsService {
      */
     static async getStorageBreakdown(): Promise<StorageBreakdown> {
         try {
-            const response = await api.get('/api/storage/breakdown');
+            const response = await api.get('storage/breakdown');
             const data = response.data?.data || {};
             
             return {
@@ -233,7 +233,7 @@ export class StorageAnalyticsService {
      */
     static async purchaseAdditionalStorage(additionalGB: number): Promise<{ success: boolean; paymentUrl?: string; error?: string }> {
         try {
-            const response = await api.post('/api/storage/purchase', {
+            const response = await api.post('storage/purchase', {
                 additionalGB
             });
             

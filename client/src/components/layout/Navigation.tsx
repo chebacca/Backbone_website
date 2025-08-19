@@ -30,6 +30,10 @@ import {
   Article,
   Support,
   ArrowBack,
+  Cloud,
+  Group,
+  Payment,
+  Download,
 } from '@mui/icons-material';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -113,11 +117,13 @@ export const Navigation: React.FC = () => {
 
     // Regular users: full dashboard nav
     return [
-      { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
+      { label: 'Overview', path: '/dashboard', icon: <Dashboard /> },
       { label: 'Licenses', path: '/dashboard/licenses', icon: <VpnKey /> },
-      { label: 'Analytics', path: '/dashboard/analytics', icon: <Receipt /> },
-      { label: 'Team', path: '/dashboard/team', icon: <Receipt /> },
-      { label: 'Downloads', path: '/dashboard/downloads', icon: <Receipt /> },
+      { label: 'Cloud Projects', path: '/dashboard/cloud-projects', icon: <Cloud /> },
+      { label: 'Team Management', path: '/dashboard/team', icon: <Group /> },
+      { label: 'Billing & Payments', path: '/dashboard/billing', icon: <Payment /> },
+      { label: 'Usage Analytics', path: '/dashboard/analytics', icon: <Receipt /> },
+      { label: 'Downloads', path: '/dashboard/downloads', icon: <Download /> },
       { label: 'Documentation', path: '/documentation', icon: <Article /> },
       { label: 'Support', path: '/support', icon: <Support /> },
       { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },

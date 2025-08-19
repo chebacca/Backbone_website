@@ -188,15 +188,9 @@ class SimplifiedStartupSequencer {
                     const cloudHealthy = await this.checkCloudHealth().catch(() => false);
                     
                     if (!cloudHealthy) {
-                        // Try to discover Edge Hub
-                        const edgeUrl = await (cloudProjectIntegration as any).discoverEdgeBaseURL?.(800).catch(() => null);
-                        if (edgeUrl) {
-                            console.log('Cloud unreachable, switching to Edge Hub:', edgeUrl);
-                            cloudProjectIntegration.setBaseUrl(edgeUrl);
-                            // Update storage mode to hybrid for Edge
-                            this.updateState({ storageMode: 'hybrid' });
-                            localStorage.setItem('preferredStorageMode', 'hybrid');
-                        }
+                        // Edge mode not supported in web-only production
+                        console.log('Cloud unreachable, but Edge mode not supported in web-only production');
+                        // Continue with cloud mode only
                     }
                 } catch (edgeError) {
                     console.warn('Edge discovery failed:', edgeError);

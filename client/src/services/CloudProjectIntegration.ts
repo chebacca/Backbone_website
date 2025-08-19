@@ -6,11 +6,6 @@
  * Handles project creation, storage configuration, and API integration.
  */
 
-import {
-    ProjectCreationOptions,
-    simplifiedStartupSequencer,
-    StorageMode
-} from './SimplifiedStartupSequencer';
 import { ApplicationMode } from '../types/applicationMode';
 import { 
     TeamMember, 
@@ -22,6 +17,40 @@ import {
     TeamMemberProjectContext,
     TEAM_MEMBER_ROLE_MAPPINGS
 } from '../types/teamMember';
+import { api } from './api';
+
+// Define the types that were removed from SimplifiedStartupSequencer
+export type StorageMode = 'local' | 'cloud' | 'hybrid';
+
+export interface ProjectCreationOptions {
+    name: string;
+    description?: string;
+    visibility?: 'private' | 'organization' | 'public';
+    storageMode: StorageMode;
+    preferredPorts?: {
+        website?: number;
+        api?: number;
+    };
+    localNetworkConfig?: {
+        enabled: boolean;
+        port: number;
+        address: string;
+        maxUsers: number;
+    };
+    cloudConfig?: {
+        provider: 'firestore' | 'gcs' | 's3' | 'azure-blob';
+        bucket?: string;
+        prefix?: string;
+        region?: string;
+        storageAccount?: string;
+    };
+    collaborationSettings?: {
+        maxCollaborators: number;
+        enableRealTime: boolean;
+        enableComments: boolean;
+        enableFileSharing: boolean;
+    };
+}
 
 // Import the existing API service from the licensing website
 interface CloudProject {
@@ -172,7 +201,8 @@ class CloudProjectIntegrationService {
     private authTokenCallback: (() => string | null) | null = null;
 
     private constructor() {
-        this.baseURL = this.getBaseURL();
+        // Base URL is now managed by the centralized API service
+        this.baseURL = '/api';
         this.initializeAuth();
     }
 
@@ -215,182 +245,75 @@ class CloudProjectIntegrationService {
         }
     }
 
-    /**
-     * Get the correct base URL for API calls
-     */
-    private getBaseURL(): string {
-        const isProduction = window.location.hostname !== 'localhost' &&
-            window.location.hostname !== '127.0.0.1' &&
-            !window.location.hostname.includes('localhost');
-
-        if (isProduction) {
-            return '/api';
-        }
-
-        const envBaseURL = (import.meta.env as any).VITE_API_BASE_URL || '/api';
-        return envBaseURL;
-    }
-
-    // Runtime override for Edge Hub (offline)
-    public setBaseUrl(url: string | null): void {
-        this.baseURLOverride = url && url.trim().length > 0 ? url : null;
-        try {
-            if (this.baseURLOverride) sessionStorage.setItem('edge_base_url', this.baseURLOverride);
-            else sessionStorage.removeItem('edge_base_url');
-        } catch {}
-    }
-
-    public isEdge(): boolean {
-        return !!this.baseURLOverride && /^(http|https):\/\//i.test(this.baseURLOverride);
-    }
-
-    public getBaseUrlIfEdge(): string | null {
-        return this.isEdge() ? this.baseURLOverride : null;
-    }
-
-    private getEffectiveBase(): string {
-        const chosen = this.baseURLOverride || this.baseURL;
-        return String(chosen).replace(/\/$/, '');
-    }
-
-    private async discoverEdgeBaseURL(timeoutMs: number = 900): Promise<string | null> {
-        try {
-            const cached = sessionStorage.getItem('edge_base_url');
-            if (cached) return cached;
-        } catch {}
-
-        const candidates: string[] = [];
-        const envOne = (import.meta.env as any).VITE_EDGE_DISCOVERY_URL as string | undefined;
-        const envList = (import.meta.env as any).VITE_EDGE_CANDIDATES as string | undefined;
-        if (envOne) candidates.push(envOne);
-        if (envList) candidates.push(...envList.split(',').map(s => s.trim()).filter(Boolean));
-        candidates.push('http://edge.local:3001/api', 'http://backbone-edge.local:3001/api', 'http://localhost:3001/api');
-
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
-        try {
-            for (const base of candidates) {
-                try {
-                    const res = await fetch(`${String(base).replace(/\/$/, '')}/health`, { signal: controller.signal });
-                    if (res.ok) {
-                        try { sessionStorage.setItem('edge_base_url', String(base).replace(/\/$/, '')); } catch {}
-                        return String(base).replace(/\/$/, '');
-                    }
-                } catch {}
-            }
-        } finally {
-            clearTimeout(timer);
-        }
-        return null;
-    }
+    // Note: Base URL handling is now managed by the centralized API service
+    // which automatically routes requests through Firebase hosting rewrites
 
     /**
-     * Make authenticated API requests
+     * Make authenticated API requests using the centralized API service
+     * This ensures proper authentication, error handling, and routing
      */
     private async apiRequest<T>(
         endpoint: string,
         method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET',
         data?: any
     ): Promise<T> {
-         const base = this.getEffectiveBase ? this.getEffectiveBase() : this.baseURL.replace(/\/$/, '');
-        const path = String(endpoint || '').replace(/^\//, '');
-        const url = `${base}/${path}`;
-
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-        };
-
-        // Include application mode for mode-aware backend behavior
         try {
-            const { simplifiedStartupSequencer } = await import('./SimplifiedStartupSequencer');
-            const state = simplifiedStartupSequencer.getState();
-            const selectedMode = state.selectedMode || (localStorage.getItem('preferredApplicationMode') as any) || 'shared_network';
-            if (selectedMode) {
-                headers['X-Application-Mode'] = String(selectedMode);
-            }
-        } catch {
-            // no-op
-        }
-
-        const token = this.getAuthToken();
-        // Debug logging removed for production
-        
-        if (token) {
-            headers.Authorization = `Bearer ${token}`;
-        }
-
-        const config: RequestInit = {
-            method,
-            headers,
-            ...(data && { body: JSON.stringify(data) })
-        };
-
-        const doFetch = async (targetUrl: string): Promise<Response> => fetch(targetUrl, config);
-        try {
-            let response = await doFetch(url);
-
-            if (!response.ok) {
-                if (response.status === 401) {
-                    // Token expired, try to refresh or redirect to login
-                    await this.handleAuthError();
-                    throw new Error('Authentication required');
+            // Clean up endpoint path
+            const cleanEndpoint = String(endpoint || '').replace(/^\//, '');
+            
+            // Include application mode for mode-aware backend behavior
+            const headers: Record<string, string> = {};
+            try {
+                const selectedMode = (localStorage.getItem('preferredApplicationMode') as any) || 'shared_network';
+                if (selectedMode) {
+                    headers['X-Application-Mode'] = String(selectedMode);
                 }
-                // Edge fallback on gateway errors
-                if (!(this as any).baseURLOverride && [502, 503, 504].includes(response.status) && (this as any).discoverEdgeBaseURL) {
-                    const edge = await (this as any).discoverEdgeBaseURL().catch(() => null);
-                    if (edge) {
-                        (this as any).setBaseUrl?.(edge);
-                        const retryBase = this.getEffectiveBase ? this.getEffectiveBase() : this.baseURL.replace(/\/$/, '');
-                        response = await doFetch(`${retryBase}/${path}`);
-                    }
-                }
-
-                // Try to parse JSON error for clearer messaging
-                let message = '';
-                let details: any = undefined;
-                try {
-                    const errJson = await response.clone().json();
-                    message = errJson?.error || errJson?.message || '';
-                    if (errJson?.details) details = errJson.details;
-                } catch {
-                    try {
-                        const text = await response.text();
-                        message = text || '';
-                    } catch {}
-                }
-                const statusText = response.statusText || 'Bad Request';
-                const detailMsg = message ? ` - ${message}` : '';
-                const detailsSuffix = details ? ` | details=${JSON.stringify(details)}` : '';
-                throw new Error(`API request failed: ${response.status} ${statusText}${detailMsg}${detailsSuffix}`);
+            } catch {
+                // localStorage might be disabled in webonly mode
             }
 
-            const result: ApiResponse<T> = await response.json();
-
-            if (!result.success) {
-                throw new Error(result.error || result.message || 'API request failed');
+            console.log(`🔍 [CloudProjectIntegration] Making ${method} request to: ${cleanEndpoint}`);
+            if (data) console.log(`🔍 [CloudProjectIntegration] Data:`, data);
+            
+            let response: any;
+            
+            switch (method) {
+                case 'GET':
+                    response = await api.get(cleanEndpoint, { headers });
+                    break;
+                case 'POST':
+                    response = await api.post(cleanEndpoint, data, { headers });
+                    break;
+                case 'PATCH':
+                    response = await api.patch(cleanEndpoint, data, { headers });
+                    break;
+                case 'DELETE':
+                    response = await api.delete(cleanEndpoint, { headers });
+                    break;
+                default:
+                    throw new Error(`Unsupported HTTP method: ${method}`);
             }
 
-            return result.data as T;
+            console.log(`✅ [CloudProjectIntegration] API request successful:`, response.data);
+            
+            // Handle the response format from the API service
+            if (response.data && response.data.success) {
+                return response.data.data as T;
+            } else if (response.data && Array.isArray(response.data)) {
+                // Direct array response (for some endpoints)
+                return response.data as T;
+            } else {
+                throw new Error(response.data?.error || response.data?.message || 'API request failed');
+            }
         } catch (error: any) {
-            // Network error → one-time Edge discovery & retry
-            const isNetwork = error?.name === 'TypeError' || /NetworkError|Failed to fetch|timeout/i.test(String(error?.message || ''));
-            if (!(this as any).baseURLOverride && isNetwork && (this as any).discoverEdgeBaseURL) {
-                const edge = await (this as any).discoverEdgeBaseURL().catch(() => null);
-                if (edge) {
-                    try {
-                        (this as any).setBaseUrl?.(edge);
-                        const retryBase = this.getEffectiveBase ? this.getEffectiveBase() : this.baseURL.replace(/\/$/, '');
-                        const retryResp = await fetch(`${retryBase}/${path}`, config);
-                        if (!retryResp.ok) throw new Error(`Edge retry failed: ${retryResp.status}`);
-                        const retryJson: ApiResponse<T> = await retryResp.json();
-                        if (!retryJson.success) throw new Error(retryJson.error || retryJson.message || 'API request failed');
-                        return retryJson.data as T;
-                    } catch (retryErr) {
-                        console.error('Edge retry error:', retryErr);
-                    }
-                }
+            console.error(`❌ [CloudProjectIntegration] API request failed:`, error);
+            
+            // Handle authentication errors
+            if (error.response?.status === 401) {
+                await this.handleAuthError();
+                throw new Error('Authentication required');
             }
-            console.error('API request error:', error);
+            
             throw error;
         }
     }
@@ -452,8 +375,14 @@ class CloudProjectIntegrationService {
         }
         this.authToken = null;
 
-        // Reset startup sequencer to authentication step
-        await simplifiedStartupSequencer.reset();
+        // Clear any stored startup state
+        try {
+            localStorage.removeItem('preferredApplicationMode');
+            localStorage.removeItem('preferredStorageMode');
+            sessionStorage.removeItem('startup_reset');
+        } catch (e) {
+            // localStorage might be disabled in webonly mode
+        }
     }
 
     /**
@@ -494,17 +423,22 @@ class CloudProjectIntegrationService {
      * Map ProjectCreationOptions to the cloud API payload
      */
     private mapToCloudProjectPayload(options: ProjectCreationOptions): CloudProjectCreatePayload {
-        const currentState = simplifiedStartupSequencer.getState();
-
-        // Infer application mode if not present in startup state
-        let selectedMode: ApplicationMode = (currentState.selectedMode || 'shared_network') as ApplicationMode;
-        if (!currentState.selectedMode) {
-            // If local network is enabled, assume shared network; otherwise standalone for local projects
-            if ((options as any)?.localNetworkConfig?.enabled) {
-                selectedMode = 'shared_network';
-            } else if (options.storageMode === 'local') {
-                selectedMode = 'standalone';
+        // Get application mode from localStorage or infer from options
+        let selectedMode: ApplicationMode = 'shared_network';
+        try {
+            const storedMode = localStorage.getItem('preferredApplicationMode') as ApplicationMode;
+            if (storedMode) {
+                selectedMode = storedMode;
+            } else {
+                // Infer mode from options
+                if ((options as any)?.localNetworkConfig?.enabled) {
+                    selectedMode = 'shared_network';
+                } else if (options.storageMode === 'local') {
+                    selectedMode = 'standalone';
+                }
             }
+        } catch (e) {
+            // localStorage might be disabled in webonly mode, use default
         }
 
         const payload: CloudProjectCreatePayload = {
@@ -514,7 +448,7 @@ class CloudProjectIntegrationService {
             applicationMode: selectedMode,
             // Allow caller to pass visibility; default to private
             visibility: ((options as any)?.visibility as any) || 'private',
-            storageBackend: this.mapStorageModeToBackend(currentState.storageMode),
+            storageBackend: this.mapStorageModeToBackend(options.storageMode),
         };
 
         // Add cloud storage configuration
@@ -553,7 +487,7 @@ class CloudProjectIntegrationService {
         if (selectedMode === 'standalone') {
             payload.autoSave = true;
             payload.backupEnabled = true;
-            payload.offlineMode = currentState.storageMode === 'local';
+            payload.offlineMode = options.storageMode === 'local';
         }
 
         // Attach preferred ports in settings if provided
@@ -750,7 +684,16 @@ class CloudProjectIntegrationService {
 
         // If no admin assigned yet and current user is a team member, make them admin
         try {
-            const currentUser: any = simplifiedStartupSequencer.getCurrentUser?.() || null;
+            // Get current user from localStorage or auth service
+            let currentUser: any = null;
+            try {
+                const userStr = localStorage.getItem('currentUser');
+                if (userStr) {
+                    currentUser = JSON.parse(userStr);
+                }
+            } catch (e) {
+                // localStorage might be disabled in webonly mode
+            }
             const currentIsTeamMember = !!currentUser?.isTeamMember && currentUser?.id;
             if (!hasAdmin && currentIsTeamMember) {
                 // Only attempt if not already assigned
@@ -776,7 +719,8 @@ class CloudProjectIntegrationService {
         // Map current team member to Backbone app role (if applicable)
         let userContext: ProjectLaunchContext['user'] = null;
         try {
-            const tmCtx = await simplifiedStartupSequencer.getTeamMemberProjectContext(projectId);
+            // Get team member project context (simplified version)
+            const tmCtx = await this.getTeamMemberProjectContext(projectId);
             if (tmCtx) {
                 userContext = {
                     id: tmCtx.teamMember?.id,
@@ -795,8 +739,8 @@ class CloudProjectIntegrationService {
             storageBackend: project.storageBackend,
             datasetIds: datasets.map(d => d.id),
             organizationId: project.organizationId,
-            origin: (this as any).isEdge ? (this as any).isEdge() ? 'edge' : 'cloud' : 'cloud',
-            edgeBaseUrl: (this as any).getBaseUrlIfEdge ? (this as any).getBaseUrlIfEdge() : null,
+            origin: 'cloud', // Web-only production mode
+            edgeBaseUrl: null, // Edge mode not supported in web-only production
             user: userContext,
         };
 
@@ -1016,15 +960,37 @@ class CloudProjectIntegrationService {
     // ==================== TEAM MEMBER MANAGEMENT ====================
 
     /**
+     * Check if we're in webonly mode (Firebase hosting)
+     */
+    private isWebOnlyMode(): boolean {
+        return window.location.hostname !== 'localhost' &&
+               window.location.hostname !== '127.0.0.1' &&
+               !window.location.hostname.includes('localhost') &&
+               (window.location.hostname.includes('web.app') ||
+                window.location.hostname.includes('firebaseapp.com'));
+    }
+
+    /**
      * Get team members assigned to a specific project
      */
     public async getProjectTeamMembers(projectId: string): Promise<ProjectTeamMember[]> {
         try {
-            const result = await this.apiRequest<ProjectTeamMember[]>(`projects/${projectId}/team-members`);
-            console.log('✅ Team members API call successful:', result);
-            return result || [];
+            console.log('🚀 [CloudProjectIntegration] getProjectTeamMembers called for project:', projectId);
+            
+            // Use REST API for both local and webonly mode
+            const result = await this.apiRequest<{ success: boolean; data: ProjectTeamMember[] }>(`projects/${projectId}/team-members`);
+            console.log('✅ [CloudProjectIntegration] Team members API call successful:', result?.data?.length || 0, 'members');
+            
+            if (result?.data && Array.isArray(result.data)) {
+                return result.data;
+            } else if (Array.isArray(result)) {
+                return result;
+            } else {
+                console.warn('🔍 [CloudProjectIntegration] Unexpected result format, returning empty array');
+                return [];
+            }
         } catch (error: any) {
-            console.error('❌ Team member API call failed:', error);
+            console.error('❌ [CloudProjectIntegration] Team member API call failed:', error);
             
             // Only use fallback for 404 errors (endpoint not found)
             if (error?.message?.includes('404') || error?.status === 404) {
@@ -1032,8 +998,9 @@ class CloudProjectIntegrationService {
                 return this.getFallbackTeamMembers(projectId);
             }
             
-            // For other errors, throw to let the UI handle it
-            throw error;
+            // For other errors, return empty array to prevent UI crashes
+            console.warn('Returning empty array due to API error');
+            return [];
         }
     }
 
@@ -1065,6 +1032,9 @@ class CloudProjectIntegrationService {
         excludeProjectId?: string;
     }): Promise<TeamMember[]> {
         try {
+            console.log('🚀 [CloudProjectIntegration] getLicensedTeamMembers called with options:', options);
+            
+            // Use REST API for both local and webonly mode
             const params = new URLSearchParams();
             if (options?.search) {
                 params.append('search', options.search);
@@ -1075,10 +1045,10 @@ class CloudProjectIntegrationService {
 
             const endpoint = `team-members/licensed${params.toString() ? `?${params.toString()}` : ''}`;
             const result = await this.apiRequest<any[]>(endpoint);
-            console.log('✅ Licensed team members API call successful:', result);
+            console.log('✅ [CloudProjectIntegration] Licensed team members API call successful:', result?.length || 0, 'members');
             return result || [];
         } catch (error: any) {
-            console.error('❌ Licensed team members API call failed:', error);
+            console.error('❌ [CloudProjectIntegration] Licensed team members API call failed:', error);
             
             // Only use fallback for 404 errors (endpoint not found)
             if (error?.message?.includes('404') || error?.status === 404) {
@@ -1198,12 +1168,14 @@ class CloudProjectIntegrationService {
      */
     public async addTeamMemberToProject(projectId: string, teamMemberId: string, role: TeamMemberRole = TeamMemberRole.DO_ER): Promise<void> {
         try {
-            await this.apiRequest(`projects/${projectId}/team-members`, 'POST', {
+            // Use REST API for both local and webonly mode
+            const result = await this.apiRequest<{ success: boolean; data: any }>(`projects/${projectId}/team-members`, 'POST', {
                 teamMemberId,
                 role
             });
+            console.log('✅ Team member added via API:', result);
         } catch (error: any) {
-            console.warn('Add team member API endpoint not yet implemented, using local storage:', error?.message);
+            console.warn('Add team member API endpoint failed, using local storage:', error?.message);
             
             // Fallback: Store in localStorage until backend is ready
             const allMembers = this.getFallbackLicensedTeamMembers();
@@ -1240,9 +1212,11 @@ class CloudProjectIntegrationService {
      */
     public async removeTeamMemberFromProject(projectId: string, teamMemberId: string): Promise<void> {
         try {
-            await this.apiRequest(`projects/${projectId}/team-members/${teamMemberId}`, 'DELETE');
+            // Use REST API for both local and webonly mode
+            const result = await this.apiRequest<{ success: boolean }>(`projects/${projectId}/team-members/${teamMemberId}`, 'DELETE');
+            console.log('✅ Team member removed via API:', result);
         } catch (error: any) {
-            console.warn('Remove team member API endpoint not yet implemented, using local storage:', error?.message);
+            console.warn('Remove team member API endpoint failed, using local storage:', error?.message);
             
             // Fallback: Remove from localStorage until backend is ready
             const currentMembers = this.getFallbackTeamMembers(projectId);
@@ -1274,7 +1248,62 @@ class CloudProjectIntegrationService {
     }
 
     /**
-     * Validate team member credentials (for SimplifiedStartupSequencer integration)
+     * Get team member project context for a specific project
+     */
+    private async getTeamMemberProjectContext(projectId: string): Promise<any> {
+        // Get current user
+        let currentUser: any = null;
+        try {
+            const userStr = localStorage.getItem('currentUser');
+            if (userStr) {
+                currentUser = JSON.parse(userStr);
+            }
+        } catch (e) {
+            return null;
+        }
+
+        if (!currentUser?.isTeamMember) {
+            return null;
+        }
+
+        try {
+            // Get the team member's role in this specific project
+            const projectTeamMembers = await this.getProjectTeamMembers(projectId);
+            const teamMemberAssignment = projectTeamMembers.find(
+                ptm => ptm.teamMemberId === currentUser.id
+            );
+
+            if (!teamMemberAssignment) {
+                throw new Error('Team member is not assigned to this project');
+            }
+
+            // Find the corresponding Backbone app role
+            const roleMapping = TEAM_MEMBER_ROLE_MAPPINGS.find(
+                mapping => mapping.teamMemberRole === teamMemberAssignment.role
+            );
+
+            if (!roleMapping) {
+                throw new Error('Invalid team member role mapping');
+            }
+
+            return {
+                teamMember: currentUser,
+                project: {
+                    id: projectId,
+                    role: teamMemberAssignment.role
+                },
+                backboneUserRole: roleMapping.backboneUserRole,
+                permissions: roleMapping.permissions,
+                canManageTeam: teamMemberAssignment.role === 'admin'
+            };
+        } catch (error) {
+            console.error('Failed to get team member project context:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Validate team member credentials (for authentication integration)
      * This method can be used to verify team member login credentials
      */
     public async validateTeamMemberCredentials(email: string, password: string): Promise<TeamMemberAuthResult> {
@@ -1327,6 +1356,8 @@ class CloudProjectIntegrationService {
         // For now, return empty array - projects will be loaded when needed
         return [];
     }
+
+
 }
 
 // Export singleton instance

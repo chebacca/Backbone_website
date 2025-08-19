@@ -328,7 +328,7 @@ router.post('/login', [
   const { email, password } = req.body;
   const requestInfo = (req as any).requestInfo;
   
-  // Find regular user (license owners only - no team member authentication on licensing website)
+  // Find user and check if they're a team member
   let user = await firestoreService.getUserByEmail(email);
   
   if (!user) throw createApiError('Invalid credentials', 401);
@@ -337,6 +337,26 @@ router.post('/login', [
   if (user.password) {
     const ok = await PasswordUtil.compare(password, user.password);
     if (!ok) throw createApiError('Invalid credentials', 401);
+  }
+
+  // Check if this user is a team member (org member)
+  try {
+    const orgMemberships = await firestoreService.getOrgMembershipsByUserId(user.id);
+    if (orgMemberships && orgMemberships.length > 0) {
+      // User is a team member, enhance their data
+      const primaryMembership = orgMemberships[0]; // Use first membership
+      user.isTeamMember = true;
+      user.organizationId = primaryMembership.orgId;
+      user.memberRole = primaryMembership.role;
+      user.memberStatus = primaryMembership.status;
+      
+      // Set role to TEAM_MEMBER if they're not an owner
+      if (primaryMembership.role !== 'OWNER') {
+        user.role = 'TEAM_MEMBER';
+      }
+    }
+  } catch (error) {
+    logger.warn('Error checking org membership:', error);
   }
 
   if (user.twoFactorEnabled) {
@@ -357,7 +377,31 @@ router.post('/login', [
 
   const requiresLegalAcceptance = (user.termsVersionAccepted !== config.legal.termsVersion) || (user.privacyPolicyVersionAccepted !== config.legal.privacyVersion);
 
-  // No team member data needed for licensing website
+  // For team members, get their project access and licenses
+  let teamMemberData = null;
+  if (user.isTeamMember) {
+    try {
+      const projectAccess = await firestoreService.getTeamMemberProjectAccess(user.id);
+      const licenses = await firestoreService.getTeamMemberLicenses(user.id);
+      
+      teamMemberData = {
+        projectAccess,
+        licenses,
+        organizationId: user.organizationId,
+        memberRole: user.memberRole,
+        memberStatus: user.memberStatus
+      };
+    } catch (error) {
+      logger.warn('Error fetching team member data:', error);
+      teamMemberData = {
+        projectAccess: [],
+        licenses: [],
+        organizationId: user.organizationId,
+        memberRole: user.memberRole,
+        memberStatus: user.memberStatus
+      };
+    }
+  }
 
   // Add hybrid context for desktop/web routing: org and active license summary
   const [ownedOrgs, memberOrgs] = await Promise.all([
@@ -386,12 +430,16 @@ router.post('/login', [
         name: user.name, 
         role: user.role, 
         isEmailVerified: user.isEmailVerified,
-        organizationId: user.organizationId
+        isTeamMember: user.isTeamMember || false,
+        organizationId: user.organizationId,
+        memberRole: user.memberRole,
+        memberStatus: user.memberStatus
       },
       tokens,
       requiresLegalAcceptance,
       requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },
-      orgContext: { primaryOrgId, activeOrgSubscription }
+      orgContext: { primaryOrgId, activeOrgSubscription },
+      teamMemberData
     }
   });
   return;

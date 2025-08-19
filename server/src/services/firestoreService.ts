@@ -67,10 +67,14 @@ export interface FirestoreUser {
   userAgent?: string;
   registrationSource?: string;
   organizationId?: string;
+  // Firebase Authentication integration
+  firebaseUid?: string;
   // Team member properties
   isTeamMember?: boolean;
   licenseType?: string;
   status?: string;
+  memberRole?: string;
+  memberStatus?: string;
   // Demo-related properties
   isDemoUser?: boolean;
   demoSessionCount?: number;
@@ -101,6 +105,8 @@ export interface FirestoreTeamMember {
   lastLoginAt?: Date;
   avatar?: string;
   bio?: string;
+  // Firebase Authentication integration
+  firebaseUid?: string;
 }
 
 export interface FirestoreSubscription {
@@ -1617,100 +1623,194 @@ export class FirestoreService {
 
   // Team member management methods
   async getProjectTeamMembers(projectId: string): Promise<any[]> {
-    const snap = await db.collection('project_team_members').where('projectId', '==', projectId).get();
-    const teamMembers = [];
-    
-    for (const doc of snap.docs) {
-      const data = doc.data();
-      // Get the actual team member details
-      const teamMember = await this.getTeamMemberById(data.teamMemberId);
-      if (teamMember) {
-        teamMembers.push({
-          id: doc.id,
-          projectId: data.projectId,
-          teamMemberId: data.teamMemberId,
-          role: data.role,
-          // Flatten the team member data for easier frontend access
-          name: teamMember.name,
-          email: teamMember.email,
-          firstName: teamMember.firstName,
-          lastName: teamMember.lastName,
-          licenseType: teamMember.licenseType,
-          status: teamMember.status,
-          organizationId: teamMember.organizationId,
-          department: teamMember.department,
-          // Keep the nested structure for backward compatibility
-          teamMember,
-          assignedAt: data.assignedAt,
-          assignedBy: data.assignedBy,
-          isActive: data.isActive !== false
-        });
+    try {
+      console.log(`[FirestoreService] Getting team members for project: ${projectId}`);
+      
+      const snap = await db.collection('projectTeamMembers').where('projectId', '==', projectId).get();
+      console.log(`[FirestoreService] Found ${snap.docs.length} team member assignments`);
+      
+      if (snap.empty) {
+        console.log(`[FirestoreService] No team member assignments found for project: ${projectId}`);
+        return [];
       }
+      
+      const teamMembers = [];
+      
+      for (const doc of snap.docs) {
+        try {
+          const data = doc.data();
+          
+          // Get the actual team member details
+          const teamMember = await this.getTeamMemberById(data.teamMemberId);
+          if (teamMember) {
+            // Ensure license type inheritance from organization if not set
+            let licenseType = teamMember.licenseType;
+            if (!licenseType && teamMember.organizationId) {
+              try {
+                const org = await this.getOrganizationById(teamMember.organizationId);
+                if (org?.tier) {
+                  switch (org.tier) {
+                    case 'ENTERPRISE':
+                      licenseType = 'ENTERPRISE';
+                      break;
+                    case 'PRO':
+                      licenseType = 'PROFESSIONAL';
+                      break;
+                    default:
+                      licenseType = 'BASIC';
+                  }
+                }
+              } catch (error) {
+                console.warn(`[FirestoreService] Failed to get organization details for ${teamMember.organizationId}:`, error);
+              }
+            }
+            
+            // Final fallback
+            if (!licenseType) {
+              licenseType = 'PROFESSIONAL';
+            }
+
+            const processedMember = {
+              id: doc.id,
+              projectId: data.projectId,
+              teamMemberId: data.teamMemberId,
+              role: data.role,
+              // Flatten the team member data for easier frontend access
+              name: teamMember.name,
+              email: teamMember.email,
+              firstName: teamMember.firstName,
+              lastName: teamMember.lastName,
+              licenseType: licenseType,
+              status: teamMember.status,
+              organizationId: teamMember.organizationId,
+              department: teamMember.department,
+              // Keep the nested structure for backward compatibility
+              teamMember: {
+                ...teamMember,
+                licenseType: licenseType
+              },
+              assignedAt: data.assignedAt,
+              assignedBy: data.assignedBy,
+              isActive: data.isActive !== false
+            };
+            
+            teamMembers.push(processedMember);
+          } else {
+            console.warn(`[FirestoreService] Team member not found for ID: ${data.teamMemberId}`);
+          }
+        } catch (error) {
+          console.error(`[FirestoreService] Error processing team member assignment:`, error);
+        }
+      }
+      
+      console.log(`[FirestoreService] Returning ${teamMembers.length} valid team members`);
+      return teamMembers;
+    } catch (error) {
+      console.error(`[FirestoreService] Error getting project team members:`, error);
+      throw error;
     }
-    
-    return teamMembers;
   }
 
   async addTeamMemberToProject(projectId: string, teamMemberId: string, role: string, assignedBy: string): Promise<any> {
-    // Check if team member is already assigned to this project
-    const existing = await db.collection('project_team_members')
-      .where('projectId', '==', projectId)
-      .where('teamMemberId', '==', teamMemberId)
-      .limit(1)
-      .get();
-    
-    if (!existing.empty) {
-      throw new Error('Team member is already assigned to this project');
-    }
-
-    // Check if role is ADMIN and there's already an admin
-    if (role === 'ADMIN') {
-      const adminCheck = await db.collection('project_team_members')
+    try {
+      console.log(`[FirestoreService] Adding team member to project:`, {
+        projectId,
+        teamMemberId,
+        role,
+        assignedBy
+      });
+      
+      // Check if team member is already assigned to this project
+      const existing = await db.collection('projectTeamMembers')
         .where('projectId', '==', projectId)
-        .where('role', '==', 'ADMIN')
+        .where('teamMemberId', '==', teamMemberId)
         .limit(1)
         .get();
       
-      if (!adminCheck.empty) {
-        throw new Error('Only one Admin is allowed per project. Please remove the existing Admin first.');
+      if (!existing.empty) {
+        console.warn(`[FirestoreService] Team member ${teamMemberId} is already assigned to project ${projectId}`);
+        throw new Error('Team member is already assigned to this project');
       }
+
+      // Check if role is ADMIN and there's already an admin
+      if (role === 'ADMIN') {
+        const adminCheck = await db.collection('projectTeamMembers')
+          .where('projectId', '==', projectId)
+          .where('role', '==', 'ADMIN')
+          .limit(1)
+          .get();
+        
+        if (!adminCheck.empty) {
+          console.warn(`[FirestoreService] Project ${projectId} already has an admin`);
+          throw new Error('Only one Admin is allowed per project. Please remove the existing Admin first.');
+        }
+      }
+
+      const ref = db.collection('projectTeamMembers').doc();
+      const projectTeamMember = {
+        id: ref.id,
+        projectId,
+        teamMemberId,
+        role,
+        assignedAt: new Date(),
+        assignedBy,
+        isActive: true
+      };
+
+      console.log(`[FirestoreService] Creating team member assignment:`, projectTeamMember);
+      await ref.set(projectTeamMember);
+      
+      // Get the team member details to return
+      const teamMember = await this.getTeamMemberById(teamMemberId);
+      if (!teamMember) {
+        console.warn(`[FirestoreService] Team member ${teamMemberId} not found after assignment`);
+      }
+      
+      const result = {
+        ...projectTeamMember,
+        teamMember
+      };
+      
+      console.log(`[FirestoreService] Team member added successfully:`, result);
+      return result;
+    } catch (error) {
+      console.error(`[FirestoreService] Error adding team member to project:`, error);
+      throw error;
     }
-
-    const ref = db.collection('project_team_members').doc();
-    const projectTeamMember = {
-      id: ref.id,
-      projectId,
-      teamMemberId,
-      role,
-      assignedAt: new Date(),
-      assignedBy,
-      isActive: true
-    };
-
-    await ref.set(projectTeamMember);
-    
-    // Get the team member details to return
-    const teamMember = await this.getTeamMemberById(teamMemberId);
-    return {
-      ...projectTeamMember,
-      teamMember
-    };
   }
 
   async removeTeamMemberFromProject(projectId: string, teamMemberId: string): Promise<void> {
-    const snap = await db.collection('project_team_members')
-      .where('projectId', '==', projectId)
-      .where('teamMemberId', '==', teamMemberId)
-      .limit(1)
-      .get();
-    
-    if (!snap.empty) {
-      await db.collection('project_team_members').doc(snap.docs[0].id).delete();
+    try {
+      console.log(`[FirestoreService] Removing team member from project:`, {
+        projectId,
+        teamMemberId
+      });
+      
+      const snap = await db.collection('projectTeamMembers')
+        .where('projectId', '==', projectId)
+        .where('teamMemberId', '==', teamMemberId)
+        .limit(1)
+        .get();
+      
+      if (snap.empty) {
+        console.warn(`[FirestoreService] No team member assignment found for project ${projectId} and team member ${teamMemberId}`);
+        throw new Error('Team member is not assigned to this project');
+      }
+      
+      const docToDelete = snap.docs[0];
+      console.log(`[FirestoreService] Deleting team member assignment:`, docToDelete.id);
+      
+      await db.collection('projectTeamMembers').doc(docToDelete.id).delete();
+      
+      console.log(`[FirestoreService] Team member removed successfully from project`);
+    } catch (error) {
+      console.error(`[FirestoreService] Error removing team member from project:`, error);
+      throw error;
     }
   }
 
   async getUserProjectRole(projectId: string, userId: string): Promise<string | null> {
-    const snap = await db.collection('project_team_members')
+    const snap = await db.collection('projectTeamMembers')
       .where('projectId', '==', projectId)
       .where('teamMemberId', '==', userId)
       .limit(1)
@@ -1881,6 +1981,23 @@ export class FirestoreService {
 
 
 
+  async getOrgMembershipsByUserId(userId: string): Promise<any[]> {
+    try {
+      const memberQuery = await db.collection('org_members').where('userId', '==', userId).get();
+      if (memberQuery.empty) {
+        return [];
+      }
+      
+      return memberQuery.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
+      console.error('Error getting org memberships by user ID:', error);
+      return [];
+    }
+  }
+
   async getTeamMemberByEmail(email: string): Promise<any | null> {
     try {
       // First check the team_members collection
@@ -1944,7 +2061,7 @@ export class FirestoreService {
   async getTeamMemberProjectAccess(teamMemberId: string): Promise<any[]> {
     try {
       // Get project assignments for this team member
-      const assignmentsSnap = await db.collection('project_team_members')
+      const assignmentsSnap = await db.collection('projectTeamMembers')
         .where('teamMemberId', '==', teamMemberId)
         .get();
 

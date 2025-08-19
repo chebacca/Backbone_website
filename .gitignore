@@ -146,11 +146,55 @@ uploads/
 temp/
 tmp/
 
-# Build reports
+# Build reports and test outputs
 builds/
+test-output/
 
-# Test outputs
- test-output/
+# Backup files and directories
+*backup*
+backups/
+archives/
+*_backup_*/
+backup_*/
+
+# Comprehensive backup file patterns
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+*.temp
+*_backup*
+*_old*
+*_tmp*
+*_temp*
+*~
+.#*
+#*#
+
+# Test and cache files
+test-*.js
+test-*.html
+test-*.cjs
+test-*.ts
+test-*.tsx
+test-*.sh
+*.test.js
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.ts
+*.spec.tsx
+
+# Generated and cache directories
+dataconnect-generated/
+.firebase/hosting.*.cache
+dist/
+build/
+.next/
+out/
+.turbo/
+.vite/
 
 # Firebase Admin SDK service account keys (do not commit secrets)
 *firebase-adminsdk-*.json

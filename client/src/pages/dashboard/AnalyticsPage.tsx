@@ -64,6 +64,7 @@ interface AnalyticsData {
   responseTime: number;
   activeDevices: number;
   dataTransfer: number;
+  uptime: number;
   dailyUsage: ChartData[];
   topEndpoints: Array<{
     name: string;
@@ -93,6 +94,7 @@ const defaultAnalyticsData: AnalyticsData = {
   responseTime: 0,
   activeDevices: 0,
   dataTransfer: 0,
+  uptime: 99.8,
   dailyUsage: emptyUsageData,
   topEndpoints: [],
   geographicData: [],
@@ -159,6 +161,7 @@ const AnalyticsPage: React.FC = () => {
             responseTime: sh.averageResponseTime || 98.7,
             activeDevices: la.activeDevices || la.newLicenses || 0,
             dataTransfer: (la.totalDataTransfer || la.totalLicenses || 0) / 1000, // Convert to GB
+            uptime: sh.uptimePercentage || 99.8,
             dailyUsage: (la.dailyCounts || []).map((d: any) => ({ 
               label: d.date, 
               value: d.count,
@@ -217,6 +220,7 @@ const AnalyticsPage: React.FC = () => {
             responseTime: la.averageResponseTime || 98.7,
             activeDevices: la.activeDevices || Object.keys(la.eventTypes || {}).length,
             dataTransfer: (la.totalDataTransfer || la.totalEvents || 0) / 1000, // Convert to GB
+            uptime: la.uptimePercentage || 99.8,
             dailyUsage: Object.entries(la.dailyUsage || la.eventTypes || {}).map(([k, v]: any) => ({ 
               label: k, 
               value: v,
@@ -429,11 +433,21 @@ const AnalyticsPage: React.FC = () => {
             color="error"
           />
         </Grid>
+
+        <Grid item xs={12} sm={6} lg={3}>
+          <MetricCard
+            title="Uptime"
+            value={loading ? 'Loading...' : `${analyticsData.uptime}%`}
+            icon={<Security />}
+            trend={{ value: 0.1, direction: 'up' }}
+            color="success"
+          />
+        </Grid>
       </Grid>
 
       <Grid container spacing={3}>
         {/* Usage Trends Chart */}
-        <Grid item xs={12} lg={8}>
+        <Grid item xs={12} lg={12}>
           <Card
             sx={{
               background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
@@ -447,94 +461,6 @@ const AnalyticsPage: React.FC = () => {
                 Usage Trends
               </Typography>
               <SimpleChart data={analyticsData.dailyUsage} loading={loading} />
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Real-time Metrics */}
-        <Grid item xs={12} lg={4}>
-          <Card
-            sx={{
-              background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
-              backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              mb: 3,
-              height: 'fit-content',
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-                Real-time Status
-              </Typography>
-
-              <Grid container spacing={2}>
-                {analyticsData.usageMetrics.map((metric) => (
-                  <Grid item xs={12} key={metric.name}>
-                    <Box>
-                      <Card
-                        sx={{
-                          background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
-                          backdropFilter: 'blur(20px)',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          '&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                          },
-                          transition: 'all 0.3s ease',
-                        }}
-                      >
-                        <CardContent>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                            <Avatar sx={{ bgcolor: metric.color, width: 40, height: 40 }}>
-                              {metric.icon}
-                            </Avatar>
-                            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                              {loading ? (
-                                <Skeleton width={80} height={32} />
-                              ) : (
-                                <>
-                                  {metric.value.toLocaleString()}
-                                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
-                                    {metric.unit}
-                                  </Typography>
-                                </>
-                              )}
-                            </Typography>
-                          </Box>
-                          
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {metric.name}
-                          </Typography>
-                          
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <LinearProgress
-                              variant="determinate"
-                              value={loading ? 0 : (metric.value / metric.limit) * 100}
-                              sx={{
-                                flex: 1,
-                                height: 6,
-                                borderRadius: 3,
-                                backgroundColor: 'rgba(255,255,255,0.1)',
-                                '& .MuiLinearProgress-bar': {
-                                  borderRadius: 3,
-                                  backgroundColor: metric.color,
-                                },
-                              }}
-                            />
-                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 40 }}>
-                              {loading ? (
-                                <Skeleton width={30} height={16} />
-                              ) : (
-                                `${((metric.value / metric.limit) * 100).toFixed(1)}%`
-                              )}
-                            </Typography>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    </Box>
-                  </Grid>
-                ))}
-              </Grid>
             </CardContent>
           </Card>
         </Grid>

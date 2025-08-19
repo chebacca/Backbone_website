@@ -388,6 +388,19 @@ export const endpoints = {
     setMemberPassword: (orgId: string, memberId: string) => `organizations/${orgId}/members/${memberId}/password`,
   },
 
+  // Team Member endpoints (automated creation and management)
+  teamMembers: {
+    create: () => 'team-members/create',
+    bulkCreate: () => 'team-members/bulk-create',
+    resetPassword: (id: string) => `team-members/${id}/reset-password`,
+    verify: (id: string) => `team-members/${id}/verify`,
+    disable: (id: string) => `team-members/${id}/disable`,
+    enable: (id: string) => `team-members/${id}/enable`,
+    auth: {
+      login: () => 'team-members/auth/login',
+    },
+  },
+
   // User endpoints
   users: {
     updateBillingAddress: () => 'users/billing-address',

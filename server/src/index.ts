@@ -32,6 +32,7 @@ import { db } from './services/db.js';
 import { PasswordUtil } from './utils/password.js';
 import DatabaseSeeder from './seeds/index.js';
 import { LicenseService } from './services/licenseService.js';
+import { JwtUtil } from './utils/jwt.js';
 // Prisma removed — all persistence is via Firestore (see `services/firestoreService.ts`)
 
 const app: Application = express();
@@ -109,9 +110,11 @@ app.use(helmet({
 const corsOrigins = config.corsOrigin ? config.corsOrigin.split(',').map(origin => origin.trim()) : [];
 const allowedOrigins: (string | RegExp)[] = [
   ...corsOrigins,
-  'https://dashboard-1c3a5.web.app',  // 🔧 CRITICAL FIX: Allow dashboard domain
+  'https://backbone-logic.web.app',  // 🔧 CRITICAL FIX: Allow current production domain
+  'https://backbone-logic.firebaseapp.com',  // Alternative Firebase domain
+  'https://dashboard-1c3a5.web.app',  // Legacy dashboard domain
   'https://dashboard-1c3a5.firebaseapp.com',  // Alternative Firebase domain
-  'https://backbone-client.web.app',  // 🔧 CRITICAL FIX: Allow client domain
+  'https://backbone-client.web.app',  // Legacy client domain
   'https://backbone-client.firebaseapp.com',  // Alternative client Firebase domain
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
@@ -217,6 +220,181 @@ app.use('/api/demo', demoRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/callsheets', callsheetsRouter);
 app.use('/api/timecard', timecardRouter);
+
+// Legacy API endpoints for backward compatibility - direct access to team member functions
+app.get('/api/getProjectTeamMembers', async (req, res) => {
+  try {
+    const { projectId } = req.query;
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ success: false, error: 'Authorization token required' });
+      return;
+    }
+    
+    const token = authHeader.substring(7);
+    // Verify token and get user info
+    let decoded;
+    try {
+      decoded = JwtUtil.verifyToken(token);
+    } catch (error) {
+      res.status(401).json({ success: false, error: 'Invalid token' });
+      return;
+    }
+    
+    if (!decoded || !decoded.userId) {
+      res.status(401).json({ success: false, error: 'Invalid token payload' });
+      return;
+    }
+    
+    if (!projectId) {
+      res.status(400).json({ success: false, error: 'Project ID is required' });
+      return;
+    }
+
+    // Authorization - ensure user can access project
+    const project = await firestoreService.getProjectByIdAuthorized(projectId as string, decoded.userId);
+    if (!project) {
+      res.status(404).json({ success: false, error: 'Project not found' });
+      return;
+    }
+
+    // Get project team members from Firestore
+    const teamMembers = await firestoreService.getProjectTeamMembers(projectId as string);
+    
+    res.json({ success: true, data: teamMembers });
+  } catch (e: any) {
+    logger.error('getProjectTeamMembers failed', e);
+    res.status(500).json({ success: false, error: e?.message || 'Failed to get project team members' });
+  }
+});
+
+app.get('/api/getLicensedTeamMembers', async (req, res) => {
+  try {
+    const { excludeProjectId } = req.query;
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ success: false, error: 'Authorization token required' });
+      return;
+    }
+    
+    const token = authHeader.substring(7);
+    // Verify token and get user info
+    let decoded;
+    try {
+      decoded = JwtUtil.verifyToken(token);
+    } catch (error) {
+      res.status(401).json({ success: false, error: 'Invalid token' });
+      return;
+    }
+    
+    if (!decoded || !decoded.userId) {
+      res.status(401).json({ success: false, error: 'Invalid token payload' });
+      return;
+    }
+    
+    const userId = decoded.userId;
+
+    // Get user's organization
+    const userOrgs = await firestoreService.getOrganizationsForUser(userId);
+    if (!userOrgs.length) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    const orgId = userOrgs[0].id;
+    
+    // Get organization details to determine license inheritance
+    const organization = await firestoreService.getOrganizationById(orgId);
+    const orgTier = organization?.tier;
+
+    // Get all active organization members
+    const orgMembers = await firestoreService.getOrgMembers(orgId);
+    
+    // Filter for active members
+    let teamMembers = orgMembers.filter(member => member.status === 'ACTIVE');
+
+    // If excludeProjectId is provided, filter out team members already assigned to that project
+    if (excludeProjectId) {
+      try {
+        const projectTeamMembers = await firestoreService.getProjectTeamMembers(excludeProjectId as string);
+        const assignedMemberIds = projectTeamMembers.map(ptm => ptm.teamMemberId);
+        teamMembers = teamMembers.filter(member => !assignedMemberIds.includes(member.id));
+      } catch (error) {
+        logger.warn('Error filtering project team members:', error);
+        // Continue without filtering if there's an error
+      }
+    }
+
+    // Transform team members to match expected format
+    const transformedMembers = teamMembers.map(member => {
+      let displayName = member.name;
+      
+      if (!displayName) {
+        if (member.firstName && member.lastName) {
+          displayName = `${member.firstName} ${member.lastName}`;
+        } else if (member.firstName) {
+          displayName = member.firstName;
+        } else if (member.lastName) {
+          displayName = member.lastName;
+        } else {
+          // If no name fields at all, create a name from email
+          const emailParts = member.email.split('@');
+          const username = emailParts[0];
+          // Convert username to title case (e.g., "john.doe" -> "John Doe")
+          displayName = username
+            .replace(/[._-]/g, ' ')
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
+        }
+      }
+
+      // Determine license type - inherit from organization tier if not explicitly set
+      let licenseType = member.licenseType;
+      if (!licenseType && orgTier) {
+        switch (orgTier) {
+          case 'ENTERPRISE':
+            licenseType = 'ENTERPRISE';
+            break;
+          case 'PRO':
+            licenseType = 'PROFESSIONAL';
+            break;
+          default:
+            licenseType = 'BASIC';
+        }
+      } else if (!licenseType) {
+        licenseType = 'PROFESSIONAL'; // Final fallback
+      }
+
+      return {
+        id: member.id,
+        name: displayName,
+        email: member.email,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        licenseType: licenseType,
+        status: member.status,
+        organizationId: orgId,
+        department: member.department || 'Not assigned',
+        createdAt: member.createdAt,
+        updatedAt: member.updatedAt,
+        lastActive: member.lastActiveAt || member.updatedAt
+      };
+    });
+
+    logger.info(`🎯 getLicensedTeamMembers returning: ${transformedMembers.length} members`, {
+      excludeProjectId,
+      teamMembers: transformedMembers.map(tm => ({ id: tm.id, email: tm.email, name: tm.name, licenseType: tm.licenseType }))
+    });
+
+    res.json({ success: true, data: transformedMembers });
+  } catch (e: any) {
+    logger.error('getLicensedTeamMembers failed', e);
+    res.status(500).json({ success: false, error: e?.message || 'Failed to get licensed team members' });
+  }
+});
 
 // Setup endpoint: place BEFORE error handlers so it's reachable
 app.post('/api/setup/seed-superadmin', async (req, res) => {

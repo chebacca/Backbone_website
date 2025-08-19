@@ -58,11 +58,11 @@ interface NavigationItem {
 
 const baseNavigationItems: NavigationItem[] = [
   { text: 'Overview', icon: <Dashboard />, path: '/dashboard' },
-  { text: 'Cloud Projects', icon: <Analytics />, path: '/dashboard/cloud-projects' },
   { text: 'Licenses', icon: <CardMembership />, path: '/dashboard/licenses', badge: 3 },
-  { text: 'Usage Analytics', icon: <Analytics />, path: '/dashboard/analytics' },
-  { text: 'Billing & Payments', icon: <Payment />, path: '/dashboard/billing' },
+  { text: 'Cloud Projects', icon: <Analytics />, path: '/dashboard/cloud-projects' },
   { text: 'Team Management', icon: <Group />, path: '/dashboard/team' },
+  { text: 'Billing & Payments', icon: <Payment />, path: '/dashboard/billing' },
+  { text: 'Usage Analytics', icon: <Analytics />, path: '/dashboard/analytics' },
   { text: 'Downloads', icon: <Download />, path: '/dashboard/downloads', chip: 'SDK' },
   { text: 'Documentation', icon: <Description />, path: '/dashboard/documentation' },
   { text: 'Support', icon: <Support />, path: '/dashboard/support' },

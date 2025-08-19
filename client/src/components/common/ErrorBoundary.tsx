@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Box, Button, Container, Typography, Paper, Alert, CircularProgress } from '@mui/material';
 import { ErrorOutline, Refresh, Home, BugReport } from '@mui/icons-material';
+import './ErrorBoundary.css';
 
 interface Props {
   children: ReactNode;
@@ -204,7 +205,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     <strong>React Error #301:</strong> Multiple React instances detected. 
                     This can happen when:
                   </Typography>
-                  <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                  <ul className="error-list">
                     <li>Multiple React versions are loaded</li>
                     <li>Third-party libraries include their own React</li>
                     <li>Browser extensions interfere with React</li>
@@ -275,7 +276,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   <Typography variant="body2" color="info.contrastText">
                     <strong>Need help?</strong> If this error persists, try:
                   </Typography>
-                  <ul style={{ margin: '8px 0', paddingLeft: '20px', color: 'info.contrastText' }}>
+                  <ul className="error-list-info">
                     <li>Refreshing the page</li>
                     <li>Clearing browser cache and cookies</li>
                     <li>Disabling browser extensions temporarily</li>

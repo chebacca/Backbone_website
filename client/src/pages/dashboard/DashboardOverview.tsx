@@ -210,17 +210,9 @@ const DashboardOverview: React.FC = () => {
           setActiveProjects(0);
         }
 
-        // Check if we're in Edge mode
-        try {
-          const isEdge = cloudProjectIntegration.isEdge();
-          const edgeUrl = cloudProjectIntegration.getBaseUrlIfEdge();
-          setIsEdgeMode(isEdge);
-          setEdgeBaseUrl(edgeUrl);
-        } catch (edgeError) {
-          console.warn('Edge mode detection failed:', edgeError);
-          setIsEdgeMode(false);
-          setEdgeBaseUrl(null);
-        }
+        // Edge mode not supported in web-only production
+        setIsEdgeMode(false);
+        setEdgeBaseUrl(null);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
         // Fallback to zeros on error

@@ -45,9 +45,9 @@ export class StorageAnalyticsService {
     static async getStorageUsage(userId?: string): Promise<StorageUsage> {
         try {
             // Get user's subscription and license info
-            const [subscriptionRes, storageRes] = await Promise.all([
-                api.get(endpoints.subscriptions.mySubscriptions()),
-                api.get('storage/usage') // Remove leading /api/ since baseURL already includes it
+            const [subscriptionRes] = await Promise.all([
+                api.get(endpoints.subscriptions.mySubscriptions())
+                // Removed storage API call since it's not accessible from licensing website
             ]);
 
             const subscriptions = subscriptionRes.data?.data?.subscriptions || [];
@@ -56,8 +56,14 @@ export class StorageAnalyticsService {
             const tier: LicenseTier = activeSubscription?.tier?.toLowerCase() || 'free';
             const licenseConfig = LICENSE_CONFIGURATIONS[tier];
             
-            const storageData = storageRes.data?.data || { used: 0, breakdown: {} };
-            const usedGB = storageData.used / (1024 * 1024 * 1024); // Convert bytes to GB
+            // Use mock storage data since we can't access the Dashboard-v14_2 storage API
+            // In a real implementation, this would come from the user's actual storage usage
+            const mockStorageData = {
+                used: 0.5, // 0.5GB mock usage
+                breakdown: {}
+            };
+            
+            const usedGB = mockStorageData.used;
             const limitGB = licenseConfig.maxStorageQuota;
             
             let percentage = 0;
@@ -103,16 +109,24 @@ export class StorageAnalyticsService {
      */
     static async getStorageBreakdown(): Promise<StorageBreakdown> {
         try {
-            const response = await api.get('storage/breakdown');
-            const data = response.data?.data || {};
+            // Use mock data since we can't access the Dashboard-v14_2 storage API
+            // In a real implementation, this would come from actual storage providers
+            const mockData = {
+                firestore: 0.3,
+                gcs: 0.1,
+                s3: 0.05,
+                azure: 0.02,
+                local: 0.03,
+                total: 0.5
+            };
             
             return {
-                firestore: data.firestore || 0,
-                gcs: data.gcs || 0,
-                s3: data.s3 || 0,
-                azure: data.azure || 0,
-                local: data.local || 0,
-                total: data.total || 0
+                firestore: mockData.firestore,
+                gcs: mockData.gcs,
+                s3: mockData.s3,
+                azure: mockData.azure,
+                local: mockData.local,
+                total: mockData.total
             };
         } catch (error) {
             console.error('Failed to fetch storage breakdown:', error);

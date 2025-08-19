@@ -98,11 +98,11 @@ export interface FirestoreOrgMember {
   licenseType?: 'BASIC' | 'PROFESSIONAL' | 'ENTERPRISE' | 'NONE';
   department?: string;
   invitedByUserId?: string;
-  invitedAt?: any;
-  joinedAt?: any;
-  lastActiveAt?: any;
-  createdAt: any;
-  updatedAt: any;
+  invitedAt?: Date | any; // Support both Date objects and Firestore Timestamps
+  joinedAt?: Date | any;
+  lastActiveAt?: Date | any;
+  createdAt: Date | any;
+  updatedAt: Date | any;
 }
 
 /**

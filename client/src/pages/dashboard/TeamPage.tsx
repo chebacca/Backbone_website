@@ -286,10 +286,15 @@ const TeamPage: React.FC = () => {
               ACTIVE: 'active',
               REMOVED: 'removed',
             };
+            
+            // Properly handle firstName and lastName from server response
+            const firstName = m.firstName || m.name?.split(' ')[0] || username.charAt(0).toUpperCase() + username.slice(1);
+            const lastName = m.lastName || m.name?.split(' ').slice(1).join(' ') || '';
+            
             return {
               id: String(m.id || `${email}-${Math.random().toString(36).slice(2)}`),
-              firstName: username.charAt(0).toUpperCase() + username.slice(1),
-              lastName: '',
+              firstName,
+              lastName,
               email,
               role: roleMap[String(m.role)] || 'member',
               status: statusMap[String(m.status)] || 'active',
@@ -435,6 +440,8 @@ const TeamPage: React.FC = () => {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
+  const [showInviteConfirmPassword, setShowInviteConfirmPassword] = useState(false);
   const [editForm, setEditForm] = useState<{ newPassword: string; confirmPassword: string; email: string; role: TeamMember['role']; status: TeamMember['status'] }>({ newPassword: '', confirmPassword: '', email: '', role: 'member', status: 'active' });
   
   // Add confirmation dialog state for delete action
@@ -448,6 +455,8 @@ const TeamPage: React.FC = () => {
     role: 'member' as TeamMember['role'],
     department: '',
     message: '',
+    password: '',
+    confirmPassword: '',
   });
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, member: TeamMember) => {
@@ -466,6 +475,19 @@ const TeamPage: React.FC = () => {
       enqueueSnackbar('No seats available. Please add seats from Billing before inviting new members.', { variant: 'warning' });
       return;
     }
+
+    // Validate password fields if provided
+    if (inviteForm.password || inviteForm.confirmPassword) {
+      if (inviteForm.password !== inviteForm.confirmPassword) {
+        enqueueSnackbar('Passwords do not match', { variant: 'error' });
+        return;
+      }
+      if (inviteForm.password.length < 8) {
+        enqueueSnackbar('Password must be at least 8 characters long', { variant: 'error' });
+        return;
+      }
+    }
+
     try {
       // Create request payload, filtering out undefined/empty values
       const requestPayload: any = {
@@ -482,6 +504,11 @@ const TeamPage: React.FC = () => {
       if (inviteForm.department && inviteForm.department.trim()) {
         requestPayload.department = inviteForm.department.trim();
       }
+
+      // Add password if provided
+      if (inviteForm.password && inviteForm.password.trim()) {
+        requestPayload.temporaryPassword = inviteForm.password.trim();
+      }
       
       console.log('[TeamPage] Creating team member with payload:', requestPayload);
       console.log('[TeamPage] Organization ID:', orgId, 'Type:', typeof orgId);
@@ -495,13 +522,15 @@ const TeamPage: React.FC = () => {
         const teamMember = teamMemberResponse.data.data.teamMember;
         const temporaryPassword = teamMemberResponse.data.data.temporaryPassword;
         
-        enqueueSnackbar(
-          `Team member ${teamMember.email} created successfully! Temporary password: ${temporaryPassword}`, 
-          { variant: 'success' }
-        );
+        // Show different messages based on whether a custom password was provided
+        const message = inviteForm.password 
+          ? `Team member ${teamMember.email} created successfully with your custom password!`
+          : `Team member ${teamMember.email} created successfully! Temporary password: ${temporaryPassword}`;
+        
+        enqueueSnackbar(message, { variant: 'success' });
         
         setInviteDialogOpen(false);
-        setInviteForm({ email: '', firstName: '', lastName: '', role: 'member', department: '', message: '' });
+        setInviteForm({ email: '', firstName: '', lastName: '', role: 'member', department: '', message: '', password: '', confirmPassword: '' });
         
         // Refresh team data
         await refreshTeamData();
@@ -1032,7 +1061,7 @@ const TeamPage: React.FC = () => {
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Create a new team member account with automatic Firebase Authentication setup. 
-            The member will receive a welcome email with their temporary password.
+            You can set a custom password or leave it blank to auto-generate one. The member will receive a welcome email with their login credentials.
           </Typography>
           <Grid container spacing={3} sx={{ mt: 1 }}>
             {stats.availableSeats <= 0 && (
@@ -1094,6 +1123,61 @@ const TeamPage: React.FC = () => {
                 label="Department"
                 value={inviteForm.department}
                 onChange={(e) => setInviteForm(prev => ({ ...prev, department: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  <strong>Password Setup:</strong> You can either set a custom password for the team member or leave it blank to auto-generate a secure temporary password.
+                </Typography>
+              </Alert>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Password (Optional)"
+                type={showInvitePassword ? 'text' : 'password'}
+                value={inviteForm.password}
+                onChange={(e) => setInviteForm(prev => ({ ...prev, password: e.target.value }))}
+                helperText="Leave blank to auto-generate a secure password"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton 
+                        onClick={() => setShowInvitePassword(!showInvitePassword)} 
+                        edge="end" 
+                        aria-label="toggle password visibility"
+                      >
+                        {showInvitePassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Confirm Password"
+                type={showInviteConfirmPassword ? 'text' : 'password'}
+                value={inviteForm.confirmPassword}
+                onChange={(e) => setInviteForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                disabled={!inviteForm.password}
+                helperText={inviteForm.password ? "Must match the password above" : "Enter a password first"}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton 
+                        onClick={() => setShowInviteConfirmPassword(!showInviteConfirmPassword)} 
+                        edge="end" 
+                        aria-label="toggle confirm password visibility"
+                        disabled={!inviteForm.password}
+                      >
+                        {showInviteConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
             <Grid item xs={12}>

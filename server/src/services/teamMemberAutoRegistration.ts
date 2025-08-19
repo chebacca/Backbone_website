@@ -12,6 +12,7 @@ import { PasswordUtil } from '../utils/password.js';
 import { EmailService } from './emailService.js';
 import { logger } from '../utils/logger.js';
 import { getAuth } from 'firebase-admin/auth';
+import * as admin from 'firebase-admin';
 
 export interface CreateTeamMemberRequest {
   email: string;
@@ -141,6 +142,31 @@ export class TeamMemberAutoRegistrationService {
       // Create team member in Firestore (users collection)
       teamMemberRef = await firestoreService.createUser(teamMemberData);
       
+      // 🔧 CRITICAL FIX: Also create team member record in team_members collection for Dashboard app compatibility
+      const teamMemberCollectionData = {
+        email: request.email,
+        firstName: request.firstName,
+        lastName: request.lastName,
+        name: teamMemberData.name,
+        licenseType: request.licenseType || 'PROFESSIONAL',
+        status: 'ACTIVE',
+        organizationId: request.organizationId,
+        department: request.department,
+        firebaseUid: firebaseUserRecord.uid,
+        hashedPassword: hashedPassword,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      // Create record in team_members collection
+      const teamMemberCollectionRef = admin.firestore().collection('team_members').doc();
+      await teamMemberCollectionRef.set(teamMemberCollectionData);
+      
+      logger.info('Team member created in team_members collection', { 
+        teamMemberId: teamMemberCollectionRef.id,
+        email: request.email 
+      });
+      
       // Also create organization member record so they show up in team management
       const licenseType: 'BASIC' | 'PROFESSIONAL' | 'ENTERPRISE' | 'NONE' = 
         (request.licenseType === 'BASIC' || request.licenseType === 'ENTERPRISE' || request.licenseType === 'PROFESSIONAL' || request.licenseType === 'NONE') 
@@ -158,7 +184,7 @@ export class TeamMemberAutoRegistrationService {
         status: 'ACTIVE' as const,
         seatReserved: true,
         licenseType: licenseType,
-        department: request.department,
+        ...(request.department && { department: request.department }), // Only include if not undefined
         invitedByUserId: request.createdBy,
         joinedAt: new Date(),
       };

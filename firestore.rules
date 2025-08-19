@@ -1,6 +1,26 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Check if user is a team member by looking up their team_members record
+    function isTeamMember() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/team_members/$(request.auth.token.email));
+    }
+    
+    // Check if user can access a specific project assignment
+    function canAccessProjectAssignment(assignmentData) {
+      return isSignedIn() && (
+        // Check if the assignment's teamMemberId matches the user's team member record
+        exists(/databases/$(database)/documents/team_members/$(assignmentData.teamMemberId)) &&
+        get(/databases/$(database)/documents/team_members/$(assignmentData.teamMemberId)).data.email == request.auth.token.email
+      );
+    }
+
     // Users collection
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -61,6 +81,26 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
+    // Team members collection - allow users to read their own record
+    match /team_members/{teamMemberId} {
+      allow read: if isSignedIn() && 
+        resource.data.email == request.auth.token.email;
+    }
+    
+    // Allow team members to read their own project assignment documents
+    match /projectTeamMembers/{docId} {
+      allow read: if canAccessProjectAssignment(resource.data);
+    }
+
+    match /project_team_members/{docId} {
+      allow read: if canAccessProjectAssignment(resource.data);
+    }
+
+    // Allow authenticated users to read project metadata
+    match /projects/{projectId} {
+      allow read: if isSignedIn();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

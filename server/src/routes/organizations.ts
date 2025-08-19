@@ -17,6 +17,8 @@ import { PasswordUtil } from '../utils/password.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { v4 as uuidv4 } from 'uuid';
 import { ProjectBridgeService } from '../services/projectBridgeService.js';
+import { getAuth } from 'firebase-admin/auth';
+import { logger } from '../utils/logger.js';
 
 const router: Router = Router();
 
@@ -373,6 +375,34 @@ router.put('/:orgId/members/:memberId/password', requireEnterpriseAdminStrict, [
   } else {
     // Update password for already-linked user
     await firestoreService.updateUser(targetUserId, { password: hashed } as any);
+  }
+
+  // Update Firebase Authentication password if user has firebaseUid
+  try {
+    const user = await firestoreService.getUserById(targetUserId!);
+    if (user?.firebaseUid) {
+      await getAuth().updateUser(user.firebaseUid, {
+        password: password,
+      });
+      logger.info('Firebase Auth password updated successfully for org member', { 
+        memberId,
+        firebaseUid: user.firebaseUid,
+        email: member.email
+      });
+    } else {
+      logger.warn('No Firebase UID found for org member during password update', { 
+        memberId,
+        email: member.email 
+      });
+    }
+  } catch (firebaseError: any) {
+    logger.error('Failed to update Firebase Auth password for org member', { 
+      memberId,
+      email: member.email,
+      error: firebaseError.message 
+    });
+    // Don't fail the entire operation if Firebase update fails
+    // The user can still use the dashboard with the updated password
   }
 
   // Attempt to sync password to project server user account as well (best-effort)

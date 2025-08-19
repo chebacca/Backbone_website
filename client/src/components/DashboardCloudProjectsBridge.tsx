@@ -467,18 +467,6 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     >
                         Create Dataset
                     </Button>
-                </Box>
-            </Box>
-
-            {/* Global Launch Buttons */}
-            <Box sx={{ mb: 4, p: 3, backgroundColor: 'rgba(79, 70, 229, 0.05)', borderRadius: 3, border: '1px solid rgba(79, 70, 229, 0.1)' }}>
-                <Typography variant="h6" sx={{ mb: 2, color: 'primary.main', fontWeight: 600 }}>
-                    🚀 Launch Applications
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Launch the Backbone Logic applications to start working with your projects
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <Button
                         variant="contained"
                         startIcon={<LaunchIcon />}
@@ -525,6 +513,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     </Button>
                 </Box>
             </Box>
+
+
 
             {/* Analytics Cards */}
             {loading ? (
@@ -808,14 +798,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 </Grid>
             )}
 
-            {/* Integration Status */}
-            <Alert severity="info" sx={{ mb: 4 }}>
-                <Typography variant="body2">
-                    <strong>Integrated Startup System:</strong> Projects created here will automatically 
-                    integrate with the unified startup flow and support both standalone and network modes 
-                    with Firebase/GCS storage options.
-                </Typography>
-            </Alert>
+
 
             {/* Error Display */}
             {error && (

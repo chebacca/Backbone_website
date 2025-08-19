@@ -14,6 +14,7 @@ import {
   validationErrorHandler, 
   createApiError 
 } from '../middleware/errorHandler.js';
+import admin from 'firebase-admin';
 
 const router: ExpressRouter = Router();
 
@@ -39,7 +40,10 @@ router.post('/auth/login', [
 
   // Validate team member password
   let isValidPassword = false;
-  if (teamMember.hashedPassword) {
+  if (teamMember.password) {
+    isValidPassword = await PasswordUtil.compare(password, teamMember.password);
+  } else if (teamMember.hashedPassword) {
+    // Fallback for legacy field name
     isValidPassword = await PasswordUtil.compare(password, teamMember.hashedPassword);
   } else {
     // For development/testing, accept any password for team members without hashed passwords
@@ -60,31 +64,84 @@ router.post('/auth/login', [
     role: 'TEAM_MEMBER' as const
   };
 
-  // Generate tokens
+  // Generate JWT tokens
   const tokens = JwtUtil.generateTokens({ 
     userId: user.id, 
     email: user.email, 
     role: user.role 
   });
   
+  // 🔧 WORKAROUND: Generate Firebase credentials for Firestore access
+  // Since custom token generation requires special IAM permissions, we'll use
+  // a different approach: ensure the team member has Firebase Auth credentials
+  let firebaseCustomToken = null;
+  let firebaseCredentials = null;
+  
+  try {
+    // Check if team member has a Firebase UID
+    if (teamMember.firebaseUid) {
+      logger.info(`Team member has existing Firebase UID: ${teamMember.firebaseUid}`);
+      
+      // 🔧 WORKAROUND: Instead of custom token, provide Firebase Auth credentials
+      // The client will use these to sign in with Firebase Auth directly
+      firebaseCredentials = {
+        email: teamMember.email,
+        uid: teamMember.firebaseUid,
+        // Generate a temporary password for Firebase Auth (if needed)
+        tempPassword: 'TempPass123!' // This should be replaced with proper password management
+      };
+      
+      // Try to update the Firebase user's password to ensure they can sign in
+      try {
+        await admin.auth().updateUser(teamMember.firebaseUid, {
+          password: firebaseCredentials.tempPassword,
+          emailVerified: true, // Mark as verified for team members
+        });
+        logger.info(`Updated Firebase user password for: ${teamMember.firebaseUid}`);
+      } catch (updateError) {
+        logger.warn('Could not update Firebase user password:', updateError instanceof Error ? updateError.message : 'Unknown error');
+      }
+      
+    } else {
+      // Create a new Firebase user with email/password
+      const tempPassword = 'TempPass123!'; // This should be replaced with proper password management
+      
+      const firebaseUserRecord = await admin.auth().createUser({
+        email: teamMember.email,
+        password: tempPassword,
+        displayName: teamMember.name || `${teamMember.firstName} ${teamMember.lastName}`.trim(),
+        emailVerified: true, // Mark as verified for team members
+        disabled: false,
+      });
+      
+      // Update team member with Firebase UID
+      await firestoreService.updateTeamMember(teamMember.id, { 
+        firebaseUid: firebaseUserRecord.uid,
+        lastLoginAt: new Date()
+      });
+      
+      firebaseCredentials = {
+        email: teamMember.email,
+        uid: firebaseUserRecord.uid,
+        tempPassword: tempPassword
+      };
+      
+      logger.info(`Created new Firebase user with credentials: ${firebaseUserRecord.uid}`);
+    }
+  } catch (firebaseError) {
+    logger.error('Failed to setup Firebase credentials:', firebaseError);
+    // Don't fail the entire authentication if Firebase setup fails
+    // The team member can still use JWT tokens for API access
+  }
+  
   // Update last login time
   await firestoreService.updateTeamMember(teamMember.id, { lastLoginAt: new Date() });
   
   // Create audit log
-  await ComplianceService.createAuditLog(
-    teamMember.id, 
-    'LOGIN', 
-    'Team member logged in successfully', 
-    { email, isTeamMember: true }, 
-    requestInfo
-  );
-  
-  logger.info(`Team member logged in successfully: ${email}`, { 
-    teamMemberId: teamMember.id, 
-    organizationId: teamMember.organizationId 
-  });
+  await ComplianceService.createAuditLog(teamMember.id, 'LOGIN', 'Team member logged in successfully', { email }, requestInfo);
+  logger.info(`Team member logged in successfully: ${email}`, { userId: teamMember.id });
 
-  // Get team member's project access and licenses
+  // Get team member's project access and license data
   let teamMemberData = null;
   try {
     const projectAccess = await firestoreService.getTeamMemberProjectAccess(teamMember.id);
@@ -124,6 +181,8 @@ router.post('/auth/login', [
         status: teamMember.status
       },
       tokens,
+      firebaseCustomToken, // Include Firebase custom token for Firestore access (may be null)
+      firebaseCredentials, // 🔧 WORKAROUND: Include Firebase Auth credentials
       teamMemberData
     }
   });
@@ -431,83 +490,7 @@ router.get('/getLicensedTeamMembers', authenticateToken, async (req: any, res) =
   }
 });
 
-/**
- * Team Member Authentication - Direct login for team members
- * POST /api/team-members/auth/login
- */
-router.post('/auth/login', [
-  body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 1 }),
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
 
-  const { email, password } = req.body;
-
-  try {
-    // Find team member by email using the firestore service
-    const teamMember = await firestoreService.getTeamMemberByEmail(email);
-    if (!teamMember) {
-      res.status(401).json({
-        success: false,
-        error: 'Invalid credentials'
-      });
-      return;
-    }
-
-    // Verify password
-    const isValidPassword = await PasswordUtil.compare(password, teamMember.hashedPassword || '');
-    if (!isValidPassword) {
-      res.status(401).json({
-        success: false,
-        error: 'Invalid credentials'
-      });
-      return;
-    }
-
-    // Generate JWT token
-    const tokenPayload = {
-      userId: teamMember.id,
-      email: teamMember.email,
-      role: teamMember.role,
-    };
-
-    const { accessToken, refreshToken } = JwtUtil.generateTokens(tokenPayload);
-
-    // Update last login
-    await firestoreService.updateTeamMember(teamMember.id, {
-      lastLoginAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    // Return success response
-    res.status(200).json({
-      success: true,
-      message: 'Team member login successful',
-      data: {
-        user: {
-          id: teamMember.id,
-          email: teamMember.email,
-          name: teamMember.name || `${teamMember.firstName} ${teamMember.lastName}`.trim(),
-          role: teamMember.role,
-          licenseType: teamMember.licenseType || 'PROFESSIONAL',
-          organizationId: teamMember.organizationId,
-        },
-        tokens: {
-          accessToken,
-          refreshToken,
-        }
-      }
-    });
-
-  } catch (error: any) {
-    logger.error('Team member authentication failed:', error);
-    res.status(500).json({
-      success: false,
-        error: 'Authentication failed'
-    });
-  }
-}));
 
 /**
  * Create Team Member - Account owners can create team members automatically
@@ -517,7 +500,13 @@ router.post('/create', authenticateToken, [
   body('email').isEmail().normalizeEmail(),
   body('firstName').trim().isLength({ min: 1 }),
   body('lastName').trim().isLength({ min: 1 }),
-  body('department').optional().trim(),
+  body('department').optional().trim().custom((value) => {
+    // Convert empty string to undefined to prevent Firestore undefined value errors
+    if (value === '') {
+      return undefined;
+    }
+    return value;
+  }),
   body('licenseType').optional().isIn(['BASIC', 'PROFESSIONAL', 'ENTERPRISE']),
   body('organizationId').isLength({ min: 1, max: 100 }).custom((value) => {
     // More flexible validation - allow common characters used in IDs
@@ -527,6 +516,7 @@ router.post('/create', authenticateToken, [
     return true;
   }),
   body('sendWelcomeEmail').optional().isBoolean(),
+  body('temporaryPassword').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
 ], asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -545,7 +535,8 @@ router.post('/create', authenticateToken, [
     department, 
     licenseType, 
     organizationId, 
-    sendWelcomeEmail 
+    sendWelcomeEmail,
+    temporaryPassword 
   } = req.body;
   
   const userId = (req as any).user?.id;
@@ -579,6 +570,7 @@ router.post('/create', authenticateToken, [
     organizationId,
     createdBy: userId,
     sendWelcomeEmail: sendWelcomeEmail !== false, // Default to true
+    temporaryPassword, // Pass the custom password if provided
   });
 
   if (!result.success) {

@@ -138,11 +138,12 @@ const DashboardOverview: React.FC = () => {
         setLoading(true);
         
         // Fetch all data in parallel for better performance
-        const [subsRes, analyticsRes, licensesRes, cloudProjectsRes] = await Promise.all([
+        const [subsRes, analyticsRes, licensesRes, cloudProjectsRes, orgContextRes] = await Promise.all([
           api.get(endpoints.subscriptions.mySubscriptions()),
           api.get(endpoints.licenses.analytics()),
           api.get(endpoints.licenses.myLicenses()),
           cloudProjectIntegration.getUserProjects(),
+          api.get(endpoints.organizations.context()).catch(() => null as any), // Fetch org context for team members
         ]);
 
         if (!isMounted) return;
@@ -171,10 +172,39 @@ const DashboardOverview: React.FC = () => {
           }
           
           setHasEnterpriseFeatures(primary.tier === SubscriptionTier.ENTERPRISE);
-          
-          // Calculate team members for enterprise
-          if (primary.tier === SubscriptionTier.ENTERPRISE) {
+        }
+
+        // Fetch actual team member count from organization context
+        let actualTeamMemberCount = 0;
+        if (orgContextRes?.data?.data?.members) {
+          // Use the actual members from org context
+          const members = orgContextRes.data.data.members;
+          actualTeamMemberCount = members.filter((m: any) => m && m.status === 'ACTIVE').length;
+          console.log('[DashboardOverview] Found team members in org context:', actualTeamMemberCount);
+        } else if (orgContextRes?.data?.data?.organization) {
+          // Fallback to organization members if context doesn't have members array
+          const org = orgContextRes.data.data.organization;
+          if (org.members && Array.isArray(org.members)) {
+            actualTeamMemberCount = org.members.filter((m: any) => m && m.status === 'ACTIVE').length;
+            console.log('[DashboardOverview] Found team members in org object:', actualTeamMemberCount);
+          }
+        } else {
+          console.log('[DashboardOverview] No organization context available');
+        }
+        
+        // Set team members count (show for all plan types if they have team members)
+        if (actualTeamMemberCount > 0) {
+          setTeamMembers(actualTeamMemberCount);
+          setHasEnterpriseFeatures(true); // Enable team features if they have members
+          console.log('[DashboardOverview] Setting team members count:', actualTeamMemberCount);
+        } else {
+          // Fallback to subscription seats for Enterprise users
+          if (primary && primary.tier === SubscriptionTier.ENTERPRISE) {
             setTeamMembers(primary.seats || 0);
+            console.log('[DashboardOverview] Using subscription seats for Enterprise:', primary.seats || 0);
+          } else {
+            setTeamMembers(0);
+            console.log('[DashboardOverview] No team members found');
           }
         }
 
@@ -289,15 +319,20 @@ const DashboardOverview: React.FC = () => {
             color="primary"
           />
         </Grid>
-        {hasEnterpriseFeatures && (
+        {teamMembers > 0 && (
           <Grid item xs={12} sm={6} lg={3}>
-            <MetricCard
-              title="Team Members"
-              value={teamMembers}
-              icon={<People />}
-              trend={{ value: 8, direction: 'up' }}
-              color="secondary"
-            />
+            <Tooltip title="Click to view Team Management" arrow>
+              <div>
+                <MetricCard
+                  title="Team Members"
+                  value={teamMembers}
+                  icon={<People />}
+                  trend={{ value: 8, direction: 'up' }}
+                  color="secondary"
+                  onClick={() => navigate('/dashboard/team')}
+                />
+              </div>
+            </Tooltip>
           </Grid>
         )}
         <Grid item xs={12} sm={6} lg={3}>
@@ -404,7 +439,7 @@ const DashboardOverview: React.FC = () => {
                       Quick Actions
                     </Typography>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {hasEnterpriseFeatures && (
+                      {teamMembers > 0 && (
                         <Button
                           variant="outlined"
                           startIcon={<People />}

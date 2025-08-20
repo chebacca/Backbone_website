@@ -2,7 +2,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: 'USER' | 'ADMIN' | 'SUPERADMIN';
+  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING' | 'TEAM_MEMBER';
   subscription?: {
     plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
     status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'TRIALING';
@@ -15,6 +15,11 @@ interface User {
     createdAt: string;
     expiresAt: string;
   }>;
+  // Team member specific properties
+  isTeamMember?: boolean;
+  organizationId?: string;
+  memberRole?: string;
+  memberStatus?: string;
 }
 
 import { api, endpoints } from './api';

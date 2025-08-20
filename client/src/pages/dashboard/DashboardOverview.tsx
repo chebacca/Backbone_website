@@ -113,6 +113,17 @@ const getStatusColor = (status?: string) => {
 const DashboardOverview: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  
+  // Helper function to detect if user is a team member
+  const isTeamMember = () => {
+    return user?.isTeamMember || 
+           user?.role === 'TEAM_MEMBER' || 
+           user?.organizationId || 
+           user?.memberRole ||
+           // Check if user email suggests they're a team member
+           (user?.email && user.email !== 'enterprise.user@example.com' && 
+            localStorage.getItem('team_member_data'));
+  };
 
   const [loading, setLoading] = useState<boolean>(true);
   const [activeLicenses, setActiveLicenses] = useState<number>(0);
@@ -137,14 +148,61 @@ const DashboardOverview: React.FC = () => {
       try {
         setLoading(true);
         
-        // Fetch all data in parallel for better performance
-        const [subsRes, analyticsRes, licensesRes, cloudProjectsRes, orgContextRes] = await Promise.all([
-          api.get(endpoints.subscriptions.mySubscriptions()),
-          api.get(endpoints.licenses.analytics()),
-          api.get(endpoints.licenses.myLicenses()),
-          cloudProjectIntegration.getUserProjects(),
-          api.get(endpoints.organizations.context()).catch(() => null as any), // Fetch org context for team members
-        ]);
+        // Check if user is a team member to determine which APIs to call
+        const userIsTeamMember = isTeamMember();
+        console.log('🔍 [DashboardOverview] User is team member:', userIsTeamMember);
+        
+        if (userIsTeamMember) {
+          // For team members, only fetch their assigned projects
+          console.log('🔍 [DashboardOverview] Fetching team member data only');
+          
+          try {
+            const cloudProjectsRes = await cloudProjectIntegration.getUserProjects();
+            
+            if (!isMounted) return;
+            
+            // Set team member specific data
+            const projects = cloudProjectsRes || [];
+            setTotalProjects(projects.length);
+            setActiveProjects(projects.filter((p: any) => p.isActive && !p.isArchived).length);
+            
+            // Set default values for team members
+            setActiveLicenses(0);
+            setTotalLicenses(0);
+            setMonthlyUsage(0);
+            setTotalDownloads(0);
+            setCurrentPlan('Team Member');
+            setDaysUntilRenewal('N/A');
+            setHasEnterpriseFeatures(false);
+            setTeamMembers(0);
+            
+            console.log('🔍 [DashboardOverview] Team member data loaded successfully');
+            
+          } catch (error) {
+            console.error('🔍 [DashboardOverview] Error fetching team member data:', error);
+            // Set empty state for team members on error
+            setTotalProjects(0);
+            setActiveProjects(0);
+            setActiveLicenses(0);
+            setTotalLicenses(0);
+            setMonthlyUsage(0);
+            setTotalDownloads(0);
+            setCurrentPlan('Team Member');
+            setDaysUntilRenewal('N/A');
+            setHasEnterpriseFeatures(false);
+            setTeamMembers(0);
+          }
+        } else {
+          // For account owners, fetch all data in parallel for better performance
+          console.log('🔍 [DashboardOverview] Fetching account owner data');
+          
+          const [subsRes, analyticsRes, licensesRes, cloudProjectsRes, orgContextRes] = await Promise.all([
+            api.get(endpoints.subscriptions.mySubscriptions()),
+            api.get(endpoints.licenses.analytics()),
+            api.get(endpoints.licenses.myLicenses()),
+            cloudProjectIntegration.getUserProjects(),
+            api.get(endpoints.organizations.context()).catch(() => null as any), // Fetch org context for team members
+          ]);
 
         if (!isMounted) return;
 
@@ -243,6 +301,8 @@ const DashboardOverview: React.FC = () => {
         // Edge mode not supported in web-only production
         setIsEdgeMode(false);
         setEdgeBaseUrl(null);
+        
+        } // End of account owner data processing
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
         // Fallback to zeros on error

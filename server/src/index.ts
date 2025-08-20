@@ -396,6 +396,79 @@ app.get('/api/getLicensedTeamMembers', async (req, res) => {
   }
 });
 
+// Get projects assigned to a team member
+app.get('/api/getTeamMemberProjects', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ success: false, error: 'Authorization token required' });
+      return;
+    }
+    
+    const token = authHeader.substring(7);
+    // Verify token and get user info
+    let decoded;
+    try {
+      decoded = JwtUtil.verifyToken(token);
+    } catch (error) {
+      res.status(401).json({ success: false, error: 'Invalid token' });
+      return;
+    }
+    
+    if (!decoded || !decoded.userId) {
+      res.status(401).json({ success: false, error: 'Invalid token payload' });
+      return;
+    }
+    
+    const userId = decoded.userId;
+    
+    console.log('🔍 [getTeamMemberProjects] Decoded token userId:', userId);
+    console.log('🔍 [getTeamMemberProjects] Token payload:', decoded);
+
+    // Get team member's project access from Firestore
+    console.log('🔍 [getTeamMemberProjects] Calling getTeamMemberProjectAccess for userId:', userId);
+    const projectAccess = await firestoreService.getTeamMemberProjectAccess(userId);
+    console.log('🔍 [getTeamMemberProjects] Raw project access returned:', projectAccess);
+    
+            // Transform project access data to include full project details
+        const projects = [];
+        for (const access of projectAccess) {
+          try {
+            // Get full project details - use authorized method since team member should have access
+            const project = await firestoreService.getProjectByIdAuthorized(access.projectId, userId);
+            if (project && project.isActive && !project.isArchived) {
+              projects.push({
+                projectId: access.projectId,
+                projectName: project.name,
+                description: project.description,
+                role: access.role,
+                accessLevel: access.accessLevel,
+                assignedAt: access.assignedAt,
+                lastAccessed: access.lastAccessed,
+                isActive: project.isActive,
+                isArchived: project.isArchived,
+                ownerName: project.ownerName || 'Organization Owner',
+                maxCollaborators: project.maxCollaborators || 10,
+              });
+            }
+          } catch (projectError) {
+            logger.warn(`Error fetching project ${access.projectId} for team member ${userId}:`, projectError);
+            // Continue with other projects
+          }
+        }
+
+    res.json({ 
+      success: true, 
+      projects: projects,
+      message: `Found ${projects.length} assigned projects for team member`
+    });
+  } catch (e: any) {
+    logger.error('getTeamMemberProjects failed', e);
+    res.status(500).json({ success: false, error: e?.message || 'Failed to get team member projects' });
+  }
+});
+
 // Setup endpoint: place BEFORE error handlers so it's reachable
 app.post('/api/setup/seed-superadmin', async (req, res) => {
   const token = req.headers['x-setup-token'] as string;

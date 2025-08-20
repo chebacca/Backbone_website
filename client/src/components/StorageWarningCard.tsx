@@ -50,6 +50,22 @@ const StorageWarningCard: React.FC<StorageWarningCardProps> = ({
     compact = false
 }) => {
     const { user } = useAuth();
+    
+    // Helper function to detect if user is a team member
+    const isTeamMember = () => {
+        return user?.isTeamMember || 
+               user?.role === 'TEAM_MEMBER' || 
+               user?.organizationId || 
+               user?.memberRole ||
+               // Check if user email suggests they're a team member
+               (user?.email && user.email !== 'enterprise.user@example.com' && 
+                localStorage.getItem('team_member_data'));
+    };
+    
+    // Don't show storage warnings for team members
+    if (isTeamMember()) {
+        return null;
+    }
     const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
     const [alerts, setAlerts] = useState<StorageAlert[]>([]);
     const [loading, setLoading] = useState(true);

@@ -2060,12 +2060,25 @@ export class FirestoreService {
 
   async getTeamMemberProjectAccess(teamMemberId: string): Promise<any[]> {
     try {
+      console.log('🔍 [getTeamMemberProjectAccess] Looking for teamMemberId:', teamMemberId);
+      
       // Get project assignments for this team member
       const assignmentsSnap = await db.collection('projectTeamMembers')
         .where('teamMemberId', '==', teamMemberId)
         .get();
 
+      console.log('🔍 [getTeamMemberProjectAccess] Query result size:', assignmentsSnap.size);
+
       if (assignmentsSnap.empty) {
+        console.log('🔍 [getTeamMemberProjectAccess] No assignments found for teamMemberId:', teamMemberId);
+        
+        // Let's also check what documents exist in the collection
+        const allAssignmentsSnap = await db.collection('projectTeamMembers').limit(5).get();
+        console.log('🔍 [getTeamMemberProjectAccess] Sample documents in projectTeamMembers collection:');
+        allAssignmentsSnap.forEach(doc => {
+          console.log('  -', doc.id, ':', doc.data());
+        });
+        
         return [];
       }
 

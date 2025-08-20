@@ -58,7 +58,7 @@ interface NavigationItem {
 
 const baseNavigationItems: NavigationItem[] = [
   { text: 'Overview', icon: <Dashboard />, path: '/dashboard' },
-  { text: 'Licenses', icon: <CardMembership />, path: '/dashboard/licenses', badge: 3 },
+  { text: 'Licenses', icon: <CardMembership />, path: '/dashboard/licenses' },
   { text: 'Cloud Projects', icon: <Analytics />, path: '/dashboard/cloud-projects' },
   { text: 'Team Management', icon: <Group />, path: '/dashboard/team' },
   { text: 'Billing & Payments', icon: <Payment />, path: '/dashboard/billing' },

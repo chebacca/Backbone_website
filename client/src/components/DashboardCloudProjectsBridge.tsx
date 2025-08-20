@@ -4,6 +4,9 @@
  * This component bridges the new Simplified Startup System with the unified
  * project creation and management system. It ensures seamless integration
  * between the startup flow and the dashboard project management.
+ * 
+ * ENHANCED: Now supports team member project access - team members see only
+ * their assigned projects, while account owners see all projects.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -66,6 +69,8 @@ import {
     Archive as ArchiveIcon,
     Group as GroupIcon,
     Assessment as AssessmentIcon,
+    Person as PersonIcon,
+    GroupAdd as GroupAddIcon,
 
 } from '@mui/icons-material';
 import { cloudProjectIntegration } from '../services/CloudProjectIntegration';
@@ -101,6 +106,11 @@ interface CloudProject {
         api?: number;
       };
     };
+    // Team member specific properties
+    teamMemberRole?: string;
+    role?: string;
+    assignedAt?: string;
+    projectOwner?: string;
 }
 
 interface DashboardCloudProjectsBridgeProps {
@@ -139,6 +149,70 @@ const getCollaborationLimit = (user: any): number => {
 export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridgeProps> = () => {
     const { user } = useAuth();
     const { setLoading } = useLoading();
+    
+    // Helper function to get the complete user object with team member properties
+    const getCompleteUser = () => {
+        if (!user) return null;
+        
+        // Get the stored user from localStorage to ensure we have all properties
+        const storedUserStr = localStorage.getItem('auth_user');
+        if (storedUserStr) {
+            try {
+                const storedUser = JSON.parse(storedUserStr);
+                // Merge the context user with stored user to ensure all properties are available
+                return {
+                    ...user,
+                    ...storedUser,
+                    // Ensure these properties are explicitly set
+                    isTeamMember: storedUser.isTeamMember || user.isTeamMember || storedUser.role === 'TEAM_MEMBER',
+                    organizationId: storedUser.organizationId || user.organizationId,
+                    memberRole: storedUser.memberRole || user.memberRole,
+                    memberStatus: storedUser.memberStatus || user.memberStatus,
+                    teamMemberData: storedUser.teamMemberData || user.teamMemberData
+                };
+            } catch (e) {
+                console.warn('Failed to parse stored user from localStorage:', e);
+            }
+        }
+        
+        return user;
+    };
+    
+    // Get the complete user object
+    const completeUser = getCompleteUser();
+    
+    // Helper function to check if user is a team member
+    const isTeamMember = () => {
+        if (!completeUser) return false;
+        
+        return completeUser.isTeamMember || 
+               completeUser.role === 'TEAM_MEMBER' || 
+               completeUser.organizationId || 
+               completeUser.memberRole ||
+               // Check if user email suggests they're a team member
+               (completeUser.email && completeUser.email !== 'enterprise.user@example.com' && 
+                localStorage.getItem('team_member_data'));
+    };
+    
+    // Debug: Log user object to see what properties are available
+    console.log('🔍 [DashboardCloudProjectsBridge] Current user object:', completeUser);
+    console.log('🔍 [DashboardCloudProjectsBridge] User role:', completeUser?.role);
+    console.log('🔍 [DashboardCloudProjectsBridge] User isTeamMember:', completeUser?.isTeamMember);
+    console.log('🔍 [DashboardCloudProjectsBridge] User organizationId:', completeUser?.organizationId);
+    console.log('🔍 [DashboardCloudProjectsBridge] User memberRole:', completeUser?.memberRole);
+    console.log('🔍 [DashboardCloudProjectsBridge] isTeamMember():', isTeamMember());
+    
+    // Also check localStorage directly
+    const storedUser = localStorage.getItem('auth_user');
+    console.log('🔍 [DashboardCloudProjectsBridge] Stored user in localStorage:', storedUser);
+    if (storedUser) {
+        try {
+            const parsedUser = JSON.parse(storedUser);
+            console.log('🔍 [DashboardCloudProjectsBridge] Parsed stored user:', parsedUser);
+        } catch (e) {
+            console.error('🔍 [DashboardCloudProjectsBridge] Error parsing stored user:', e);
+        }
+    }
     const [projects, setProjects] = useState<CloudProject[]>([]);
     const [loading, setLocalLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -295,11 +369,190 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             setError(null);
             setLocalLoading(true);
             
-            const cloudProjects = await cloudProjectIntegration.getUserProjects();
-            setProjects(cloudProjects);
+            console.log('🔍 [DashboardCloudProjectsBridge] Team member detection:', {
+                isTeamMember: completeUser?.isTeamMember,
+                role: completeUser?.role,
+                organizationId: completeUser?.organizationId,
+                memberRole: completeUser?.memberRole,
+                email: completeUser?.email,
+                hasTeamMemberData: !!localStorage.getItem('team_member_data'),
+                finalIsTeamMember: isTeamMember()
+            });
+            
+            if (isTeamMember()) {
+                console.log('🔍 [DashboardCloudProjectsBridge] Loading team member assigned projects for:', completeUser?.email);
+                
+                // For team members, fetch their assigned projects
+                try {
+                    console.log('🔍 [DashboardCloudProjectsBridge] Attempting to fetch team member projects...');
+                    
+                    // Use the team member project access endpoint
+                    const authToken = localStorage.getItem('auth_token');
+                    console.log('🔍 [DashboardCloudProjectsBridge] Using auth token:', authToken ? `${authToken.substring(0, 20)}...` : 'none');
+                    console.log('🔍 [DashboardCloudProjectsBridge] Current user ID from context:', completeUser?.id);
+                    console.log('🔍 [DashboardCloudProjectsBridge] Current user email from context:', completeUser?.email);
+                    
+                    // Try the main team member projects endpoint first
+                    let response = await fetch('/api/getTeamMemberProjects', {
+                        headers: {
+                            'Authorization': `Bearer ${authToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                    
+                    // If that fails, try the alternative endpoint with user ID
+                    if (!response.ok && completeUser?.id) {
+                        console.log('🔍 [DashboardCloudProjectsBridge] Main endpoint failed, trying alternative with user ID:', completeUser.id);
+                        response = await fetch(`/api/team-members/${completeUser.id}/projects`, {
+                            headers: {
+                                'Authorization': `Bearer ${authToken}`,
+                                'Content-Type': 'application/json',
+                            },
+                        });
+                    }
+                    
+                    console.log('🔍 [DashboardCloudProjectsBridge] Team member projects API response status:', response.status);
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('🔍 [DashboardCloudProjectsBridge] API error response:', errorText);
+                        
+                        // Try to parse as JSON for better error details
+                        try {
+                            const errorData = JSON.parse(errorText);
+                            console.error('🔍 [DashboardCloudProjectsBridge] Parsed error data:', errorData);
+                        } catch (e) {
+                            // Not JSON, use as plain text
+                        }
+                        
+                        throw new Error(`Failed to fetch team member projects: ${response.status} - ${errorText}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('🔍 [DashboardCloudProjectsBridge] Team member projects API response data:', data);
+                    
+                    const teamMemberProjects = data.projects || [];
+                    console.log('🔍 [DashboardCloudProjectsBridge] Raw team member projects:', teamMemberProjects);
+                    
+                    // Transform team member projects to match CloudProject format
+                    const transformedProjects = teamMemberProjects.map((project: any) => ({
+                        id: project.projectId || project.id,
+                        name: project.projectName || project.name || 'Unnamed Project',
+                        description: project.description || '',
+                        applicationMode: 'shared_network' as const, // Team members always use network mode
+                        storageBackend: 'firestore' as const, // Always Firestore in webonly mode
+                        lastAccessedAt: project.lastAccessed || project.assignedAt || new Date().toISOString(),
+                        isActive: project.isActive !== false,
+                        isArchived: project.isArchived === true,
+                        allowCollaboration: true, // Team member projects are collaborative
+                        maxCollaborators: project.maxCollaborators || 10,
+                        realTimeEnabled: true,
+                        enableComments: true,
+                        enableChat: true,
+                        enableActivityLog: true,
+                        // Team member specific fields
+                        teamMemberRole: project.role || project.teamMemberRole || 'MEMBER',
+                        assignedAt: project.assignedAt,
+                        projectOwner: project.ownerName || 'Organization Owner',
+                    }));
+                    
+                    console.log('✅ [DashboardCloudProjectsBridge] Loaded team member projects:', transformedProjects.length);
+                    console.log('🔍 [DashboardCloudProjectsBridge] Transformed projects:', transformedProjects);
+                    setProjects(transformedProjects);
+                    
+                } catch (teamMemberError) {
+                    console.error('❌ [DashboardCloudProjectsBridge] Failed to fetch team member projects:', teamMemberError);
+                    
+                    // Fallback: try to get projects from localStorage if available
+                    const teamMemberData = localStorage.getItem('team_member_data');
+                    console.log('🔍 [DashboardCloudProjectsBridge] Checking for fallback team member data:', teamMemberData);
+                    
+                    if (teamMemberData) {
+                        try {
+                            const parsed = JSON.parse(teamMemberData);
+                            console.log('🔍 [DashboardCloudProjectsBridge] Parsed team member data:', parsed);
+                            
+                            if (parsed.projectAccess && Array.isArray(parsed.projectAccess)) {
+                                console.log('🔍 [DashboardCloudProjectsBridge] Found project access in team member data:', parsed.projectAccess);
+                                
+                                const fallbackProjects = parsed.projectAccess.map((access: any) => ({
+                                    id: access.projectId,
+                                    name: access.projectName || 'Unnamed Project',
+                                    description: access.description || '',
+                                    applicationMode: 'shared_network' as const,
+                                    storageBackend: 'firestore' as const,
+                                    lastAccessedAt: access.lastAccessed || new Date().toISOString(),
+                                    isActive: true,
+                                    isArchived: false,
+                                    allowCollaboration: true,
+                                    maxCollaborators: 10,
+                                    realTimeEnabled: true,
+                                    enableComments: true,
+                                    enableChat: true,
+                                    enableActivityLog: true,
+                                    teamMemberRole: access.role || 'MEMBER',
+                                    assignedAt: access.assignedAt,
+                                    projectOwner: 'Organization Owner',
+                                }));
+                                
+                                console.log('🔄 [DashboardCloudProjectsBridge] Using fallback team member projects:', fallbackProjects.length);
+                                console.log('🔍 [DashboardCloudProjectsBridge] Fallback projects:', fallbackProjects);
+                                setProjects(fallbackProjects);
+                                return;
+                            } else {
+                                console.log('🔍 [DashboardCloudProjectsBridge] No projectAccess found in team member data');
+                            }
+                        } catch (parseError) {
+                            console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to parse fallback team member data:', parseError);
+                        }
+                    } else {
+                        console.log('🔍 [DashboardCloudProjectsBridge] No team_member_data found in localStorage');
+                    }
+                    
+                    // Check for any other potential sources of team member project data
+                    console.log('🔍 [DashboardCloudProjectsBridge] Checking all localStorage keys for team member data...');
+                    const allKeys = Object.keys(localStorage);
+                    const teamMemberKeys = allKeys.filter(key => 
+                        key.includes('team') || 
+                        key.includes('member') || 
+                        key.includes('project') ||
+                        key.includes('assignment')
+                    );
+                    console.log('🔍 [DashboardCloudProjectsBridge] Potential team member related keys:', teamMemberKeys);
+                    
+                    // Check each key for project data
+                    for (const key of teamMemberKeys) {
+                        try {
+                            const value = localStorage.getItem(key);
+                            if (value) {
+                                const parsed = JSON.parse(value);
+                                console.log(`🔍 [DashboardCloudProjectsBridge] Key ${key}:`, parsed);
+                                
+                                // Look for project data in various formats
+                                if (parsed.projects || parsed.projectAccess || parsed.assignments) {
+                                    console.log(`🔍 [DashboardCloudProjectsBridge] Found potential project data in ${key}`);
+                                }
+                            }
+                        } catch (e) {
+                            // Ignore non-JSON values
+                        }
+                    }
+                    
+                    // If all else fails, show error
+                    setError('Unable to load your assigned projects. Please contact your administrator or try again later.');
+                    setProjects([]);
+                }
+            } else {
+                // For regular users (account owners), fetch all their projects
+                console.log('🔍 [DashboardCloudProjectsBridge] Loading all projects for account owner:', completeUser?.email);
+                const cloudProjects = await cloudProjectIntegration.getUserProjects();
+                setProjects(cloudProjects);
+            }
 
         } catch (err: any) {
+            console.error('❌ [DashboardCloudProjectsBridge] Failed to load projects:', err);
             setError(err?.message || 'Failed to load projects');
+            setProjects([]);
         } finally {
             setLocalLoading(false);
         }
@@ -427,46 +680,89 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
                 <Box>
                     <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
-                        Cloud Projects
+                        {isTeamMember() ? 'My Assigned Projects' : 'Cloud Projects'}
                     </Typography>
                     <Typography variant="body1" color="text.secondary">
-                        Manage your projects with Firebase and Google Cloud Storage integration
+                        {isTeamMember() 
+                            ? 'Access and collaborate on projects assigned to you by your team administrator'
+                            : 'Manage your projects with Firebase and Google Cloud Storage integration'
+                        }
                     </Typography>
+                    
+                    {/* Team Member Status Indicator */}
+                    {isTeamMember() && completeUser && (
+                        <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Chip
+                                icon={<PersonIcon />}
+                                label={`Team Member - ${completeUser.memberRole || 'MEMBER'}`}
+                                color="primary"
+                                size="small"
+                                sx={{ 
+                                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                    border: '1px solid rgba(0, 212, 255, 0.3)',
+                                    color: 'primary.main'
+                                }}
+                            />
+                            {completeUser.organizationId && (
+                                <Chip
+                                    icon={<GroupAddIcon />}
+                                    label="Organization Access"
+                                    color="secondary"
+                                    size="small"
+                                    sx={{ 
+                                        backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                                        border: '1px solid rgba(156, 39, 176, 0.3)',
+                                        color: 'secondary.main'
+                                    }}
+                                />
+                            )}
+                        </Box>
+                    )}
                 </Box>
+                
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                    <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('🔍 Create Project button clicked - event:', e);
-                            handleCreateProject();
-                        }}
-                        size="large"
-                    >
-                        Create Project
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        startIcon={<DatasetIcon />}
-                        onClick={() => {
-                            setDatasetWizardAssignToProject(null);
-                            setShowCreateDatasetWizard(true);
-                        }}
-                        size="large"
-                        sx={{
-                            borderColor: 'primary.main',
-                            color: 'primary.main',
-                            '&:hover': {
-                                borderColor: 'primary.dark',
-                                backgroundColor: 'primary.main',
-                                color: 'white'
-                            }
-                        }}
-                    >
-                        Create Dataset
-                    </Button>
+                    {/* Only show Create Project button for account owners */}
+                    {!isTeamMember() && (
+                        <Button
+                            variant="contained"
+                            startIcon={<AddIcon />}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('🔍 Create Project button clicked - event:', e);
+                                handleCreateProject();
+                            }}
+                            size="large"
+                        >
+                            Create Project
+                        </Button>
+                    )}
+                    
+                    {/* Only show Create Dataset button for account owners */}
+                    {!isTeamMember() && (
+                        <Button
+                            variant="outlined"
+                            startIcon={<DatasetIcon />}
+                            onClick={() => {
+                                setDatasetWizardAssignToProject(null);
+                                setShowCreateDatasetWizard(true);
+                            }}
+                            size="large"
+                            sx={{
+                                borderColor: 'primary.main',
+                                color: 'primary.main',
+                                '&:hover': {
+                                    borderColor: 'primary.dark',
+                                    backgroundColor: 'primary.main',
+                                    color: 'white'
+                                }
+                            }}
+                        >
+                            Create Dataset
+                        </Button>
+                    )}
+                    
+                    {/* Launch buttons for all users */}
                     <Button
                         variant="contained"
                         startIcon={<LaunchIcon />}
@@ -557,7 +853,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                             {analyticsData.totalProjects}
                                         </Typography>
                                         <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                                            Total Projects
+                                            {isTeamMember() ? 'Assigned Projects' : 'Total Projects'}
                                         </Typography>
                                     </Box>
                                     <AssessmentIcon sx={{ fontSize: 40, opacity: 0.8 }} />
@@ -647,10 +943,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <Box>
                                         <Typography variant="h4" fontWeight="bold">
-                                            {analyticsData.collaborativeProjects}
+                                            {isTeamMember() && completeUser
+                                                ? (completeUser.memberRole || 'MEMBER').toUpperCase()
+                                                : analyticsData.collaborativeProjects
+                                            }
                                         </Typography>
                                         <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                                            Collaborative
+                                            {isTeamMember() ? 'Your Role' : 'Collaborative'}
                                         </Typography>
                                     </Box>
                                     <GroupIcon sx={{ fontSize: 40, opacity: 0.8 }} />
@@ -853,6 +1152,24 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
 
             {/* Project List */}
             <Box>
+                {/* Team Member Info Message */}
+                {isTeamMember() && projects.length > 0 && (
+                    <Box sx={{ mb: 3, p: 3, backgroundColor: 'rgba(0, 212, 255, 0.1)', borderRadius: 2, border: '1px solid rgba(0, 212, 255, 0.3)' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <PersonIcon sx={{ color: 'primary.main', fontSize: 24 }} />
+                            <Box>
+                                <Typography variant="h6" color="primary.main" sx={{ fontWeight: 600, mb: 1 }}>
+                                    Team Member Access
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    You have access to {projects.length} project{projects.length !== 1 ? 's' : ''} assigned by your team administrator. 
+                                    Click on any project to view details and launch the application.
+                                </Typography>
+                            </Box>
+                        </Box>
+                    </Box>
+                )}
+                
                 {loading ? (
                     <Box sx={{ textAlign: 'center', py: 4 }}>
                         <Typography>Loading projects...</Typography>
@@ -896,6 +1213,9 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Project</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Mode</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Storage</TableCell>
+                                        {isTeamMember() && (
+                                            <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Your Role</TableCell>
+                                        )}
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Datasets</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Collaboration</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Last Accessed</TableCell>
@@ -946,6 +1266,22 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                     variant="outlined"
                                                 />
                                             </TableCell>
+                                            {isTeamMember() && (
+                                                <TableCell>
+                                                    <Chip
+                                                        size="small"
+                                                        label={project.teamMemberRole || project.role || 'MEMBER'}
+                                                        color="primary"
+                                                        variant="outlined"
+                                                        sx={{
+                                                            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                                            borderColor: 'rgba(0, 212, 255, 0.3)',
+                                                            color: 'primary.main',
+                                                            fontWeight: 600
+                                                        }}
+                                                    />
+                                                </TableCell>
+                                            )}
                                             <TableCell>
                                                 {typeof projectDatasetCounts[project.id] === 'number' ? (
                                                     <Chip
@@ -1055,12 +1391,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             {searchQuery 
                                 ? 'Try adjusting your search terms or browse all projects'
                                 : (tab === 0 
-                                    ? 'Create your first cloud project to get started with Firebase and GCS integration'
+                                    ? isTeamMember()
+                                        ? 'No projects have been assigned to you yet. Contact your team administrator to get access to projects.'
+                                        : 'Create your first cloud project to get started with Firebase and GCS integration'
                                     : 'Archived projects will appear here'
                                 )
                             }
                         </Typography>
-                        {tab === 0 && !searchQuery && (
+                        {tab === 0 && !searchQuery && !isTeamMember() && (
                             <Button
                                 variant="contained"
                                 startIcon={<AddIcon />}
@@ -1069,6 +1407,21 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             >
                                 Create Your First Project
                             </Button>
+                        )}
+                        {tab === 0 && !searchQuery && isTeamMember() && (
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    💡 Team members cannot create projects. Projects must be assigned by your administrator.
+                                </Typography>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<RefreshIcon />}
+                                    onClick={loadProjects}
+                                    size="large"
+                                >
+                                    Refresh Projects
+                                </Button>
+                            </Box>
                         )}
                         {searchQuery && (
                             <Button
@@ -1119,8 +1472,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 mode="shared_network" // Cloud projects are typically network mode
                 onSuccess={handleProjectCreated}
                 maxCollaborators={(() => {
-                    const limit = getCollaborationLimit(user);
-                    console.log('🔍 User collaboration limit:', limit, 'User:', user);
+                    const limit = getCollaborationLimit(completeUser);
+                    console.log('🔍 User collaboration limit:', limit, 'User:', completeUser);
                     return limit;
                 })()}
                 onCreate={async (options) => {
@@ -1349,7 +1702,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 </Typography>
                                             </Box>
                                             <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
-                                                Up to {selectedProject?.maxCollaborators || getCollaborationLimit(user)} users
+                                                Up to {selectedProject?.maxCollaborators || getCollaborationLimit(completeUser)} users
                                             </Typography>
                                         </Box>
                                     </Grid>

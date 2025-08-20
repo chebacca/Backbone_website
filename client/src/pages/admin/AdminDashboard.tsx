@@ -179,6 +179,8 @@ const AdminDashboard: React.FC = () => {
   // Search state variables
   const [usersSearch, setUsersSearch] = useState('');
   const [paymentsSearch, setPaymentsSearch] = useState('');
+  const [licensesSearch, setLicensesSearch] = useState('');
+  const [licensesFilters, setLicensesFilters] = useState<{ tier?: string; status?: string }>({});
 
   // Popover state for per-user licenses view
   const [licensesAnchorEl, setLicensesAnchorEl] = useState<HTMLElement | null>(null);
@@ -206,6 +208,24 @@ const AdminDashboard: React.FC = () => {
       .filter((user) => (usersFilters.status ? user.status === usersFilters.status.toLowerCase() : true))
       .filter((user) => (usersFilters.tier ? (user.subscription || '').toUpperCase() === usersFilters.tier : true));
   }, [users, usersSearch, usersFilters]);
+
+  // Filtered licenses - users with subscriptions
+  const filteredLicenses = useMemo(() => {
+    const searchTerm = licensesSearch.trim().toLowerCase();
+    return users
+      .filter((user) => user.subscription) // Only users with subscriptions
+      .filter((user) => {
+        if (!searchTerm) return true;
+        return (
+          user.firstName.toLowerCase().includes(searchTerm) ||
+          user.lastName.toLowerCase().includes(searchTerm) ||
+          user.email.toLowerCase().includes(searchTerm) ||
+          (user.subscription && user.subscription.toLowerCase().includes(searchTerm))
+        );
+      })
+      .filter((user) => (licensesFilters.tier ? (user.subscription || '').toUpperCase() === licensesFilters.tier : true))
+      .filter((user) => (licensesFilters.status ? user.status === licensesFilters.status : true));
+  }, [users, licensesSearch, licensesFilters]);
 
   const parseDate = (value: any): Date => {
     if (!value) return new Date(NaN);
@@ -247,6 +267,7 @@ const AdminDashboard: React.FC = () => {
   // Clear search functions
   const clearUsersSearch = () => setUsersSearch('');
   const clearPaymentsSearch = () => setPaymentsSearch('');
+  const clearLicensesSearch = () => setLicensesSearch('');
 
   const openUserLicensesPopover = async (event: React.MouseEvent<HTMLElement>, userRow: User) => {
     event.stopPropagation();
@@ -592,10 +613,10 @@ const AdminDashboard: React.FC = () => {
     const hash = (location.hash || '').toLowerCase();
     const map: Record<string, number> = {
       '#users': 0,
-      '#licenses': 0, // backward compatibility
-      '#invoices': 1,
-      '#system': 2,
-      '#system-health': 2,
+      '#licenses': 1,
+      '#invoices': 2,
+      '#system': 3,
+      '#system-health': 3,
     };
     if (hash && map[hash] != null && map[hash] !== activeTab) {
       setActiveTab(map[hash]);
@@ -607,8 +628,9 @@ const AdminDashboard: React.FC = () => {
     setActiveTab(newValue);
     const reverseMap: Record<number, string> = {
       0: 'users',
-      1: 'invoices',
-      2: 'system',
+      1: 'licenses',
+      2: 'invoices',
+      3: 'system',
     };
     const next = reverseMap[newValue] || 'users';
     if ((location.hash || '').toLowerCase() !== `#${next}`) {
@@ -743,7 +765,8 @@ const AdminDashboard: React.FC = () => {
               },
             }}
           >
-            <Tab label="Users/Licenses" />
+            <Tab label="Users" />
+            <Tab label="Licenses" />
             <Tab label="Invoices" />
             <Tab label="System Health" />
           </Tabs>
@@ -918,10 +941,173 @@ const AdminDashboard: React.FC = () => {
           </Box>
         )}
 
+        {/* Licenses Tab */}
+        {activeTab === 1 && (
+          <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
+              {/* Global Search */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <TextField
+                  placeholder="Search licenses by user, tier, status, or subscription..."
+                  value={licensesSearch}
+                  onChange={(e) => setLicensesSearch(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 400 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon />
+                      </InputAdornment>
+                    ),
+                    endAdornment: licensesSearch && (
+                      <InputAdornment position="end">
+                        <IconButton size="small" onClick={clearLicensesSearch}>
+                          <ClearIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                {licensesSearch && (
+                  <Chip 
+                    label={`${filteredLicenses.length} of ${users.filter(u => u.subscription).length} licenses found`}
+                    color="primary"
+                    variant="outlined"
+                  />
+                )}
+                <Button variant="contained" onClick={openAddDialog}>Add License</Button>
+              </Box>
+
+              {/* Advanced Filters */}
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  label="Subscription Tier"
+                  select
+                  size="small"
+                  value={licensesFilters.tier || ''}
+                  onChange={(e) => setLicensesFilters((f) => ({ ...f, tier: e.target.value || undefined }))}
+                  sx={{ minWidth: 160 }}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="BASIC">BASIC</MenuItem>
+                  <MenuItem value="PRO">PRO</MenuItem>
+                  <MenuItem value="ENTERPRISE">ENTERPRISE</MenuItem>
+                </TextField>
+                <TextField
+                  label="Status"
+                  select
+                  size="small"
+                  value={licensesFilters.status || ''}
+                  onChange={(e) => setLicensesFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+                  sx={{ minWidth: 160 }}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="active">ACTIVE</MenuItem>
+                  <MenuItem value="expired">EXPIRED</MenuItem>
+                  <MenuItem value="suspended">SUSPENDED</MenuItem>
+                  <MenuItem value="pending">PENDING</MenuItem>
+                </TextField>
+                <Button variant="outlined">Apply Filters</Button>
+                <Button onClick={() => setLicensesFilters({})}>Clear</Button>
+              </Box>
+            </Box>
+            
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Subscription Tier</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Seats</TableCell>
+                    <TableCell>Activated</TableCell>
+                    <TableCell>Expires</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredLicenses.length > 0 ? (
+                    filteredLicenses.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell>
+                          <Box>
+                            <Typography variant="subtitle2">
+                              {user.firstName} {user.lastName}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {user.email}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={user.subscription}
+                            size="small"
+                            color={getTierColor(user.subscription)}
+                            variant={getTierVariant(user.subscription)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={user.status}
+                            size="small"
+                            color={getStatusColor(user.status)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {/* Placeholder for seats - can be enhanced later */}
+                            -
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {new Date(user.lastLogin).toLocaleDateString()}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {/* Placeholder for expiration - can be enhanced later */}
+                            -
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleUserEdit(user)}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton size="small" onClick={(e) => openUserLicensesPopover(e, user)} title="View user licenses">
+                            <LicenseIcon />
+                          </IconButton>
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); openUserSeatDialog(user); }} title="Manage seats">
+                            <PaymentIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">
+                        <Box sx={{ py: 4 }}>
+                          <Typography variant="body1" color="text.secondary">
+                            {licensesSearch ? 'No licenses found matching your search criteria.' : 'No users with subscriptions found.'}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
         {/* Licenses tab removed; licenses are accessible from Users tab via popover */}
 
         {/* Invoices Tab */}
-        {activeTab === 1 && (
+        {activeTab === 2 && (
           <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
               {/* Global Search */}
@@ -1079,7 +1265,7 @@ const AdminDashboard: React.FC = () => {
         )}
 
         {/* System Health Tab */}
-        {activeTab === 2 && (
+        {activeTab === 3 && (
           <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>

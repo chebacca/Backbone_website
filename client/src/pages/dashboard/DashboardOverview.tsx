@@ -116,13 +116,14 @@ const DashboardOverview: React.FC = () => {
   
   // Helper function to detect if user is a team member
   const isTeamMember = () => {
-    return user?.isTeamMember || 
-           user?.role === 'TEAM_MEMBER' || 
-           user?.organizationId || 
-           user?.memberRole ||
-           // Check if user email suggests they're a team member
-           (user?.email && user.email !== 'enterprise.user@example.com' && 
-            localStorage.getItem('team_member_data'));
+    // FIXED: Only check explicit team member indicators, not organizationId
+    // Enterprise owners who created their own org will have organizationId but are NOT team members
+    return (user?.isTeamMember === true) || 
+           (user?.role === 'TEAM_MEMBER') || 
+           // Check if user has a memberRole but is not an organization owner
+           (user?.memberRole && user?.memberRole !== 'OWNER') ||
+           // Check if user was authenticated via team member login flow
+           localStorage.getItem('team_member_data') !== null;
   };
 
   const [loading, setLoading] = useState<boolean>(true);

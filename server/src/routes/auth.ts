@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { firestoreService } from '../services/firestoreService.js';
+import { UserSynchronizationService } from '../services/UserSynchronizationService.js';
 import { PasswordUtil } from '../utils/password.js';
 import { JwtUtil } from '../utils/jwt.js';
 import { logger } from '../utils/logger.js';
@@ -39,32 +40,26 @@ router.post('/register', [
   const { email, password, name } = req.body;
   const requestInfo = (req as any).requestInfo;
 
-  const existing = await firestoreService.getUserByEmail(email);
-  if (existing) throw createApiError('User with this email already exists', 409);
+  // Use synchronized user creation to ensure Firebase Auth and Firestore consistency
+  const syncResult = await UserSynchronizationService.createSynchronizedUser({
+    email,
+    password,
+    name,
+    role: 'USER'
+  });
 
-  const passCheck = PasswordUtil.validate(password);
-  if (!passCheck.isValid) {
-    throw createApiError('Password does not meet requirements', 400, 'WEAK_PASSWORD', { requirements: passCheck.errors });
+  if (!syncResult.success) {
+    throw createApiError(syncResult.error || 'Failed to create user', 409);
   }
 
-  const hashed = await PasswordUtil.hash(password);
-  const user = await firestoreService.createUser({
-    email,
-    password: hashed,
-    name,
-    role: 'USER',
-    isEmailVerified: false,
-    twoFactorEnabled: false,
-    twoFactorBackupCodes: [],
-    privacyConsent: [],
-    marketingConsent: false,
-    dataProcessingConsent: false,
+  const user = syncResult.user!;
+
+  // Update user with additional registration data
+  await firestoreService.updateUser(user.id, {
     termsAcceptedAt: new Date(),
     termsVersionAccepted: config.legal.termsVersion,
     privacyPolicyAcceptedAt: new Date(),
     privacyPolicyVersionAccepted: config.legal.privacyVersion,
-    identityVerified: false,
-    kycStatus: 'PENDING',
     ipAddress: requestInfo.ip,
     userAgent: requestInfo.userAgent,
     registrationSource: 'website',
@@ -343,16 +338,19 @@ router.post('/login', [
   try {
     const orgMemberships = await firestoreService.getOrgMembershipsByUserId(user.id);
     if (orgMemberships && orgMemberships.length > 0) {
-      // User is a team member, enhance their data
       const primaryMembership = orgMemberships[0]; // Use first membership
-      user.isTeamMember = true;
       user.organizationId = primaryMembership.orgId;
       user.memberRole = primaryMembership.role;
       user.memberStatus = primaryMembership.status;
       
-      // Set role to TEAM_MEMBER if they're not an owner
+      // Only set as team member if they're not an organization owner
+      // Enterprise owners who created their own org should retain their original role
       if (primaryMembership.role !== 'OWNER') {
+        user.isTeamMember = true;
         user.role = 'TEAM_MEMBER';
+      } else {
+        // This is an enterprise owner - preserve their original role and don't mark as team member
+        user.isTeamMember = false;
       }
     }
   } catch (error) {

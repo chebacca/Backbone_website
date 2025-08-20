@@ -20,6 +20,7 @@ import invoicesRouter from './routes/invoices.js';
 import { teamMembersRouter } from './routes/team-members.js';
 import storageRouter from './routes/storage.js';
 import demoRouter from './routes/demo.js';
+import userValidationRouter from './routes/user-validation.js';
 // Dashboard API routes for compatibility
 import { sessionsRouter } from './routes/sessions.js';
 import { callsheetsRouter } from './routes/callsheets.js';
@@ -215,6 +216,7 @@ app.use('/api/datasets', datasetsRouter);
 app.use('/api/team-members', teamMembersRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/demo', demoRouter);
+app.use('/api/validation', userValidationRouter);
 
 // Dashboard API routes for compatibility (return empty data for licensing website)
 app.use('/api/sessions', sessionsRouter);
@@ -425,38 +427,50 @@ app.get('/api/getTeamMemberProjects', async (req, res) => {
     
     console.log('🔍 [getTeamMemberProjects] Decoded token userId:', userId);
     console.log('🔍 [getTeamMemberProjects] Token payload:', decoded);
+    console.log('🔍 [getTeamMemberProjects] UPDATED: Using enhanced team member lookup with database fixes');
 
     // Get team member's project access from Firestore
     console.log('🔍 [getTeamMemberProjects] Calling getTeamMemberProjectAccess for userId:', userId);
     const projectAccess = await firestoreService.getTeamMemberProjectAccess(userId);
     console.log('🔍 [getTeamMemberProjects] Raw project access returned:', projectAccess);
+    console.log('🔍 [getTeamMemberProjects] Number of project assignments found:', projectAccess.length);
     
             // Transform project access data to include full project details
         const projects = [];
+        console.log('🔍 [getTeamMemberProjects] Processing', projectAccess.length, 'project assignments with embedded details');
         for (const access of projectAccess) {
           try {
-            // Get full project details - use authorized method since team member should have access
-            const project = await firestoreService.getProjectByIdAuthorized(access.projectId, userId);
-            if (project && project.isActive && !project.isArchived) {
+            console.log('🔍 [getTeamMemberProjects] Processing assignment:', access.projectId, 'role:', access.role);
+            
+            // 🔧 FIXED: Use the project details already included by getTeamMemberProjectAccess
+            const project = access.project;
+            console.log('🔍 [getTeamMemberProjects] Project details available:', project ? 'YES' : 'NO');
+            
+            if (project && project.isActive !== false && project.isArchived !== true) {
+              console.log('🔍 [getTeamMemberProjects] Adding project to results:', project.name || access.projectName);
               projects.push({
                 projectId: access.projectId,
-                projectName: project.name,
-                description: project.description,
+                projectName: project.name || access.projectName,
+                description: project.description || '',
                 role: access.role,
-                accessLevel: access.accessLevel,
+                accessLevel: access.accessLevel || 'read',
                 assignedAt: access.assignedAt,
                 lastAccessed: access.lastAccessed,
-                isActive: project.isActive,
-                isArchived: project.isArchived,
+                isActive: project.isActive !== false,
+                isArchived: project.isArchived === true,
                 ownerName: project.ownerName || 'Organization Owner',
                 maxCollaborators: project.maxCollaborators || 10,
               });
+            } else {
+              console.log('🔍 [getTeamMemberProjects] Project excluded - isActive:', project?.isActive, 'isArchived:', project?.isArchived);
             }
           } catch (projectError) {
-            logger.warn(`Error fetching project ${access.projectId} for team member ${userId}:`, projectError);
+            console.error('🔍 [getTeamMemberProjects] Error processing project', access.projectId, ':', projectError);
             // Continue with other projects
           }
         }
+        
+        console.log('🔍 [getTeamMemberProjects] Final projects array length:', projects.length);
 
     res.json({ 
       success: true, 

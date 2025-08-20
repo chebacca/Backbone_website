@@ -8,6 +8,7 @@
  */
 
 import { firestoreService } from './firestoreService.js';
+import { UserSynchronizationService } from './UserSynchronizationService.js';
 import { PasswordUtil } from '../utils/password.js';
 import { EmailService } from './emailService.js';
 import { logger } from '../utils/logger.js';
@@ -51,154 +52,95 @@ export class TeamMemberAutoRegistrationService {
         createdBy: request.createdBy 
       });
 
-      // Check if team member already exists
-      const existingTeamMember = await firestoreService.getTeamMemberByEmail(request.email);
-      if (existingTeamMember) {
+      // Generate temporary password if not provided
+      const temporaryPassword = request.temporaryPassword || this.generateTemporaryPassword();
+
+      // Use synchronized user creation to ensure Firebase Auth and Firestore consistency
+      const syncResult = await UserSynchronizationService.createSynchronizedUser({
+        email: request.email,
+        password: temporaryPassword,
+        name: `${request.firstName} ${request.lastName}`.trim(),
+        firstName: request.firstName,
+        lastName: request.lastName,
+        role: 'TEAM_MEMBER',
+        organizationId: request.organizationId,
+        department: request.department,
+        licenseType: request.licenseType || 'PROFESSIONAL',
+        isTeamMember: true,
+        memberRole: 'MEMBER'
+      });
+
+      if (!syncResult.success) {
         return {
           success: false,
-          error: 'Team member with this email already exists'
+          error: syncResult.error || 'Failed to create synchronized team member account'
         };
       }
 
-      // Check if Firebase Auth user already exists
-      try {
-        const existingFirebaseUser = await getAuth().getUserByEmail(request.email);
-        if (existingFirebaseUser) {
-          logger.warn('Firebase Auth user already exists for this email', { 
-            email: request.email,
-            firebaseUid: existingFirebaseUser.uid 
-          });
-          // Continue with existing Firebase user
-          firebaseUserRecord = existingFirebaseUser;
-        }
-      } catch (error: any) {
-        if (error.code !== 'auth/user-not-found') {
-          throw error;
-        }
-        // User doesn't exist, which is what we want
-      }
-
-      // Generate temporary password if not provided
-      const temporaryPassword = request.temporaryPassword || this.generateTemporaryPassword();
-      const hashedPassword = await PasswordUtil.hash(temporaryPassword);
-
-      // Create team member data matching FirestoreUser interface
-      const teamMemberData: any = {
-        email: request.email,
-        name: `${request.firstName} ${request.lastName}`.trim(),
-        password: hashedPassword,
-        role: 'TEAM_MEMBER' as const,
-        isEmailVerified: false,
-        twoFactorEnabled: false,
-        twoFactorBackupCodes: [],
-        privacyConsent: [],
-        marketingConsent: false,
-        dataProcessingConsent: false,
-        identityVerified: false,
-        kycStatus: 'PENDING' as const,
-        organizationId: request.organizationId,
-        isTeamMember: true,
-        licenseType: request.licenseType || 'PROFESSIONAL',
-        status: 'ACTIVE',
-        memberRole: 'MEMBER',
-        memberStatus: 'ACTIVE',
-        firstName: request.firstName,
-        lastName: request.lastName,
-        ...(request.department && { department: request.department }), // Only include if not undefined
-        // firebaseUid will be set after Firebase user creation
-      };
-
-      // Create Firebase Auth user if it doesn't exist
-      if (!firebaseUserRecord) {
-        try {
-          firebaseUserRecord = await getAuth().createUser({
-            email: request.email,
-            password: temporaryPassword,
-            displayName: teamMemberData.name,
-            emailVerified: false, // Keep false for security - admin can verify later
-            disabled: false,
-          });
-          
-          logger.info('Firebase Auth user created successfully', { 
-            firebaseUid: firebaseUserRecord.uid,
-            email: request.email 
-          });
-        } catch (firebaseError: any) {
-          logger.error('Failed to create Firebase Auth user', { 
-            email: request.email,
-            error: firebaseError.message,
-            code: firebaseError.code 
-          });
-          
-          // If Firebase Auth creation fails, we should fail the entire operation
-          // as the team member needs to be verifiable by admins
-          throw new Error(`Firebase Authentication user creation failed: ${firebaseError.message}`);
-        }
-      }
-
-      // Add Firebase UID to team member data
-      teamMemberData.firebaseUid = firebaseUserRecord.uid;
-
-      // Create team member in Firestore (users collection)
-      teamMemberRef = await firestoreService.createUser(teamMemberData);
+      const teamMember = syncResult.user!;
+      firebaseUserRecord = { uid: syncResult.firebaseUid };
+      teamMemberRef = teamMember;
       
       // 🔧 CRITICAL FIX: Also create team member record in team_members collection for Dashboard app compatibility
       const teamMemberCollectionData = {
         email: request.email,
         firstName: request.firstName,
         lastName: request.lastName,
-        name: teamMemberData.name,
+        name: `${request.firstName} ${request.lastName}`,
         licenseType: request.licenseType || 'PROFESSIONAL',
         status: 'ACTIVE',
         organizationId: request.organizationId,
         department: request.department,
         firebaseUid: firebaseUserRecord.uid,
-        hashedPassword: hashedPassword,
         createdAt: new Date(),
         updatedAt: new Date()
       };
       
-      // Create record in team_members collection
-      const teamMemberCollectionRef = admin.firestore().collection('team_members').doc();
-      await teamMemberCollectionRef.set(teamMemberCollectionData);
-      
-      logger.info('Team member created in team_members collection', { 
-        teamMemberId: teamMemberCollectionRef.id,
-        email: request.email 
-      });
-      
-      // Also create organization member record so they show up in team management
-      const licenseType: 'BASIC' | 'PROFESSIONAL' | 'ENTERPRISE' | 'NONE' = 
-        (request.licenseType === 'BASIC' || request.licenseType === 'ENTERPRISE' || request.licenseType === 'PROFESSIONAL' || request.licenseType === 'NONE') 
+      // STREAMLINED: Update the user record with team member data instead of creating separate collections
+      const licenseType: 'BASIC' | 'PROFESSIONAL' | 'ENTERPRISE' = 
+        (request.licenseType === 'BASIC' || request.licenseType === 'ENTERPRISE' || request.licenseType === 'PROFESSIONAL') 
           ? request.licenseType 
           : 'PROFESSIONAL';
-        
-      const orgMemberData = {
-        orgId: request.organizationId,
-        email: request.email,
-        userId: teamMemberRef.id,
-        name: teamMemberData.name,
-        firstName: request.firstName,
-        lastName: request.lastName,
-        role: 'MEMBER' as const,
-        status: 'ACTIVE' as const,
-        seatReserved: true,
-        licenseType: licenseType,
-        ...(request.department && { department: request.department }), // Only include if not undefined
-        invitedByUserId: request.createdBy,
-        joinedAt: new Date(),
+      
+      const teamMemberUpdate = {
+        role: 'TEAM_MEMBER',
+        organizationId: request.organizationId,
+        teamMemberData: {
+          licenseType: licenseType,
+          department: request.department || null,
+          status: 'ACTIVE',
+          createdBy: request.createdBy,
+          joinedAt: new Date()
+        },
+        updatedAt: new Date()
       };
       
-      // Create the organization member record
-      await firestoreService.createOrgMember(orgMemberData);
+      // Update the user record with team member data
+      await teamMemberRef.update(teamMemberUpdate);
       
-      const teamMember = {
+      logger.info('User updated with team member data', { 
+        userId: teamMemberRef.id,
+        email: request.email,
+        organizationId: request.organizationId
+      });
+      
+      const finalTeamMember = {
         id: teamMemberRef.id,
-        ...teamMemberData,
+        email: request.email,
+        firstName: request.firstName,
+        lastName: request.lastName,
+        name: `${request.firstName} ${request.lastName}`,
+        licenseType: licenseType,
+        status: 'ACTIVE',
+        organizationId: request.organizationId,
+        department: request.department,
+        firebaseUid: firebaseUserRecord.uid,
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
       
       logger.info('Team member account created successfully', { 
-        teamMemberId: teamMember.id,
+        teamMemberId: finalTeamMember.id,
         firebaseUid: firebaseUserRecord.uid,
         email: request.email,
         organizationId: request.organizationId 
@@ -207,14 +149,14 @@ export class TeamMemberAutoRegistrationService {
       // Send welcome email if requested
       if (request.sendWelcomeEmail !== false) {
         try {
-          await this.sendWelcomeEmail(teamMember, temporaryPassword, request.createdBy);
+          await this.sendWelcomeEmail(finalTeamMember, temporaryPassword, request.createdBy);
           logger.info('Welcome email sent to new team member', { 
-            teamMemberId: teamMember.id,
+            teamMemberId: finalTeamMember.id,
             email: request.email 
           });
         } catch (emailError) {
           logger.warn('Failed to send welcome email to team member', { 
-            teamMemberId: teamMember.id,
+            teamMemberId: finalTeamMember.id,
             email: request.email,
             error: (emailError as any)?.message 
           });
@@ -224,7 +166,7 @@ export class TeamMemberAutoRegistrationService {
 
       return {
         success: true,
-        teamMember: teamMember,
+        teamMember: finalTeamMember,
         temporaryPassword: temporaryPassword,
         firebaseUid: firebaseUserRecord.uid,
       };

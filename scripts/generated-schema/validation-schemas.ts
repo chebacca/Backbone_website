@@ -1238,6 +1238,8 @@ export const ProjectFirestoreSchema = z.object({
   lastSyncedAt: z.date().optional(),
   maxCollaborators: z.number(),
   metadata: z.object({}).passthrough().optional(),
+  ownerId: z.string(),
+  organizationId: z.string().optional(),
 });
 
 export type ProjectFirestore = z.infer<typeof ProjectFirestoreSchema>;

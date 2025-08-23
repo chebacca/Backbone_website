@@ -84,6 +84,7 @@ import {
 } from '@mui/icons-material';
 
 import { cloudProjectIntegration } from '../services/CloudProjectIntegration';
+import { simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
 import UnifiedProjectCreationDialog from './UnifiedProjectCreationDialog';
 import DatasetCreationWizard from './DatasetCreationWizard';
 import { ErrorBoundary } from './common/ErrorBoundary';
@@ -154,6 +155,36 @@ const getCollaborationLimit = (user: any): number => {
     return 10;
 };
 
+// Function to map service CloudProject to component CloudProject
+const mapServiceProjectToComponentProject = (serviceProject: any): CloudProject => {
+    return {
+        id: serviceProject.id,
+        name: serviceProject.name,
+        description: serviceProject.description,
+        applicationMode: serviceProject.settings?.applicationMode || 'standalone',
+        storageBackend: serviceProject.settings?.storageBackend || 'firestore',
+        gcsBucket: serviceProject.settings?.gcsBucket,
+        gcsPrefix: serviceProject.settings?.gcsPrefix,
+        s3Bucket: serviceProject.settings?.s3Bucket,
+        s3Region: serviceProject.settings?.s3Region,
+        s3Prefix: serviceProject.settings?.s3Prefix,
+        azureStorageAccount: serviceProject.settings?.azureStorageAccount,
+        azureContainer: serviceProject.settings?.azureContainer,
+        azurePrefix: serviceProject.settings?.azurePrefix,
+        lastAccessedAt: serviceProject.lastAccessedAt || new Date().toISOString(),
+        isActive: serviceProject.status === 'active',
+        isArchived: serviceProject.status === 'archived',
+        allowCollaboration: serviceProject.settings?.allowCollaboration || false,
+        maxCollaborators: serviceProject.settings?.maxCollaborators || 10,
+        realTimeEnabled: serviceProject.settings?.realTimeEnabled || false,
+        settings: serviceProject.settings,
+        teamMemberRole: serviceProject.teamMembers?.[0]?.role,
+        role: serviceProject.teamMembers?.[0]?.role,
+        assignedAt: serviceProject.teamMembers?.[0]?.assignedAt,
+        projectOwner: serviceProject.ownerId
+    };
+};
+
 export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridgeProps> = () => {
     const { user } = useAuth();
     const { setLoading } = useLoading();
@@ -193,15 +224,99 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     const isTeamMember = useCallback(() => {
         if (!completeUser) return false;
         
-        // FIXED: Only check explicit team member indicators, not organizationId
-        // Enterprise owners who created their own org will have organizationId but are NOT team members
-        return (completeUser.isTeamMember === true) || 
-               (completeUser.role === 'TEAM_MEMBER') || 
-               // Check if user has a memberRole but is not an organization owner
-               (completeUser.memberRole && completeUser.memberRole !== 'OWNER') ||
-               // Check if user was authenticated via team member login flow
-               localStorage.getItem('team_member_data') !== null;
+        // 🔧 CRITICAL FIX: Enterprise users with ENTERPRISE_ADMIN role are NOT team members
+        // They are account owners who can create projects
+        if (completeUser.memberRole === 'ENTERPRISE_ADMIN' || completeUser.role === 'ENTERPRISE_ADMIN') {
+            console.log('🔍 [DashboardCloudProjectsBridge] User is ENTERPRISE_ADMIN - NOT a team member');
+            return false;
+        }
+        
+        // Check explicit team member indicators
+        const isExplicitTeamMember = (completeUser.isTeamMember === true) || 
+                                   (completeUser.role === 'TEAM_MEMBER') ||
+                                   (completeUser.memberRole && completeUser.memberRole !== 'OWNER');
+        
+        // Only check localStorage if we don't have explicit indicators
+        if (!isExplicitTeamMember) {
+            const teamMemberData = localStorage.getItem('team_member_data');
+            if (teamMemberData) {
+                try {
+                    const parsed = JSON.parse(teamMemberData);
+                    // If the data shows ENTERPRISE_ADMIN, they're not a team member
+                    if (parsed.role === 'ENTERPRISE_ADMIN' || parsed.memberRole === 'ENTERPRISE_ADMIN') {
+                        console.log('🔍 [DashboardCloudProjectsBridge] localStorage shows ENTERPRISE_ADMIN - NOT a team member');
+                        return false;
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse team member data:', e);
+                }
+            }
+        }
+        
+        console.log('🔍 [DashboardCloudProjectsBridge] User is team member:', isExplicitTeamMember);
+        return isExplicitTeamMember;
     }, [completeUser]);
+
+    // Helper function to check if user can create projects
+    const canCreateProjects = useCallback(() => {
+        if (!completeUser) {
+            console.log('🔍 [DashboardCloudProjectsBridge] No complete user data available');
+            return false;
+        }
+        
+        console.log('🔍 [DashboardCloudProjectsBridge] Checking permissions for user:', {
+            id: completeUser.id,
+            email: completeUser.email,
+            role: completeUser.role,
+            memberRole: completeUser.memberRole,
+            isTeamMember: completeUser.isTeamMember,
+            organizationId: completeUser.organizationId
+        });
+        
+        // 🔧 CRITICAL FIX: ENTERPRISE_ADMIN users can always create projects
+        if (completeUser.memberRole === 'ENTERPRISE_ADMIN' || completeUser.role === 'ENTERPRISE_ADMIN') {
+            console.log('🔍 [DashboardCloudProjectsBridge] User is ENTERPRISE_ADMIN, can create projects');
+            return true;
+        }
+        
+        // All account owners (Basic, Pro, Enterprise) can create projects
+        // This includes users who are NOT team members (i.e., they own their account/organization)
+        if (!isTeamMember()) {
+            console.log('🔍 [DashboardCloudProjectsBridge] User is account owner, can create projects');
+            return true;
+        }
+        
+        // Team members with ADMIN role can create projects
+        if (completeUser.memberRole === 'ADMIN' || completeUser.role === 'ADMIN') {
+            console.log('🔍 [DashboardCloudProjectsBridge] Team member has ADMIN role, can create projects');
+            return true;
+        }
+        
+        // Check if team member has admin permissions from team member data
+        const teamMemberData = localStorage.getItem('team_member_data');
+        if (teamMemberData) {
+            try {
+                const parsed = JSON.parse(teamMemberData);
+                console.log('🔍 [DashboardCloudProjectsBridge] Team member data from localStorage:', parsed);
+                if (parsed.role === 'ADMIN' || parsed.memberRole === 'ADMIN') {
+                    console.log('🔍 [DashboardCloudProjectsBridge] Team member data shows ADMIN role, can create projects');
+                    return true;
+                }
+            } catch (e) {
+                console.warn('Failed to parse team member data for permissions check:', e);
+            }
+        }
+        
+        // Check if user has organization ownership (even if marked as team member)
+        // This handles edge cases where enterprise users might be incorrectly flagged as team members
+        if (completeUser.memberRole === 'OWNER' || completeUser.role === 'OWNER') {
+            console.log('🔍 [DashboardCloudProjectsBridge] User has OWNER role, can create projects');
+            return true;
+        }
+        
+        console.log('🔍 [DashboardCloudProjectsBridge] User cannot create projects - regular team member');
+        return false;
+    }, [completeUser, isTeamMember]);
     const [projects, setProjects] = useState<CloudProject[]>([]);
     const [loading, setLocalLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -242,32 +357,49 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const loadDatasetsForProject = useCallback(async (project: CloudProject) => {
     try {
       setDatasetsLoading(true);
+      console.log('🔍 [DashboardCloudProjectsBridge] Loading datasets for project:', project.id);
+      
+      // Load assigned datasets for this project
       const items = await cloudProjectIntegration.getProjectDatasets(project.id);
+      console.log('✅ [DashboardCloudProjectsBridge] Loaded assigned datasets:', items);
       setProjectDatasets(items);
       setProjectDatasetCounts(prev => ({ ...prev, [project.id]: items.length }));
-      // Default backend filter to the project's backend if 'all'
-      const backend = datasetBackendFilter === 'all' ? (project.storageBackend as 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local') : datasetBackendFilter;
-      if (datasetBackendFilter === 'all') setDatasetBackendFilter(backend);
-      const all = await cloudProjectIntegration.listDatasets({
-        backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
-        query: datasetSearch || undefined,
-      });
-      const labeled = all.map((ds: any) => {
-        const getBackendLabel = (backend: string) => {
-          switch (backend) {
-            case 'gcs': return '(GCS)';
-            case 'firestore':
-            default: return '(Firestore)';
-          }
-        };
-        return {
-          ...ds,
-          __label: `${ds.name} ${getBackendLabel(ds.storage?.backend)}`,
-        };
-      });
-      setAvailableDatasets(labeled);
+      
+      // Load available datasets for assignment
+      try {
+        const all = await cloudProjectIntegration.listDatasets({
+          backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
+          query: datasetSearch || undefined,
+        });
+        console.log('✅ [DashboardCloudProjectsBridge] Loaded available datasets:', all);
+        
+        const labeled = all.map((ds: any) => {
+          const getBackendLabel = (backend: string) => {
+            switch (backend) {
+              case 'gcs': return '(GCS)';
+              case 's3': return '(S3)';
+              case 'aws': return '(AWS)';
+              case 'azure': return '(Azure)';
+              case 'firestore':
+              default: return '(Firestore)';
+            }
+          };
+          return {
+            ...ds,
+            __label: `${ds.name} ${getBackendLabel(ds.storage?.backend)}`,
+          };
+        });
+        setAvailableDatasets(labeled);
+      } catch (datasetError) {
+        console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to load available datasets, using empty list:', datasetError);
+        setAvailableDatasets([]);
+      }
+      
     } catch (e) {
-      console.error('Failed to load datasets for project', e);
+      console.error('❌ [DashboardCloudProjectsBridge] Failed to load datasets for project:', e);
+      // Set empty arrays on error to prevent UI crashes
+      setProjectDatasets([]);
+      setAvailableDatasets([]);
     } finally {
       setDatasetsLoading(false);
     }
@@ -277,19 +409,32 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const loadTeamMembersForProject = useCallback(async (project: CloudProject) => {
     try {
       setTeamMembersLoading(true);
+      console.log('🔍 [DashboardCloudProjectsBridge] Loading team members for project:', project.id);
       
       // Load assigned team members for this project
-      const assignedMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
-      setProjectTeamMembers(assignedMembers);
+      try {
+        const assignedMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
+        console.log('✅ [DashboardCloudProjectsBridge] Loaded assigned team members:', assignedMembers);
+        setProjectTeamMembers(assignedMembers);
+      } catch (assignedError) {
+        console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to load assigned team members, using empty list:', assignedError);
+        setProjectTeamMembers([]);
+      }
       
       // Load all available licensed team members from owner's organization
-      const allLicensedMembers = await cloudProjectIntegration.getLicensedTeamMembers({
-        search: teamMemberSearch || undefined,
-        excludeProjectId: project.id // Exclude already assigned members
-      });
-      setAvailableTeamMembers(allLicensedMembers);
+      try {
+        const allLicensedMembers = await cloudProjectIntegration.getLicensedTeamMembers({
+          search: teamMemberSearch || undefined,
+          excludeProjectId: project.id // Exclude already assigned members
+        });
+        console.log('✅ [DashboardCloudProjectsBridge] Loaded available team members:', allLicensedMembers);
+        setAvailableTeamMembers(allLicensedMembers);
+      } catch (licensedError) {
+        console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to load licensed team members, using empty list:', licensedError);
+        setAvailableTeamMembers([]);
+      }
     } catch (e) {
-      console.error('Failed to load team members for project:', e);
+      console.error('❌ [DashboardCloudProjectsBridge] Failed to load team members for project:', e);
       // Set empty arrays on error to prevent UI crashes
       setProjectTeamMembers([]);
       setAvailableTeamMembers([]);
@@ -301,12 +446,11 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   // Auto-fetch datasets and team members when opening project details or when filters change
   useEffect(() => {
     if (selectedProject) {
+      console.log('🔄 [DashboardCloudProjectsBridge] Project selected, loading data...');
       void loadDatasetsForProject(selectedProject);
       void loadTeamMembersForProject(selectedProject);
-      // Note: Dataset creation is now handled by the comprehensive wizard
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProject]);
+  }, [selectedProject, loadDatasetsForProject, loadTeamMembersForProject]);
 
     useEffect(() => {
         loadProjects();
@@ -354,6 +498,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     useEffect(() => {
         if (selectedProject && showAddTeamMemberDialog) {
             const timeoutId = setTimeout(() => {
+                console.log('🔄 [DashboardCloudProjectsBridge] Team member search changed, refreshing...');
                 void loadTeamMembersForProject(selectedProject);
             }, 300); // Debounce search by 300ms
             
@@ -370,13 +515,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 // For team members, fetch their assigned projects
                 try {
                     
-                    // 🔧 CRITICAL FIX: In webonly mode, use Firestore directly instead of HTTP API calls
-                    const windowWebOnly = (window as any).WEBONLY_MODE;
-                    const localStorageWebOnly = localStorage.getItem('WEB_ONLY');
-                    const isFirebaseHosting = window.location.hostname.includes('web.app') || 
-                                             window.location.hostname.includes('firebaseapp.com') ||
-                                             window.location.hostname.includes('backbone-logic');
-                    const isWebOnlyMode = windowWebOnly === true || localStorageWebOnly === 'true' || isFirebaseHosting;
+                    // Licensing website is ALWAYS in web-only mode
+                    const isWebOnlyMode = true;
                     
                     // 🔧 FIXED: In webonly mode, still use HTTP API calls to Firebase Functions
                     // The Firebase Functions handle authentication properly with JWT tokens
@@ -507,7 +647,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 }
             } else {
                 // For regular users (account owners), fetch all their projects
-                const cloudProjects = await cloudProjectIntegration.getUserProjects();
+                const serviceProjects = await cloudProjectIntegration.getProjects();
+                const cloudProjects = serviceProjects.map(mapServiceProjectToComponentProject);
                 setProjects(cloudProjects);
             }
 
@@ -643,8 +784,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     </Typography>
                     <Typography variant="body1" color="text.secondary">
                         {isTeamMember() 
-                            ? 'Access and collaborate on projects assigned to you by your team administrator'
-                            : 'Manage your projects with Firebase and Google Cloud Storage integration'
+                            ? (canCreateProjects() 
+                                ? 'Manage and collaborate on projects. As an admin, you can create new projects and access assigned ones.'
+                                : 'Access and collaborate on projects assigned to you by your team administrator')
+                            : 'Manage your projects with Firebase and Google Cloud Storage integration. Available for all license tiers: Basic, Pro, and Enterprise.'
                         }
                     </Typography>
                     
@@ -680,8 +823,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 </Box>
                 
                 <Box sx={{ display: 'flex', gap: 2 }}>
-                    {/* Only show Create Project button for account owners */}
-                    {!isTeamMember() && (
+                    {/* Show Create Project button for account owners and admin team members */}
+                    {canCreateProjects() && (
                         <Button
                             variant="contained"
                             startIcon={<AddIcon />}
@@ -696,8 +839,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         </Button>
                     )}
                     
-                    {/* Only show Create Dataset button for account owners */}
-                    {!isTeamMember() && (
+                    {/* Show Create Dataset button for account owners and admin team members */}
+                    {canCreateProjects() && (
                         <Button
                             variant="outlined"
                             startIcon={<DatasetIcon />}
@@ -1349,7 +1492,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 )
                             }
                         </Typography>
-                        {tab === 0 && !searchQuery && !isTeamMember() && (
+                        {tab === 0 && !searchQuery && canCreateProjects() && (
                             <Button
                                 variant="contained"
                                 startIcon={<AddIcon />}
@@ -1359,21 +1502,32 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 Create Your First Project
                             </Button>
                         )}
-                        {tab === 0 && !searchQuery && isTeamMember() && (
+                        {tab === 0 && !searchQuery && isTeamMember() && !canCreateProjects() && (
                             <Box sx={{ mt: 2 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                    💡 Team members cannot create projects. Projects must be assigned by your administrator.
+                                    💡 Team members without admin privileges cannot create projects. Projects must be assigned by your administrator.
                                 </Typography>
                                 <Button
                                     variant="outlined"
                                     startIcon={<RefreshIcon />}
                                     onClick={loadProjects}
                                     size="large"
+                                    sx={{ mt: 1 }}
                                 >
                                     Refresh Projects
                                 </Button>
                             </Box>
                         )}
+                        
+                        {/* Special message for ENTERPRISE_ADMIN users */}
+                        {tab === 0 && !searchQuery && !isTeamMember() && (completeUser?.memberRole === 'ENTERPRISE_ADMIN' || completeUser?.role === 'ENTERPRISE_ADMIN') && (
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    🎯 As an Enterprise Admin, you can create new projects and manage your organization's project portfolio.
+                                </Typography>
+                            </Box>
+                        )}
+                        
                         {searchQuery && (
                             <Button
                                 variant="outlined"
@@ -1417,15 +1571,9 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 onSuccess={handleProjectCreated}
                 maxCollaborators={getCollaborationLimit(completeUser)}
                 onCreate={async (options) => {
-                    // Use the cloud integration directly to ensure correct API path and auth
-                    // Ensure auth token is set from localStorage if available
-                    try {
-                        const token = localStorage.getItem('auth_token');
-                        if (token) {
-                            (window as any).cloudProjectIntegration?.setAuthToken?.(token);
-                        }
-                    } catch {}
-                    const id = await cloudProjectIntegration.createCloudProject(options);
+                    // Use the simplified startup sequencer for project creation
+                    // This ensures compatibility with the UnifiedProjectCreationDialog
+                    const id = await simplifiedStartupSequencer.createProject(options);
                     return id;
                 }}
             />
@@ -1681,6 +1829,22 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         <Button
                           variant="outlined"
                                             startIcon={<RefreshIcon />}
+                                            onClick={async () => {
+                                              if (!selectedProject) return;
+                                              console.log('🔄 [DashboardCloudProjectsBridge] Refreshing datasets for project:', selectedProject.id);
+                                              try {
+                                                setDatasetsLoading(true);
+                                                // Refresh both assigned and available datasets
+                                                await loadDatasetsForProject(selectedProject);
+                                                console.log('✅ [DashboardCloudProjectsBridge] Datasets refreshed successfully');
+                                              } catch (e) {
+                                                console.error('❌ [DashboardCloudProjectsBridge] Failed to refresh datasets:', e);
+                                                setError('Failed to refresh datasets');
+                                              } finally {
+                                                setDatasetsLoading(false);
+                                              }
+                                            }}
+                                            disabled={datasetsLoading}
                                             sx={{
                                                 borderColor: 'rgba(79, 70, 229, 0.5)',
                                                 color: '#4f46e5',
@@ -1692,10 +1856,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 '&:hover': {
                                                     borderColor: '#4f46e5',
                                                     backgroundColor: 'rgba(79, 70, 229, 0.1)'
+                                                },
+                                                '&:disabled': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                                                    color: 'rgba(255, 255, 255, 0.3)'
                                                 }
                                             }}
                                         >
-                                            Refresh
+                                            {datasetsLoading ? 'Refreshing...' : 'Refresh'}
                         </Button>
 
                                     </Box>
@@ -1793,56 +1961,28 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                           <Button
                             variant="contained"
                                                     size="small"
-                            disabled={!selectedDatasetId}
+                            disabled={!selectedDatasetId || datasetsLoading}
                             onClick={async () => {
                               if (!selectedProject || !selectedDatasetId) return;
+                              console.log('🔗 [DashboardCloudProjectsBridge] Assigning dataset to project:', { projectId: selectedProject.id, datasetId: selectedDatasetId });
                               try {
+                                setDatasetsLoading(true);
+                                
+                                // Assign the dataset to the project
                                 await cloudProjectIntegration.assignDatasetToProject(selectedProject.id, selectedDatasetId);
+                                console.log('✅ [DashboardCloudProjectsBridge] Dataset assigned successfully');
                                 
                                 // Refresh the project datasets list
                                 const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
                                 setProjectDatasets(items);
                                 setProjectDatasetCounts(prev => ({ ...prev, [selectedProject.id]: items.length }));
                                 
-                                // Clear the selection
-                                setSelectedDatasetId('');
-                              } catch (e) {
-                                console.error('Failed to assign dataset:', e);
-                                setError('Failed to assign dataset to project');
-                              }
-                            }}
-                                                    sx={{
-                                                        background: 'linear-gradient(135deg, #10b981, #059669)',
-                                                        color: 'white',
-                                                        borderRadius: 2,
-                                                        textTransform: 'none',
-                                                        fontWeight: 600,
-                                                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                                                        '&:hover': {
-                                                            background: 'linear-gradient(135deg, #059669, #047857)',
-                                                            boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)'
-                                                        },
-                                                        '&:disabled': {
-                                                            background: 'rgba(255, 255, 255, 0.1)',
-                                                            color: 'rgba(255, 255, 255, 0.3)'
-                                                        }
-                                                    }}
-                                                >
-                                                    Assign
-                                                </Button>
-                          <Button
-                            variant="outlined"
-                                                    size="small"
-                            onClick={async () => {
-                              if (!selectedProject) return;
-                              try {
-                                setDatasetsLoading(true);
-                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
-                                setProjectDatasets(items);
+                                // Refresh available datasets to remove the assigned one
                                 const all = await cloudProjectIntegration.listDatasets({
                                   backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
                                   query: datasetSearch || undefined,
                                 });
+                                
                                 const labeled = all.map((ds: any) => {
                                   const getBackendLabel = (backend: string) => {
                                     switch (backend) {
@@ -1860,12 +2000,86 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                   };
                                 });
                                 setAvailableDatasets(labeled);
+                                
+                                // Clear the selection
+                                setSelectedDatasetId('');
+                                
+                                console.log('✅ [DashboardCloudProjectsBridge] Dataset assignment completed and lists refreshed');
                               } catch (e) {
-                                console.error('Failed to load datasets', e);
+                                console.error('❌ [DashboardCloudProjectsBridge] Failed to assign dataset:', e);
+                                setError('Failed to assign dataset to project');
                               } finally {
                                 setDatasetsLoading(false);
                               }
                             }}
+                                                    sx={{
+                                                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                                                        color: 'white',
+                                                        borderRadius: 2,
+                                                        textTransform: 'none',
+                                                        fontWeight: 600,
+                                                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                                                        '&:hover': {
+                                                            background: 'linear-gradient(135deg, #059669, #047857)',
+                                                            boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)'
+                                                        },
+                                                        '&:disabled': {
+                                                            background: 'rgba(255, 255, 255, 0.1)',
+                                                            color: 'rgba(255, 255, 255, 0.3)',
+                                                            boxShadow: 'none'
+                                                        }
+                                                    }}
+                                                >
+                                                    {datasetsLoading ? 'Assigning...' : 'Assign'}
+                                                </Button>
+                          <Button
+                            variant="outlined"
+                                                    size="small"
+                            onClick={async () => {
+                              if (!selectedProject) return;
+                              console.log('🔍 [DashboardCloudProjectsBridge] Applying dataset filters:', { backend: datasetBackendFilter, search: datasetSearch });
+                              try {
+                                setDatasetsLoading(true);
+                                
+                                // Load available datasets with current filters
+                                const all = await cloudProjectIntegration.listDatasets({
+                                  backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
+                                  query: datasetSearch || undefined,
+                                });
+                                console.log('✅ [DashboardCloudProjectsBridge] Filtered datasets loaded:', all);
+                                
+                                const labeled = all.map((ds: any) => {
+                                  const getBackendLabel = (backend: string) => {
+                                    switch (backend) {
+                                      case 'gcs': return '(GCS)';
+                                      case 's3': return '(S3)';
+                                      case 'aws': return '(AWS)';
+                                      case 'azure': return '(Azure)';
+                                      case 'firestore':
+                                      default: return '(Firestore)';
+                                    }
+                                  };
+                                  return {
+                                    ...ds,
+                                    __label: `${ds.name} ${getBackendLabel(ds.storage?.backend)}`,
+                                  };
+                                });
+                                setAvailableDatasets(labeled);
+                                
+                                // Also refresh assigned datasets to get updated counts
+                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
+                                setProjectDatasets(items);
+                                setProjectDatasetCounts(prev => ({ ...prev, [selectedProject.id]: items.length }));
+                                
+                                console.log('✅ [DashboardCloudProjectsBridge] Filters applied successfully');
+                              } catch (e) {
+                                console.error('❌ [DashboardCloudProjectsBridge] Failed to apply filters:', e);
+                                setError('Failed to apply dataset filters');
+                              } finally {
+                                setDatasetsLoading(false);
+                              }
+                            }}
+                            disabled={datasetsLoading}
                                                     sx={{
                                                         borderColor: 'rgba(79, 70, 229, 0.5)',
                                                         color: '#4f46e5',
@@ -1875,10 +2089,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                         '&:hover': {
                                                             borderColor: '#4f46e5',
                                                             backgroundColor: 'rgba(79, 70, 229, 0.1)'
+                                                        },
+                                                        '&:disabled': {
+                                                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                                                            color: 'rgba(255, 255, 255, 0.3)'
                                                         }
                                                     }}
                                                 >
-                                                    Apply Filters
+                                                    {datasetsLoading ? 'Applying...' : 'Apply Filters'}
                                                 </Button>
                         </Box>
                                         </Grid>
@@ -1965,11 +2183,42 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                             startIcon={<DeleteIcon />}
                                                             onClick={async () => {
                                   try {
+                                    console.log('🗑️ [DashboardCloudProjectsBridge] Removing dataset from project:', { projectId: selectedProject!.id, datasetId: ds.id });
                                     await cloudProjectIntegration.unassignDatasetFromProject(selectedProject!.id, ds.id);
+                                    console.log('✅ [DashboardCloudProjectsBridge] Dataset removed successfully');
+                                    
+                                    // Update local state immediately for better UX
                                     setProjectDatasets(prev => prev.filter(x => x.id !== ds.id));
-                                       setProjectDatasetCounts(prev => ({ ...prev, [selectedProject!.id]: Math.max(0, (prev[selectedProject!.id] || 1) - 1) }));
+                                    setProjectDatasetCounts(prev => ({ ...prev, [selectedProject!.id]: Math.max(0, (prev[selectedProject!.id] || 1) - 1) }));
+                                    
+                                    // Refresh available datasets to include the removed one
+                                    const all = await cloudProjectIntegration.listDatasets({
+                                      backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
+                                      query: datasetSearch || undefined,
+                                    });
+                                    
+                                    const labeled = all.map((availableDs: any) => {
+                                      const getBackendLabel = (backend: string) => {
+                                        switch (backend) {
+                                          case 'gcs': return '(GCS)';
+                                          case 's3': return '(S3)';
+                                          case 'aws': return '(AWS)';
+                                          case 'azure': return '(Azure)';
+                                          case 'firestore':
+                                          default: return '(Firestore)';
+                                        }
+                                      };
+                                      return {
+                                        ...availableDs,
+                                        __label: `${availableDs.name} ${getBackendLabel(availableDs.storage?.backend)}`,
+                                      };
+                                    });
+                                    setAvailableDatasets(labeled);
+                                    
+                                    console.log('✅ [DashboardCloudProjectsBridge] Dataset removal completed and lists refreshed');
                                   } catch (e) {
-                                    console.error('Failed to unassign dataset', e);
+                                    console.error('❌ [DashboardCloudProjectsBridge] Failed to remove dataset:', e);
+                                    setError('Failed to remove dataset from project');
                                   }
                                                             }}
                                                             sx={{
@@ -2053,7 +2302,21 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                         <Button
                                             variant="outlined"
                                             startIcon={<RefreshIcon />}
-                                            onClick={() => selectedProject && loadTeamMembersForProject(selectedProject)}
+                                            onClick={async () => {
+                                              if (!selectedProject) return;
+                                              console.log('🔄 [DashboardCloudProjectsBridge] Refreshing team members for project:', selectedProject.id);
+                                              try {
+                                                setTeamMembersLoading(true);
+                                                // Refresh both assigned and available team members
+                                                await loadTeamMembersForProject(selectedProject);
+                                                console.log('✅ [DashboardCloudProjectsBridge] Team members refreshed successfully');
+                                              } catch (e) {
+                                                console.error('❌ [DashboardCloudProjectsBridge] Failed to refresh team members:', e);
+                                                setError('Failed to refresh team members');
+                                              } finally {
+                                                setTeamMembersLoading(false);
+                                              }
+                                            }}
                                             disabled={teamMembersLoading}
                                             sx={{
                                                 borderColor: 'rgba(139, 92, 246, 0.5)',
@@ -2066,10 +2329,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 '&:hover': {
                                                     borderColor: '#8b5cf6',
                                                     backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                                                },
+                                                '&:disabled': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                                                    color: 'rgba(255, 255, 255, 0.3)'
                                                 }
                                             }}
                                         >
-                                            {teamMembersLoading ? 'Loading...' : 'Refresh'}
+                                            {teamMembersLoading ? 'Refreshing...' : 'Refresh'}
                                         </Button>
                                     </Box>
 

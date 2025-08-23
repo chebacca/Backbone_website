@@ -27,7 +27,10 @@ if (!getApps().length) {
   }
 }
 
+// Configure Firestore to ignore undefined properties
 const db = getFirestore();
+db.settings({ ignoreUndefinedProperties: true });
+
 const auth = getAuth();
 
 // Type definitions for Firestore documents
@@ -77,6 +80,7 @@ export interface FirestoreUser {
   memberStatus?: string;
   // Demo-related properties
   isDemoUser?: boolean;
+  demoStatus?: 'ACTIVE' | 'EXPIRED' | 'CONVERTED' | 'CANCELLED';
   demoSessionCount?: number;
   demoAppUsageMinutes?: number;
   demoFeaturesUsed?: string[];
@@ -84,6 +88,17 @@ export interface FirestoreUser {
   demoLastActivityAt?: Date;
   demoStartedAt?: Date;
   demoExpiresAt?: Date;
+  demoTier?: 'BASIC' | 'PRO' | 'ENTERPRISE';
+  demoFeatureAccess?: {
+    features: string[];
+    limitations: {
+      maxProjects: number;
+      maxFileSize: number;
+      maxStorageSize: number;
+      canExport: boolean;
+      canShare: boolean;
+    };
+  };
 }
 
 export interface FirestoreTeamMember {
@@ -520,6 +535,12 @@ export class FirestoreService {
   }
 
   async getOrgMembers(orgId: string): Promise<FirestoreOrgMember[]> {
+    // Safety check: ensure orgId is valid
+    if (!orgId) {
+      console.warn(`⚠️ [getOrgMembers] Invalid orgId provided: ${orgId}`);
+      return [];
+    }
+    
     console.log(`🔍 [getOrgMembers] STREAMLINED: Querying users collection for organizationId: ${orgId}`);
     
     // STREAMLINED: Get all users (owners and team members) for this organization
@@ -913,11 +934,130 @@ export class FirestoreService {
     await db.collection('system_settings').doc(key).set({ ...data, updatedAt: new Date() }, { merge: true });
   }
 
+  /**
+   * Ensure a tenant subtree exists for an organization and seed a default dataset.
+   * This keeps per-org data under tenants/{orgId}/... for strong logical isolation.
+   */
+  async ensureTenantProvisioned(orgId: string, ownerUserId?: string): Promise<void> {
+    // 1) Create/update tenant mapping metadata
+    const mappingRef = db.collection('tenant_mappings').doc(orgId);
+    const mappingSnap = await mappingRef.get();
+    if (!mappingSnap.exists) {
+      await mappingRef.set({
+        orgId,
+        dataPlane: 'shared',
+        databaseId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    } else {
+      await mappingRef.update({ updatedAt: new Date() });
+    }
+
+    // 2) Seed minimal default projects if none exist yet
+    const projectsCol = db.collection(`tenants/${orgId}/projects`);
+    const existing = await projectsCol.limit(1).get();
+    if (!existing.empty) return; // already seeded
+
+    const defaults = [
+      { name: 'Production', description: 'Primary production project' },
+      { name: 'Accounting', description: 'Financial and accounting project' },
+      { name: 'Admin', description: 'Administrative project' },
+    ];
+
+    for (const d of defaults) {
+      const ref = projectsCol.doc();
+      const now = new Date();
+      const payload = {
+        id: ref.id,
+        name: d.name,
+        description: d.description,
+        type: 'networked',
+        applicationMode: 'shared_network',
+        visibility: 'organization',
+        ownerId: ownerUserId || null,
+        organizationId: orgId,
+        metadata: {},
+        settings: {},
+        isActive: true,
+        isArchived: false,
+        archivedAt: null,
+        archivedBy: null,
+        createdAt: now,
+        updatedAt: now,
+        lastAccessedAt: now,
+        storageBackend: 'firestore',
+        allowCollaboration: true,
+        maxCollaborators: 25,
+        realTimeEnabled: true,
+        autoSync: true,
+        syncInterval: 300,
+        conflictResolution: 'manual',
+        enableOfflineMode: true,
+        allowRealTimeEditing: true,
+        enableComments: true,
+        enableChat: true,
+        enablePresenceIndicators: true,
+        enableActivityLog: true,
+        allowGuestUsers: false,
+      } as any;
+      await ref.set(payload);
+
+      // Seed owner as participant under tenant path
+      if (ownerUserId) {
+        const partRef = db.collection(`tenants/${orgId}/project_participants`).doc();
+        await partRef.set({
+          id: partRef.id,
+          projectId: ref.id,
+          userId: ownerUserId,
+          role: 'owner',
+          permissions: [],
+          joinedAt: now.toISOString(),
+          lastActiveAt: now.toISOString(),
+          isActive: true,
+        });
+      }
+    }
+  }
+
   // ================================
   // Projects (Cloud) - Firestore-backed
   // ================================
   async userHasActiveLicense(userId: string): Promise<boolean> {
     const now = new Date();
+    
+    // First check if user is a demo user with active trial
+    try {
+      const user = await this.getUserById(userId);
+      if (user && user.isDemoUser) {
+        // Check if demo trial is still active
+        if (user.demoExpiresAt) {
+          const demoExpiry = user.demoExpiresAt instanceof Date ? 
+            user.demoExpiresAt : 
+            new Date(user.demoExpiresAt);
+          
+          const isActiveTrial = demoExpiry > now && user.demoStatus === 'ACTIVE';
+          console.log(`🔍 [FirestoreService] Demo user ${userId} trial status:`, {
+            isActiveTrial,
+            expiresAt: demoExpiry,
+            status: user.demoStatus,
+            timeRemaining: Math.max(0, demoExpiry.getTime() - now.getTime())
+          });
+          
+          if (isActiveTrial) {
+            return true; // Demo users with active trials can create projects
+          }
+        }
+        
+        // Demo user with expired trial - no access
+        console.log(`🔍 [FirestoreService] Demo user ${userId} trial expired or inactive`);
+        return false;
+      }
+    } catch (error) {
+      console.warn('Failed to check demo status for user', userId, error);
+    }
+    
+    // Check regular licenses for non-demo users
     const snap = await db
       .collection('licenses')
       .where('userId', '==', userId)
@@ -947,7 +1087,34 @@ export class FirestoreService {
     const now = new Date();
     console.log(`🔍 [FirestoreService] Getting license type for user ${userId}`);
     
-    // First, check for active subscriptions (they take priority)
+    // First check if user is a demo user with active trial
+    try {
+      const user = await this.getUserById(userId);
+      if (user && user.isDemoUser) {
+        // Check if demo trial is still active
+        if (user.demoExpiresAt) {
+          const demoExpiry = user.demoExpiresAt instanceof Date ? 
+            user.demoExpiresAt : 
+            new Date(user.demoExpiresAt);
+          
+          const isActiveTrial = demoExpiry > now && user.demoStatus === 'ACTIVE';
+          
+          if (isActiveTrial) {
+            // Demo users get BASIC tier limitations with special restrictions
+            console.log(`🔍 [FirestoreService] Demo user ${userId} has active trial, returning DEMO license type`);
+            return 'DEMO'; // Special license type for demo users
+          }
+        }
+        
+        // Demo user with expired trial
+        console.log(`🔍 [FirestoreService] Demo user ${userId} trial expired`);
+        return null;
+      }
+    } catch (error) {
+      console.warn('Failed to check demo status for user', userId, error);
+    }
+    
+    // Check for active subscriptions (they take priority for non-demo users)
     try {
       const subscriptions = await this.getSubscriptionsByUserId(userId);
       console.log(`🔍 [FirestoreService] Found ${subscriptions.length} subscriptions for user ${userId}:`, subscriptions.map(s => ({ id: s.id, tier: s.tier, status: s.status, currentPeriodEnd: s.currentPeriodEnd })));
@@ -1108,6 +1275,27 @@ export class FirestoreService {
       isActive: true,
     });
     return payload;
+  }
+
+  async getProjectById(projectId: string): Promise<any | null> {
+    try {
+      console.log(`[FirestoreService] Getting project by ID:`, projectId);
+      
+      const doc = await db.collection('projects').doc(projectId).get();
+      
+      if (!doc.exists) {
+        console.warn(`[FirestoreService] Project ${projectId} not found`);
+        return null;
+      }
+      
+      const project = { id: doc.id, ...doc.data() } as any;
+      console.log(`[FirestoreService] Project found:`, { id: project.id, name: project.name, organizationId: project.organizationId });
+      
+      return project;
+    } catch (error) {
+      console.error(`[FirestoreService] Error getting project by ID:`, error);
+      throw error;
+    }
   }
 
   async listPublicProjects(opts: { type?: string; applicationMode?: string; limit?: number; offset?: number; sortBy?: string; sortOrder?: 'asc' | 'desc' }): Promise<any[]> {
@@ -1748,14 +1936,50 @@ export class FirestoreService {
 
   async addTeamMemberToProject(projectId: string, teamMemberId: string, role: string, assignedBy: string): Promise<any> {
     try {
-      console.log(`[FirestoreService] STREAMLINED: Adding user to project:`, {
+      console.log(`[FirestoreService] ENHANCED: Adding user to project with license validation:`, {
         projectId,
         userId: teamMemberId,
         role,
         assignedBy
       });
       
-      // Check if user is already assigned to this project
+      // STEP 1: Validate user exists and get their details
+      const user = await this.getUserById(teamMemberId);
+      if (!user) {
+        throw new Error(`User ${teamMemberId} not found`);
+      }
+      
+      // STEP 2: Validate user has an active license
+      const userLicenses = await db.collection('licenses')
+        .where('userId', '==', teamMemberId)
+        .where('status', '==', 'ACTIVE')
+        .limit(1)
+        .get();
+      
+      if (userLicenses.empty) {
+        console.warn(`[FirestoreService] User ${teamMemberId} does not have an active license`);
+        throw new Error('User must have an active license to be assigned to projects');
+      }
+      
+      const userLicense = userLicenses.docs[0].data();
+      console.log(`[FirestoreService] User has active license:`, {
+        licenseId: userLicense.id,
+        tier: userLicense.tier,
+        status: userLicense.status
+      });
+      
+      // STEP 3: Validate user belongs to the same organization as the project
+      const project = await this.getProjectById(projectId);
+      if (!project) {
+        throw new Error(`Project ${projectId} not found`);
+      }
+      
+      if (user.organizationId !== project.organizationId) {
+        console.warn(`[FirestoreService] User ${teamMemberId} organization ${user.organizationId} does not match project organization ${project.organizationId}`);
+        throw new Error('User must belong to the same organization as the project');
+      }
+      
+      // STEP 4: Check if user is already assigned to this project
       const existing = await db.collection('projectAssignments')
         .where('projectId', '==', projectId)
         .where('userId', '==', teamMemberId)
@@ -1767,7 +1991,7 @@ export class FirestoreService {
         throw new Error('User is already assigned to this project');
       }
 
-      // Check if role is ADMIN and there's already an admin
+      // STEP 5: Role-based validation
       if (role === 'ADMIN') {
         const adminCheck = await db.collection('projectAssignments')
           .where('projectId', '==', projectId)
@@ -1780,7 +2004,22 @@ export class FirestoreService {
           throw new Error('Only one Admin is allowed per project. Please remove the existing Admin first.');
         }
       }
+      
+      // STEP 6: Validate license tier supports the requested role
+      const licenseRequirements = {
+        'ADMIN': ['ENTERPRISE', 'PRO'],
+        'MANAGER': ['ENTERPRISE', 'PRO'],
+        'DO_ER': ['ENTERPRISE', 'PRO', 'BASIC'],
+        'VIEWER': ['ENTERPRISE', 'PRO', 'BASIC']
+      };
+      
+      const requiredTiers = licenseRequirements[role as keyof typeof licenseRequirements];
+      if (requiredTiers && !requiredTiers.includes(userLicense.tier)) {
+        console.warn(`[FirestoreService] User license tier ${userLicense.tier} does not support role ${role}`);
+        throw new Error(`License tier ${userLicense.tier} does not support the ${role} role. Required: ${requiredTiers.join(' or ')}`);
+      }
 
+      // STEP 7: Create the project assignment
       const ref = db.collection('projectAssignments').doc();
       const projectAssignment = {
         id: ref.id,
@@ -1789,27 +2028,36 @@ export class FirestoreService {
         role,
         assignedAt: new Date(),
         assignedBy,
-        isActive: true
+        isActive: true,
+        licenseValidated: true,
+        licenseId: userLicense.id,
+        licenseTier: userLicense.tier
       };
 
-      console.log(`[FirestoreService] Creating project assignment:`, projectAssignment);
+      console.log(`[FirestoreService] Creating validated project assignment:`, projectAssignment);
       await ref.set(projectAssignment);
       
-      // Get the user details to return
-      const user = await this.getUserById(teamMemberId);
-      if (!user) {
-        console.warn(`[FirestoreService] User ${teamMemberId} not found after assignment`);
-      }
+      // STEP 8: Update project's last accessed time
+      await db.collection('projects').doc(projectId).update({
+        lastAccessedAt: new Date(),
+        updatedAt: new Date()
+      });
       
       const result = {
         ...projectAssignment,
-        user
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          organizationId: user.organizationId,
+          licenseType: user.licenseType || userLicense.tier
+        }
       };
-      
-      console.log(`[FirestoreService] Project assignment created successfully:`, result);
+
+      console.log(`[FirestoreService] Enhanced project assignment created successfully:`, result);
       return result;
     } catch (error) {
-      console.error(`[FirestoreService] Error adding user to project:`, error);
+      console.error(`[FirestoreService] Error adding team member to project with validation:`, error);
       throw error;
     }
   }

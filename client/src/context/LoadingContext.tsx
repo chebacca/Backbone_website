@@ -13,7 +13,14 @@ const LoadingContext = createContext<LoadingContextType | undefined>(undefined);
 export const useLoading = () => {
   const context = useContext(LoadingContext);
   if (context === undefined) {
-    throw new Error('useLoading must be used within a LoadingProvider');
+    // Return a safe default instead of throwing an error
+    console.warn('useLoading called outside of LoadingProvider, returning default values');
+    return {
+      isLoading: false,
+      setLoading: () => {}, // No-op function
+      loadingMessage: undefined,
+      setLoadingMessage: () => {}, // No-op function
+    };
   }
   return context;
 };

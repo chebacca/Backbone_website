@@ -126,15 +126,8 @@ export const LICENSE_CONFIGURATIONS: Record<LicenseTier, UserLicense> = {
 };
 
 export const detectProductionMode = (): ProductionModeConfig => {
-    // Detect if we're in webonly mode
-    const isWebOnlyMode = 
-        typeof window !== 'undefined' && (
-            window.location.search.includes('webonly=true') ||
-            window.location.hostname.includes('web.app') ||
-            window.location.hostname.includes('firebaseapp.com') ||
-            localStorage.getItem('webonly_mode') === 'true' ||
-            (window as any).WEBONLY_MODE === true
-        );
+    // Licensing website is ALWAYS in web-only mode
+    const isWebOnlyMode = true;
 
     // Get user license from context/auth (this would come from your auth system)
     const userLicenseString = typeof window !== 'undefined' 

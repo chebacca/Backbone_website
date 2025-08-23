@@ -40,11 +40,11 @@ router.get('/my', asyncHandler(async (req: Request, res: Response) => {
   const withMembers = await Promise.all([
     ...owned.map(async (o) => ({
       ...o,
-      members: await firestoreService.getOrgMembers(o.id),
+      members: o.id ? await firestoreService.getOrgMembers(o.id) : [],
     })),
     ...memberOf.map(async (o) => ({
       ...o,
-      members: await firestoreService.getOrgMembers(o.id),
+      members: o.id ? await firestoreService.getOrgMembers(o.id) : [],
     })),
   ]);
 
@@ -72,20 +72,26 @@ router.get('/my/context', asyncHandler(async (req: Request, res: Response) => {
   let members: any[] = [];
   let activeSubscription: any = null;
 
-  if (owned && owned.length > 0) {
+  if (owned && owned.length > 0 && owned[0].id) {
     primaryOrg = owned[0];
     members = await firestoreService.getOrgMembers(primaryOrg.id);
     primaryRole = 'OWNER';
-  } else if (memberOf && memberOf.length > 0) {
+  } else if (memberOf && memberOf.length > 0 && memberOf[0].id) {
     primaryOrg = memberOf[0];
     members = await firestoreService.getOrgMembers(primaryOrg.id);
     const me = members.find(m => m.userId === userId);
     primaryRole = me?.role;
   }
 
-  if (primaryOrg) {
+  if (primaryOrg && primaryOrg.id) {
     const subs = await firestoreService.getSubscriptionsByOrganizationId(primaryOrg.id);
     activeSubscription = subs.find(s => s.status === 'ACTIVE') || null;
+    // Ensure tenant is provisioned so clients can assume tenant paths exist
+    try {
+      await firestoreService.ensureTenantProvisioned(primaryOrg.id, userId);
+    } catch (e) {
+      console.warn('Tenant provisioning on context failed:', (e as any)?.message || e);
+    }
   }
 
   res.json({
@@ -96,6 +102,9 @@ router.get('/my/context', asyncHandler(async (req: Request, res: Response) => {
       organization: primaryOrg,
       members,
       activeSubscription,
+      tenant: {
+        dataPlane: 'shared',
+      }
     },
   });
 }));
@@ -244,7 +253,8 @@ router.post('/invitations/accept', [
 router.post('/:orgId/members/:memberId/remove', requireEnterpriseAdminStrict, asyncHandler(async (req: Request, res: Response) => {
   const { orgId, memberId } = req.params;
 
-  const member = (await firestoreService.getOrgMembers(orgId)).find(m => m.id === memberId);
+  const members = await firestoreService.getOrgMembers(orgId);
+  const member = members.find(m => m.id === memberId);
   if (!member) throw createApiError('Member not found', 404);
 
   // Set member removed and free seat
@@ -279,7 +289,8 @@ router.patch('/:orgId/members/:memberId', requireEnterpriseAdminStrict, [
   const { orgId, memberId } = req.params;
   const { email, role, status } = req.body as Partial<{ email: string; role: string; status: string }>;
 
-  const member = (await firestoreService.getOrgMembers(orgId)).find(m => m.id === memberId);
+  const members = await firestoreService.getOrgMembers(orgId);
+  const member = members.find(m => m.id === memberId);
   if (!member) throw createApiError('Member not found', 404);
 
   // Enforce seat constraints when activating
@@ -325,7 +336,8 @@ router.put('/:orgId/members/:memberId/password', requireEnterpriseAdminStrict, [
   const { password } = req.body as { password: string };
 
   // Validate org membership
-  const member = (await firestoreService.getOrgMembers(orgId)).find(m => m.id === memberId);
+  const members = await firestoreService.getOrgMembers(orgId);
+  const member = members.find(m => m.id === memberId);
   if (!member) throw createApiError('Member not found', 404);
 
   // Validate password policy and compute hash

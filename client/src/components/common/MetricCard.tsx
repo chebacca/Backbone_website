@@ -5,8 +5,9 @@ import {
   CardContent,
   Typography,
   Chip,
+  Tooltip,
 } from '@mui/material';
-import { ArrowForward } from '@mui/icons-material';
+import { ArrowForward, InfoOutlined } from '@mui/icons-material';
 
 interface MetricCardProps {
   title: string;
@@ -19,6 +20,7 @@ interface MetricCardProps {
   color?: 'primary' | 'secondary' | 'success' | 'warning' | 'error';
   onClick?: () => void;
   showArrow?: boolean;
+  tooltip?: string;
 }
 
 const MetricCard: React.FC<MetricCardProps> = ({ 
@@ -28,7 +30,8 @@ const MetricCard: React.FC<MetricCardProps> = ({
   trend, 
   color = 'primary',
   onClick,
-  showArrow = true
+  showArrow = true,
+  tooltip
 }) => {
   // Define gradient backgrounds based on color prop
   const getGradientBackground = (colorProp: string) => {
@@ -114,9 +117,16 @@ const MetricCard: React.FC<MetricCardProps> = ({
             {value}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="body2" sx={{ opacity: 0.9, color: 'white' }}>
-              {title}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ opacity: 0.9, color: 'white' }}>
+                {title}
+              </Typography>
+              {tooltip && (
+                <Tooltip title={tooltip} arrow placement="top">
+                  <InfoOutlined sx={{ fontSize: 16, ml: 0.5, opacity: 0.7, color: 'white' }} />
+                </Tooltip>
+              )}
+            </Box>
             {onClick && showArrow && (
               <ArrowForward 
                 sx={{ 

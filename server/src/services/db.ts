@@ -220,5 +220,10 @@ export const db = {
   async createOrgMember(data: any) {
     return await firestoreService.createOrgMember(data);
   },
+
+  // Tenant provisioning
+  async ensureTenantProvisioned(orgId: string, ownerUserId?: string) {
+    return await firestoreService.ensureTenantProvisioned(orgId, ownerUserId);
+  },
 };
 

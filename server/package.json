@@ -18,6 +18,8 @@
     "seed:enterprise-multi": "npx tsx scripts/seed-enterprise-multi.ts",
     "seed:chris-mole": "npx tsx scripts/seed-chris-mole.ts",
     "seed:enterprise-test": "npx tsx scripts/seed-enterprise-test-user.ts",
+    "auth:ensure": "npx tsx scripts/ensure-firebase-auth-users.ts",
+    "auth:reset": "npx tsx scripts/reset-firebase-auth.ts",
     "cleanup:licenses": "npx tsx scripts/cleanup-duplicate-licenses.ts",
     "import:dashboard-users-team": "npx tsx scripts/import-dashboard-users-team.ts",
     "list:enterprise-users": "npx tsx scripts/list-enterprise-users.ts",

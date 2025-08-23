@@ -58,57 +58,17 @@ const NotFoundPage = React.lazy(() => import('@/pages/NotFoundPage'));
 // Startup workflow components
 const StartupWorkflow = React.lazy(() => import('@/components/StartupWorkflow'));
 
-// Auth bridge for webonly mode
-import CloudProjectAuthBridge from '@/components/CloudProjectAuthBridge';
+// Test page for offline functionality
+const OfflineTestPage = React.lazy(() => import('@/pages/test/OfflineTestPage'));
+
+// Auth bridge for webonly mode - removed to fix context issues
+// import CloudProjectAuthBridge from '@/components/CloudProjectAuthBridge';
 
 // Protected route wrapper
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  requireEmailVerification?: boolean;
-  requireAdmin?: boolean;
-  requireAccounting?: boolean;
-}
+import ProtectedRoute from '@/components/ProtectedRoute';
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
-  children, 
-  // requireEmailVerification is reserved for future use
-  requireEmailVerification = false,
-  requireAdmin = false,
-  requireAccounting = false,
-}) => {
-  const { isAuthenticated, user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return <LoadingSpinner />;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // Email verification check - for now, we'll skip this check since the User type doesn't include emailVerified
-  // if (requireEmailVerification && !user?.emailVerified) {
-  //   return <Navigate to="/verify-email" replace />;
-  // }
-
-  if (requireAdmin) {
-    const roleUpper = String(user?.role || '').toUpperCase();
-    const isSuperAdmin = roleUpper === 'SUPERADMIN';
-    if (!isSuperAdmin) {
-      return <Navigate to="/dashboard" replace />;
-    }
-  }
-
-  if (requireAccounting) {
-    const roleUpper = String(user?.role || '').toUpperCase();
-    const isAccounting = roleUpper === 'ACCOUNTING' || roleUpper === 'SUPERADMIN';
-    if (!isAccounting) {
-      return <Navigate to="/dashboard" replace />;
-    }
-  }
-
-  return <>{children}</>;
-};
+// Utility to clear auth warnings
+import '@/utils/clearAuthWarnings';
 
 // Public route wrapper (redirects authenticated users)
 interface PublicRouteProps {
@@ -135,13 +95,10 @@ const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
 };
 
 function App() {
-  const { user } = useAuth();
-  
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <ErrorBoundary>
-        <CloudProjectAuthBridge />
         <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default', color: 'text.primary', }} >
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
@@ -151,6 +108,9 @@ function App() {
               
               {/* Startup Workflow Route */}
               <Route path="/startup" element={<StartupWorkflow />} />
+              
+              {/* Test Route for Offline Functionality */}
+              <Route path="/test/offline" element={<OfflineTestPage />} />
               
               {/* Auth Routes */}
               <Route 

@@ -1,6 +1,7 @@
 import type { Router as ExpressRouter } from 'express';
 import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth.js';
+import { licenseValidationMiddleware, requireValidLicense, enforceProjectLimits } from '../middleware/licenseValidation.js';
 import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { z } from 'zod';
@@ -198,41 +199,23 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
 });
 
 // Create
-router.post('/', authenticateToken, async (req: any, res) => {
+router.post('/', 
+  authenticateToken, 
+  licenseValidationMiddleware,
+  requireValidLicense('create'),
+  enforceProjectLimits,
+  async (req: any, res) => {
   try {
     const payload = createProjectSchema.parse(req.body);
     const userId = req.user.id;
     
-    // Allow SUPERADMIN/ADMIN to create projects regardless of license; otherwise require active license
-    const isAdmin = req.user.role === 'SUPERADMIN' || req.user.role === 'ADMIN';
-    const hasActive = isAdmin ? true : await firestoreService.userHasActiveLicense(userId);
-    if (!hasActive) {
-      res.status(403).json({ success: false, error: 'Active license required' });
-      return;
-    }
+    // License validation is now handled by middleware
+    // Get collaboration limits from license context
+    const maxAllowedCollaborators = req.licenseContext?.projectAccess?.maxProjects === -1 ? 
+      250 : // Unlimited (Enterprise)
+      req.licenseContext?.projectAccess?.maxProjects || 3; // Demo default
 
-    // Get user's license type to enforce collaboration limits
-    let maxAllowedCollaborators = 250; // Default to Enterprise limit
-    if (!isAdmin) {
-      try {
-        const userLicenseType = await firestoreService.getUserLicenseType(userId);
-        console.log(`🔍 [Projects Routes] User ${userId} license type:`, userLicenseType);
-        if (userLicenseType) {
-          // Set collaboration limits based on license type
-          if (userLicenseType === 'PROFESSIONAL') {
-            maxAllowedCollaborators = 50;
-          } else if (userLicenseType === 'ENTERPRISE') {
-            maxAllowedCollaborators = 250;
-          } else {
-            maxAllowedCollaborators = 10; // Basic license
-          }
-        }
-        console.log(`🔍 [Projects Routes] User ${userId} maxAllowedCollaborators:`, maxAllowedCollaborators);
-      } catch (error) {
-        logger.warn(`Failed to get user license for ${userId}, using default limit:`, error);
-        maxAllowedCollaborators = 10; // Fallback to basic limit
-      }
-    }
+    console.log(`🔍 [Projects Routes] User ${userId} maxAllowedCollaborators from license context:`, maxAllowedCollaborators);
 
     // Validate maxCollaborators against license limit
     if (payload.maxCollaborators && payload.maxCollaborators > maxAllowedCollaborators) {
@@ -240,7 +223,9 @@ router.post('/', authenticateToken, async (req: any, res) => {
         success: false, 
         error: `Maximum collaborators (${payload.maxCollaborators}) exceeds your license limit of ${maxAllowedCollaborators}`,
         code: 'LICENSE_LIMIT_EXCEEDED',
-        limit: maxAllowedCollaborators
+        limit: maxAllowedCollaborators,
+        licenseType: req.licenseContext?.validation?.licenseType,
+        upgradeUrl: req.licenseContext?.upgradeUrl
       });
       return;
     }

@@ -1085,9 +1085,9 @@ async function seedTestData(): Promise<void> {
     const testUsers = [
       { id: '1A86PkN4XmjclkWqzK9X', email: 'user1.basic@example.com', tier: 'BASIC', seats: 1, status: 'ACTIVE', months: 3 },
       { id: '5yBOkbzU2eSVJDaBSNf0', email: 'user2.basic@example.com', tier: 'BASIC', seats: 1, status: 'PENDING', months: 1 },
-      { id: '57lVrwua5pMLx3HGyiCw', email: 'user1.pro@example.com', tier: 'PRO', seats: 5, status: 'ACTIVE', months: 6 },
-      { id: 'CBZZl8KEVEScjjAkzL0E', email: 'user2.pro@example.com', tier: 'PRO', seats: 10, status: 'EXPIRED', months: -2 },
-      { id: 'WGDiSdTiCXKHOSYiF1Ey', email: 'user1.enterprise@example.com', tier: 'ENTERPRISE', seats: 25, status: 'ACTIVE', months: 12 },
+      { id: '57lVrwua5pMLx3HGyiCw', email: 'user1.pro@example.com', tier: 'PRO', seats: 10, status: 'ACTIVE', months: 6 },
+      { id: 'CBZZl8KEVEScjjAkzL0E', email: 'user2.pro@example.com', tier: 'PRO', seats: 15, status: 'EXPIRED', months: -2 },
+      { id: 'WGDiSdTiCXKHOSYiF1Ey', email: 'user1.enterprise@example.com', tier: 'ENTERPRISE', seats: 50, status: 'ACTIVE', months: 12 },
       { id: '7dGkcacCa0cUcdqP7Ywn', email: 'user2.enterprise@example.com', tier: 'ENTERPRISE', seats: 50, status: 'PENDING', months: 8 },
       { id: '1rX32QnDsUP49alkpmTC', email: 'chrismole@gmail.com', tier: 'ENTERPRISE', seats: 100, status: 'ACTIVE', months: 24 },
     ];

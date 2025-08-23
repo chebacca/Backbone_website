@@ -39,6 +39,168 @@ export interface UserSyncResult {
 export class UserSynchronizationService {
   
   /**
+   * Create a demo user with 7-day trial
+   * Integrates with the demo licensing system
+   */
+  static async createDemoUser(request: CreateUserRequest & { 
+    demoTier?: 'BASIC' | 'PRO' | 'ENTERPRISE';
+    source?: string;
+  }): Promise<UserSyncResult & { demoExpiresAt?: Date }> {
+    let firebaseUserRecord: any = null;
+    let firestoreUser: FirestoreUser | null = null;
+    let rollbackPerformed = false;
+
+    try {
+      logger.info(`Creating demo user: ${request.email}`);
+
+      // STEP 1: Validate email uniqueness
+      const emailValidation = await this.validateEmailUniqueness(request.email);
+      if (!emailValidation.isUnique) {
+        return {
+          success: false,
+          error: `Email ${request.email} already exists in ${emailValidation.existsIn.join(' and ')}`
+        };
+      }
+
+      // STEP 2: Validate password requirements
+      const passwordValidation = PasswordUtil.validate(request.password);
+      if (!passwordValidation.isValid) {
+        return {
+          success: false,
+          error: `Password does not meet requirements: ${passwordValidation.errors.join(', ')}`
+        };
+      }
+
+      const now = new Date();
+      const demoExpiresAt = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days
+
+      // STEP 3: Create Firebase Auth user
+      try {
+        firebaseUserRecord = await getAuth().createUser({
+          email: request.email,
+          password: request.password,
+          displayName: request.name || `${request.firstName} ${request.lastName}`,
+          emailVerified: false,
+          disabled: false,
+        });
+
+        logger.info('Firebase Auth demo user created', {
+          firebaseUid: firebaseUserRecord.uid,
+          email: request.email
+        });
+
+      } catch (firebaseError) {
+        logger.error('Firebase Auth demo user creation failed', { 
+          email: request.email, 
+          error: firebaseError 
+        });
+        return {
+          success: false,
+          error: `Firebase Auth user creation failed: ${(firebaseError as any)?.message || 'Unknown error'}`
+        };
+      }
+
+      // STEP 4: Create Firestore user with demo fields
+      try {
+        firestoreUser = await firestoreService.createUser({
+          email: request.email,
+          name: request.name || `${request.firstName} ${request.lastName}`,
+          password: request.password,
+          role: (request.role || 'USER') as 'SUPERADMIN' | 'USER' | 'ADMIN' | 'ACCOUNTING' | 'TEAM_MEMBER',
+          isEmailVerified: false,
+          twoFactorEnabled: false,
+          twoFactorBackupCodes: [],
+          privacyConsent: [],
+          marketingConsent: false,
+          dataProcessingConsent: false,
+          identityVerified: false,
+          kycStatus: 'PENDING',
+          firebaseUid: firebaseUserRecord.uid,
+          
+          // Demo-specific fields
+          isDemoUser: true,
+          demoStartedAt: now,
+          demoExpiresAt: demoExpiresAt,
+          demoStatus: 'ACTIVE' as any,
+          demoTier: (request.demoTier || 'BASIC') as any,
+          demoFeatureAccess: {
+            features: [
+              'projects.core',
+              'files.basic',
+              'callsheets.basic',
+              'timecards.submit',
+              'chat.basic',
+              'reports.basic',
+              'export.basic'
+            ],
+            limitations: {
+              maxProjects: 3,
+              maxFileSize: 25, // MB
+              maxStorageSize: 100, // MB
+              canExport: false,
+              canShare: false
+            }
+          },
+          demoSessionCount: 1,
+          demoLastActivityAt: now,
+          demoRemindersSent: 0,
+          demoAppUsageMinutes: 0,
+          demoFeaturesUsed: [],
+          registrationSource: request.source || 'demo_signup'
+        });
+
+        logger.info('Demo user created successfully in Firestore', {
+          userId: firestoreUser.id,
+          firebaseUid: firebaseUserRecord.uid,
+          email: request.email,
+          demoExpiresAt
+        });
+
+        return {
+          success: true,
+          user: firestoreUser,
+          firebaseUid: firebaseUserRecord.uid,
+          demoExpiresAt
+        };
+
+      } catch (firestoreError) {
+        // STEP 5: Rollback Firebase Auth user if Firestore creation fails
+        logger.error('Firestore demo user creation failed, initiating rollback', { 
+          firebaseUid: firebaseUserRecord.uid, 
+          error: firestoreError 
+        });
+        
+        try {
+          await getAuth().deleteUser(firebaseUserRecord.uid);
+          rollbackPerformed = true;
+          logger.info('Firebase Auth demo user rolled back successfully', {
+            firebaseUid: firebaseUserRecord.uid
+          });
+        } catch (rollbackError) {
+          logger.error('Failed to rollback Firebase Auth demo user', { 
+            firebaseUid: firebaseUserRecord.uid, 
+            error: rollbackError 
+          });
+        }
+        
+        return {
+          success: false,
+          error: `Demo user creation failed: ${(firestoreError as any)?.message || 'Unknown error'}`,
+          rollbackPerformed
+        };
+      }
+
+    } catch (error) {
+      logger.error('Demo user creation failed', { email: request.email, error });
+      return {
+        success: false,
+        error: `Demo user creation failed: ${(error as any)?.message || 'Unknown error'}`,
+        rollbackPerformed
+      };
+    }
+  }
+
+  /**
    * Create a new user with proper synchronization between Firebase Auth and Firestore
    * Ensures email uniqueness across both systems
    */

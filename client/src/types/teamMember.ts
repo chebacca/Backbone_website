@@ -42,14 +42,23 @@ export interface TeamMember {
     department?: string;
     company?: string;
     
+    // Role and permissions
+    role?: TeamMemberRole; // Add missing role property
+    
+    // Authentication
+    firebaseUid?: string; // Add missing firebaseUid property
+    hashedPassword?: string; // For team member login
+    lastLoginAt?: string;
+    
+    // Additional properties
+    isEmailVerified?: boolean;
+    permissions?: string[];
+    position?: string;
+    
     // Timestamps
     createdAt: string;
     updatedAt: string;
     lastActive?: string;
-    
-    // Authentication
-    hashedPassword?: string; // For team member login
-    lastLoginAt?: string;
     
     // Profile
     avatar?: string;
@@ -66,17 +75,23 @@ export interface ProjectTeamMember {
     role: TeamMemberRole;
     
     // Team Member details (populated from TeamMember)
-    teamMember: TeamMember;
+    teamMember?: TeamMember; // Make optional since we're not always populating it
     
     // Assignment details
     assignedAt: string;
-    assignedBy: string; // User ID who assigned this team member
+    assignedBy?: string; // Make optional since we're not always populating it
     
     // Status
     isActive: boolean;
     
+    // Additional properties needed for the integration
+    email?: string; // Add missing email property
+    name?: string; // Add missing name property
+    status?: string; // Add missing status property
+    permissions?: string[]; // Add array permissions for compatibility
+    
     // Project-specific permissions (optional overrides)
-    permissions?: {
+    projectPermissions?: {
         canManageUsers?: boolean;
         canManageRoles?: boolean;
         canAccessSettings?: boolean;

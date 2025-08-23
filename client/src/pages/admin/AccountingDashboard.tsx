@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Stack, TextField, Tabs, Tab, Grid, Chip, Divider, Alert, FormControl, InputLabel, Select, MenuItem, ButtonGroup, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Stack, TextField, Tabs, Tab, Grid, Chip, Divider, Alert, FormControl, InputLabel, Select, MenuItem, ButtonGroup, ToggleButton, ToggleButtonGroup, IconButton, Tooltip } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import api, { endpoints } from '@/services/api';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Print, PictureAsPdf, Refresh, Download, Save, Restore, Public, Map, Launch } from '@mui/icons-material';
+import { Print, PictureAsPdf, Refresh, Download, Save, Restore, Public, Map, Launch, Receipt, OpenInNew, Visibility, MoreVert, Payment } from '@mui/icons-material';
 
 interface PaymentRow {
   id: string;
@@ -687,6 +687,7 @@ const AccountingDashboard: React.FC = () => {
                   <TableCell align="right">Amount</TableCell>
                   <TableCell>Tax</TableCell>
                   <TableCell>Jurisdiction</TableCell>
+                  <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -697,6 +698,21 @@ const AccountingDashboard: React.FC = () => {
                     <TableCell align="right">{(p.amount ?? 0) / 100}</TableCell>
                     <TableCell>{((p.taxAmount ?? 0) / 100).toFixed(2)} ({((p.taxRate ?? 0) * 100).toFixed(2)}%)</TableCell>
                     <TableCell>{p.jurisdiction}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        {p.stripeInvoiceId && (
+                          <Tooltip title="View in Stripe Dashboard">
+                            <IconButton 
+                              size="small"
+                              color="primary"
+                              onClick={() => window.open(`https://dashboard.stripe.com/invoices/${p.stripeInvoiceId}`, '_blank')}
+                            >
+                              <Receipt fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Box>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -736,6 +752,7 @@ const AccountingDashboard: React.FC = () => {
                   <TableCell>Jurisdiction</TableCell>
                   <TableCell>User Email</TableCell>
                   <TableCell>Residency</TableCell>
+                  <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -750,6 +767,47 @@ const AccountingDashboard: React.FC = () => {
                     <TableCell>{p.taxJurisdiction}</TableCell>
                     <TableCell>{p.user?.email}</TableCell>
                     <TableCell>{p.user?.taxInformation?.taxResidency}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        {p.stripeInvoiceId && (
+                          <Tooltip title="View in Stripe Dashboard">
+                            <IconButton 
+                              size="small"
+                              color="primary"
+                              onClick={() => window.open(`https://dashboard.stripe.com/invoices/${p.stripeInvoiceId}`, '_blank')}
+                              sx={{
+                                '&:hover': {
+                                  transform: 'translateY(-1px)',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                                },
+                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                              }}
+                            >
+                              <Receipt />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <Tooltip title="View Payment Details">
+                          <IconButton 
+                            size="small"
+                            color="info"
+                            onClick={() => {
+                              // Show payment details in a modal or navigate to details page
+                              alert(`Payment Details for ${p.id}`);
+                            }}
+                            sx={{
+                              '&:hover': {
+                                transform: 'translateY(-1px)',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                              },
+                              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                            }}
+                          >
+                            <Visibility />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

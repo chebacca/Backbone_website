@@ -114,6 +114,7 @@ export interface DatasetCreationOptions {
     
     // Storage Configuration
     storage: {
+        backend: 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local';
         // Google Cloud Storage
         gcsBucket?: string;
         gcsPrefix?: string;
@@ -167,7 +168,6 @@ const STEPS = [
     'Cloud Provider Selection',
     'Authentication Setup',
     'Storage Configuration',
-    'Schema Template',
     'Advanced Options',
     'Review & Create'
 ];
@@ -253,8 +253,11 @@ const DEFAULT_FORM_DATA: DatasetCreationOptions = {
     tags: [],
     cloudProvider: 'firestore',
     authentication: {},
-    storage: {},
+    storage: {
+        backend: 'firestore'
+    },
     schema: {
+        // Use the unified Backbone Logic schema automatically
         template: 'custom',
         customFields: []
     },
@@ -288,9 +291,16 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
 
     // Reset form when dialog opens - use useCallback to prevent unnecessary re-renders
     const resetForm = useCallback(() => {
+        const selectedProvider = preselectedProvider || 'firestore';
+        // Map azure-blob to azure for the storage backend
+        const storageBackend = selectedProvider === 'azure-blob' ? 'azure' : selectedProvider;
         setFormData({
             ...DEFAULT_FORM_DATA,
-            cloudProvider: preselectedProvider || 'firestore'
+            cloudProvider: selectedProvider,
+            storage: {
+                ...DEFAULT_FORM_DATA.storage,
+                backend: storageBackend as 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local'
+            }
         });
         setActiveStep(0);
         setError(null);
@@ -429,35 +439,23 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
         setError(null);
 
         try {
-            // Simulate dataset creation - replace with actual implementation
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            const newDataset: CloudDataset = {
-                id: `dataset_${Date.now()}`,
+            // Use the actual service to create the dataset
+            const newDataset = await cloudProjectIntegration.createDataset({
                 name: formData.name,
                 description: formData.description,
                 visibility: formData.visibility,
-                ownerId: 'current-user-id', // This should come from auth context
-                organizationId: null,
                 tags: formData.tags,
+                storage: formData.storage,
                 schema: formData.schema,
-                storage: {
-                    backend: formData.cloudProvider === 'azure-blob' ? 'azure' : formData.cloudProvider,
-                    gcsBucket: formData.storage.gcsBucket,
-                    gcsPrefix: formData.storage.gcsPrefix,
-                    s3Bucket: formData.storage.s3Bucket,
-                    s3Region: formData.storage.s3Region,
-                    s3Prefix: formData.storage.s3Prefix,
-                    azureContainer: formData.storage.azureContainer,
-                    azurePrefix: formData.storage.azurePrefix,
-                    path: formData.cloudProvider === 'local' ? '/local/datasets' : undefined
-                },
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
+                projectId: assignToProject || 'default-project'
+            });
 
-            onSuccess?.(newDataset);
-            onClose?.();
+            if (newDataset) {
+                onSuccess?.(newDataset);
+                onClose?.();
+            } else {
+                setError('Failed to create dataset: No dataset returned');
+            }
         } catch (error) {
             setError(`Failed to create dataset: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
@@ -510,6 +508,18 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                     </RadioGroup>
                                 </FormControl>
                             </Grid>
+                            <Grid item xs={12}>
+                                <TextField
+                                    fullWidth
+                                    label="Tags (Optional)"
+                                    value={formData.tags?.join(', ') || ''}
+                                    onChange={(e) => updateFormData({ 
+                                        tags: e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+                                    })}
+                                    placeholder="tag1, tag2, tag3"
+                                    helperText="Comma-separated tags for organization"
+                                />
+                            </Grid>
                         </Grid>
                     </Box>
                 );
@@ -536,7 +546,15 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                             borderColor: formData.cloudProvider === provider.value ? 'primary.main' : 'divider',
                                             '&:hover': { borderColor: 'primary.main' }
                                         }}
-                                        onClick={() => updateFormData({ cloudProvider: provider.value as CloudProvider })}
+                                        onClick={() => {
+                                            const selectedProvider = provider.value as CloudProvider;
+                                            // Map azure-blob to azure for the storage backend
+                                            const storageBackend = selectedProvider === 'azure-blob' ? 'azure' : selectedProvider;
+                                            updateFormData({ 
+                                                cloudProvider: selectedProvider,
+                                                storage: { ...formData.storage, backend: storageBackend as 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local' }
+                                            });
+                                        }}
                                     >
                                         <CardContent sx={{ textAlign: 'center', p: 2 }}>
                                             <Box sx={{ mb: 1 }}>
@@ -803,46 +821,21 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                 Local storage will be configured automatically based on your system settings.
                             </Typography>
                         )}
+                        
+                        {/* Notification about automatic schema selection */}
+                        <Alert severity="info" sx={{ mt: 3 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                                Using Backbone Logic Unified Schema
+                            </Typography>
+                            <Typography variant="body2">
+                                The standard Backbone Logic schema will be automatically applied to this dataset.
+                                This ensures full compatibility with all application features and provides a consistent data structure.
+                            </Typography>
+                        </Alert>
                     </Box>
                 );
+            // Case 4 is now Advanced Options (previously case 5)
             case 4:
-                return (
-                    <Box>
-                        <Typography variant="h6" gutterBottom>
-                            Schema Template
-                        </Typography>
-                        <Grid container spacing={2}>
-                            {Object.entries(SCHEMA_TEMPLATES).map(([key, template]) => (
-                                <Grid item xs={12} sm={6} md={4} key={key}>
-                                    <Card
-                                        sx={{
-                                            cursor: 'pointer',
-                                            border: formData.schema?.template === key ? '2px solid' : '1px solid',
-                                            borderColor: formData.schema?.template === key ? 'primary.main' : 'divider',
-                                            '&:hover': { borderColor: 'primary.main' }
-                                        }}
-                                        onClick={() => updateFormData({ 
-                                            schema: { ...formData.schema, template: key as any }
-                                        })}
-                                    >
-                                        <CardContent sx={{ textAlign: 'center', p: 2 }}>
-                                            <Box sx={{ mb: 1 }}>
-                                                {template.icon}
-                                            </Box>
-                                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                                                {template.name}
-                                            </Typography>
-                                            <Typography variant="body2" color="text.secondary">
-                                                {template.description}
-                                            </Typography>
-                                        </CardContent>
-                                    </Card>
-                                </Grid>
-                            ))}
-                        </Grid>
-                    </Box>
-                );
-            case 5:
                 return (
                     <Box>
                         <Typography variant="h6" gutterBottom>
@@ -917,7 +910,7 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                         </Grid>
                     </Box>
                 );
-            case 6:
+            case 5:
                 return (
                     <Box>
                         <Typography variant="h6" gutterBottom>
@@ -945,7 +938,7 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                 </Grid>
                                 <Grid item xs={12} sm={6}>
                                     <Typography variant="body2" color="text.secondary">
-                                        Schema: <strong>{formData.schema?.template}</strong>
+                                        Schema: <strong>Backbone Logic Unified Schema</strong>
                                     </Typography>
                                 </Grid>
                             </Grid>

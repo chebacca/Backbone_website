@@ -1,4 +1,4 @@
-interface User {
+export interface User {
   id: string;
   email: string;
   name: string;
@@ -20,6 +20,8 @@ interface User {
   organizationId?: string;
   memberRole?: string;
   memberStatus?: string;
+  // Firebase Authentication integration
+  firebaseUid?: string;
 }
 
 import { api, endpoints } from './api';

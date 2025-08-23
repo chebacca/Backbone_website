@@ -54,6 +54,8 @@ import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import MetricCard from '@/components/common/MetricCard';
+import { firestoreLicenseService } from '@/services/FirestoreLicenseService';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
 interface License {
   id: string;
@@ -174,7 +176,7 @@ const getTierVariant = (tier: License['tier']): 'filled' | 'outlined' => {
 
 const LicensesPage: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
-  const { user } = useAuth();
+  const { user, getTempCredentials } = useAuth();
   const [loading, setLoading] = useState<boolean>(false);
   const [licenses, setLicenses] = useState<License[]>([]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -182,6 +184,14 @@ const LicensesPage: React.FC = () => {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [assignEmail, setAssignEmail] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  // Default to hiding unassigned licenses
+  const [showUnassigned, setShowUnassigned] = useState(false);
+
+  // Helper function to check if we're in web-only mode
+  // Licensing website is ALWAYS in web-only mode
+  const isWebOnlyMode = () => {
+    return true;
+  };
 
   // Load licenses: SUPERADMIN sees all via admin endpoint; others see their own
   useEffect(() => {
@@ -193,32 +203,198 @@ const LicensesPage: React.FC = () => {
         const isSuperAdmin = roleUpper === 'SUPERADMIN';
 
         let list: any[] = [];
-        if (isSuperAdmin) {
-          try {
-            const response = await api.get(`${endpoints.admin.licenses()}?limit=200`);
-            list = response.data?.data?.licenses ?? [];
-          } catch (e) {
+        
+        // 🔧 CRITICAL FIX: In webonly mode, use direct Firestore access
+        if (isWebOnlyMode()) {
+          console.log('🔍 [LicensesPage] WebOnly mode - fetching licenses from Firestore');
+          
+          // Check Firebase Auth status first
+          const isFirebaseAuth = await firestoreLicenseService.isFirebaseAuthAuthenticated();
+          const firebaseUser = await firestoreLicenseService.getCurrentFirebaseUser();
+          
+          console.log(`🔍 [LicensesPage] Firebase Auth status: ${isFirebaseAuth ? 'Authenticated' : 'Not authenticated'}`);
+          if (firebaseUser) {
+            console.log(`🔍 [LicensesPage] Firebase Auth user: ${firebaseUser.uid} (${firebaseUser.email})`);
+          }
+          
+          // Get temporary credentials for Firebase Auth
+          const tempCredentials = getTempCredentials();
+          
+          // If not authenticated with Firebase Auth, try to create/sign in user
+          if (!isFirebaseAuth && user?.email) {
+            console.log('🔄 [LicensesPage] Not authenticated with Firebase Auth, attempting to create/sign in user...');
+            try {
+              // Try to create a Firebase Auth user with a temporary password
+              const tempPassword = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              const authSuccess = await firestoreLicenseService.createFirebaseAuthUser(user.email, tempPassword);
+              
+              if (authSuccess) {
+                console.log('✅ [LicensesPage] Successfully authenticated with Firebase Auth');
+                // Update temp credentials for subsequent calls
+                if (tempCredentials) {
+                  tempCredentials.password = tempPassword;
+                }
+              } else {
+                console.warn('⚠️ [LicensesPage] Failed to authenticate with Firebase Auth');
+              }
+            } catch (authError) {
+              console.warn('⚠️ [LicensesPage] Error during Firebase Auth setup:', authError);
+            }
+          }
+          
+          if (isSuperAdmin) {
+            // Admin can see all licenses
+            list = await firestoreLicenseService.getAllLicenses(200, 
+              tempCredentials?.email, tempCredentials?.password);
+          } else {
+            // Regular users - get all licenses that belong to their subscription
+            const allLicenses: any[] = [];
+            
+            // 1. Get licenses by backend user ID (this will get all licenses under their subscription)
+            if (user?.id) {
+              try {
+                const userLicenses = await firestoreLicenseService.getMyLicenses(user.id, 
+                  tempCredentials?.email, tempCredentials?.password);
+                allLicenses.push(...userLicenses);
+                console.log(`✅ [LicensesPage] Found ${userLicenses.length} licenses by backend userId`);
+              } catch (error) {
+                console.warn('⚠️ [LicensesPage] Failed to fetch licenses by backend userId:', error);
+              }
+            }
+            
+            // 2. If no licenses found by userId, try Firebase Auth UID as fallback
+            if (allLicenses.length === 0 && firebaseUser?.uid) {
+              try {
+                const userLicenses = await firestoreLicenseService.getLicensesByFirebaseUid(firebaseUser.uid);
+                allLicenses.push(...userLicenses);
+                console.log(`✅ [LicensesPage] Found ${userLicenses.length} licenses by Firebase Auth UID`);
+              } catch (error) {
+                console.warn('⚠️ [LicensesPage] Failed to fetch licenses by Firebase Auth UID:', error);
+              }
+            }
+            
+            // 3. Try to get licenses by email
+            if (user?.email) {
+              try {
+                const emailLicenses = await firestoreLicenseService.getLicensesByEmail(user.email);
+                allLicenses.push(...emailLicenses);
+                console.log(`✅ [LicensesPage] Found ${emailLicenses.length} licenses by email`);
+              } catch (error) {
+                console.warn('⚠️ [LicensesPage] Failed to fetch licenses by email:', error);
+              }
+            }
+            
+            // 4. Try to get organization licenses
+            if (user?.organizationId) {
+              try {
+                const orgLicenses = await firestoreLicenseService.getOrganizationLicenses(
+                  user.organizationId, tempCredentials?.email, tempCredentials?.password);
+                allLicenses.push(...orgLicenses);
+                console.log(`✅ [LicensesPage] Found ${orgLicenses.length} organization licenses`);
+              } catch (error) {
+                console.warn('⚠️ [LicensesPage] Failed to fetch organization licenses:', error);
+              }
+            }
+            
+            // Remove duplicates based on license ID
+            const uniqueLicenses = allLicenses.filter((license, index, self) => 
+              index === self.findIndex(l => l.id === license.id)
+            );
+            
+            list = uniqueLicenses;
+            console.log(`✅ [LicensesPage] Total unique licenses found: ${list.length}`);
+            
+            // If no licenses found with individual queries, try fallback method
+            if (list.length === 0) {
+              try {
+                console.log('🔄 [LicensesPage] No licenses found with individual queries, trying fallback method...');
+                const fallbackLicenses = await firestoreLicenseService.getAllAccessibleLicenses(
+                  tempCredentials?.email, tempCredentials?.password);
+                list = fallbackLicenses;
+                console.log(`✅ [LicensesPage] Fallback method found ${fallbackLicenses.length} licenses`);
+              } catch (fallbackError) {
+                console.warn('⚠️ [LicensesPage] Fallback method also failed:', fallbackError);
+              }
+            }
+          }
+        } else {
+          // Use API calls for non-webonly mode
+          if (isSuperAdmin) {
+            try {
+              const response = await api.get(`${endpoints.admin.licenses()}?limit=200`);
+              list = response.data?.data?.licenses ?? [];
+            } catch (e) {
+              const my = await api.get(endpoints.licenses.myLicenses());
+              list = my.data?.data?.licenses ?? [];
+            }
+          } else {
             const my = await api.get(endpoints.licenses.myLicenses());
             list = my.data?.data?.licenses ?? [];
           }
-        } else {
-          const my = await api.get(endpoints.licenses.myLicenses());
-          list = my.data?.data?.licenses ?? [];
         }
 
-        const mapped: License[] = list.map((l: any, idx: number) => ({
-          id: l.id,
-          key: l.key,
-          name: l.user?.name ? `${l.user.name}'s License` : `License ${idx + 1}`,
-          tier: String(l.tier || '').toUpperCase() as License['tier'],
-          status: String(l.status || '').toUpperCase() as License['status'],
-          assignedTo: l.user?.name ? { name: l.user.name, email: l.user.email || '' } : undefined,
-          activatedAt: l.activatedAt || l.createdAt || undefined,
-          expiresAt: l.expiresAt || l.currentPeriodEnd || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-          lastUsed: l.updatedAt || l.activatedAt || l.createdAt || undefined,
-          deviceCount: l.activationCount ?? 0,
-          maxDevices: l.maxActivations ?? 1,
-          usage: { apiCalls: 0, dataTransfer: 0 },
+        const mapped: License[] = await Promise.all(list.map(async (l: any, idx: number) => {
+          // Get user info for license assignment (in Firestore mode)
+          let assignedUser = null;
+          if (isWebOnlyMode() && (l.assignedToUserId || l.userId)) {
+            const userId = l.assignedToUserId || l.userId;
+            
+            // Try to get user info by backend user ID (fallback)
+            if (userId) {
+              assignedUser = await firestoreLicenseService.getUserInfo(userId);
+            }
+          }
+          
+          // Only consider a license assigned if it has assignedToEmail or assignedToUserId
+          const isAssigned = Boolean(l.assignedToEmail || l.assignedToUserId);
+          
+          // Try to get team member info from teamMembers collection if no user info found
+          let teamMemberName = '';
+          if (isAssigned && (!assignedUser?.name || assignedUser?.name === 'Unknown User') && l.assignedToEmail) {
+            try {
+              // Get team member from teamMembers collection by email
+              const { db } = await import('../../services/firebase');
+              const teamMembersQuery = query(
+                collection(db, 'teamMembers'),
+                where('email', '==', l.assignedToEmail),
+                limit(1)
+              );
+              const teamMembersSnapshot = await getDocs(teamMembersQuery);
+              if (!teamMembersSnapshot.empty) {
+                const teamMemberData = teamMembersSnapshot.docs[0].data();
+                if (teamMemberData.name) {
+                  teamMemberName = teamMemberData.name;
+                } else if (teamMemberData.firstName || teamMemberData.lastName) {
+                  teamMemberName = `${teamMemberData.firstName || ''} ${teamMemberData.lastName || ''}`.trim();
+                }
+              }
+            } catch (error) {
+              console.warn('⚠️ [LicensesPage] Failed to fetch team member info:', error);
+            }
+          }
+          
+          // Get the best available name for the user
+          const userName = teamMemberName || assignedUser?.name || l.user?.name || 'Unknown User';
+          
+          return {
+            id: l.id,
+            key: l.key || l.id,
+            name: isAssigned && userName !== 'Unknown User' ? 
+                  `${userName}'s License` : 
+                  `License ${idx + 1}`,
+            tier: String(l.tier || l.type || 'BASIC').toUpperCase() as License['tier'],
+            status: String(l.status || 'ACTIVE').toUpperCase() as License['status'],
+            assignedTo: isAssigned ? { 
+              name: userName, 
+              email: assignedUser?.email || l.user?.email || l.assignedToEmail || ''
+            } : undefined,
+            activatedAt: l.activatedAt || l.createdAt || undefined,
+            expiresAt: l.expiresAt || l.currentPeriodEnd || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+            lastUsed: l.updatedAt || l.activatedAt || l.createdAt || undefined,
+            deviceCount: l.activationCount ?? 0,
+            maxDevices: l.maxActivations ?? 5,
+            usage: { apiCalls: 0, dataTransfer: 0 },
+          };
         }));
 
         if (!isMounted) return;
@@ -250,12 +426,40 @@ const LicensesPage: React.FC = () => {
     handleMenuClose();
   };
 
-  const handleAssignLicense = () => {
+  const handleAssignLicense = async () => {
     if (selectedLicense && assignEmail) {
-      enqueueSnackbar(`License assigned to ${assignEmail}`, { variant: 'success' });
-      setAssignDialogOpen(false);
-      setAssignEmail('');
-      handleMenuClose();
+      try {
+        // Check if user already has a license assigned
+        const existingLicense = licenses.find(license => 
+          license.assignedTo?.email === assignEmail && 
+          license.id !== selectedLicense.id
+        );
+
+        if (existingLicense) {
+          enqueueSnackbar(`User ${assignEmail} already has a license assigned. Please unassign it first.`, { variant: 'error' });
+          return;
+        }
+
+        // In web-only mode, use Firestore service
+        if (isWebOnlyMode() && firestoreLicenseService) {
+          await firestoreLicenseService.assignLicense(selectedLicense.id, assignEmail);
+        } else {
+          // In regular mode, use API
+          await api.post(`${endpoints.licenses.assign(selectedLicense.id)}`, { email: assignEmail });
+        }
+
+        enqueueSnackbar(`License assigned to ${assignEmail}`, { variant: 'success' });
+        setAssignDialogOpen(false);
+        setAssignEmail('');
+        handleMenuClose();
+
+        // Refresh licenses after assignment
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } catch (error: any) {
+        enqueueSnackbar(error.message || 'Failed to assign license', { variant: 'error' });
+      }
     }
   };
 
@@ -272,19 +476,54 @@ const LicensesPage: React.FC = () => {
       handleMenuClose();
     }
   };
+  
+  const handleUnassignLicense = async () => {
+    if (selectedLicense && selectedLicense.assignedTo) {
+      try {
+        // In web-only mode, use Firestore service
+        if (isWebOnlyMode() && firestoreLicenseService) {
+          await firestoreLicenseService.unassignLicense(selectedLicense.id);
+          enqueueSnackbar(`License unassigned from ${selectedLicense.assignedTo.email}`, { variant: 'success' });
+          handleMenuClose();
+          
+          // Refresh licenses after unassignment
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        }
+      } catch (error: any) {
+        enqueueSnackbar(error.message || 'Failed to unassign license', { variant: 'error' });
+      }
+    }
+  };
 
-  const filteredLicenses = licenses.filter(license =>
-    license.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    license.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (license.assignedTo?.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter licenses based on search term and assignment status
+  const filteredLicenses = licenses
+    .filter(license => showUnassigned ? true : license.assignedTo) // Show all if toggle is on, otherwise only assigned
+    .filter(license =>
+      license.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      license.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (license.assignedTo?.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
+  // Count licenses with proper metrics - based on current filter state
   const activeLicenses = useMemo(() => licenses.filter(l => l.status === 'ACTIVE').length, [licenses]);
-  const totalLicenses = useMemo(() => licenses.length, [licenses]);
+  const assignedLicenses = useMemo(() => licenses.filter(l => Boolean(l.assignedTo)).length, [licenses]);
+  const availableLicenses = useMemo(() => licenses.filter(l => l.status === 'ACTIVE' && !l.assignedTo).length, [licenses]);
+  const totalLicenses = useMemo(() => showUnassigned ? licenses.length : licenses.filter(l => Boolean(l.assignedTo)).length, [licenses, showUnassigned]);
+  
+  // Calculate utilization rate based on assigned licenses vs total active licenses
   const utilizationRate = useMemo(() => {
-    if (totalLicenses <= 0) return 0;
-    return Math.round((activeLicenses / totalLicenses) * 100);
-  }, [activeLicenses, totalLicenses]);
+    const activeTotal = licenses.filter(l => l.status === 'ACTIVE').length;
+    if (activeTotal <= 0) return 0;
+    return Math.round((assignedLicenses / activeTotal) * 100);
+  }, [licenses, assignedLicenses]);
+  
+  // Ensure metrics are updated when filtered licenses change
+  useEffect(() => {
+    // This effect ensures the UI updates when license assignments change
+    console.log(`[LicensesPage] Metrics updated: Total=${totalLicenses}, Assigned=${assignedLicenses}, Available=${availableLicenses}, Active=${activeLicenses}`);
+  }, [totalLicenses, assignedLicenses, availableLicenses, activeLicenses]);
 
   return (
     <Box>
@@ -321,19 +560,20 @@ const LicensesPage: React.FC = () => {
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
-            title="Active Licenses"
-            value={activeLicenses}
+            title="Assigned Licenses"
+            value={assignedLicenses}
             icon={<VpnKey />}
             color="primary"
-            trend={{ value: 12, direction: 'up' }}
+            tooltip="Number of licenses assigned to team members"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
-            title="Total Licenses"
-            value={totalLicenses}
+            title="Available Licenses"
+            value={availableLicenses}
             icon={<CardMembership />}
-            color="secondary"
+            color="success"
+            tooltip="Number of active licenses that are not assigned to anyone"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -341,16 +581,17 @@ const LicensesPage: React.FC = () => {
             title="Utilization Rate"
             value={`${utilizationRate}%`}
             icon={<Key />}
-            color="success"
-            trend={{ value: utilizationRate, direction: 'up' }}
+            color="secondary"
+            tooltip="Percentage of active licenses that are assigned"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
-            title="Days to Renewal"
-            value={15}
+            title={showUnassigned ? "Total Licenses" : "Total Assigned"}
+            value={totalLicenses}
             icon={<Schedule />}
             color="warning"
+            tooltip={showUnassigned ? "Total number of licenses" : "Total number of assigned licenses"}
           />
         </Grid>
       </Grid>
@@ -377,6 +618,14 @@ const LicensesPage: React.FC = () => {
                 startAdornment: <Search sx={{ color: 'text.secondary', mr: 1 }} />,
               }}
             />
+            <Button
+              variant={showUnassigned ? "contained" : "outlined"}
+              onClick={() => setShowUnassigned(!showUnassigned)}
+              size="small"
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              {showUnassigned ? 'Hide Unassigned' : 'Show Unassigned'}
+            </Button>
             <Button
               variant="outlined"
               startIcon={<FilterList />}
@@ -541,12 +790,21 @@ const LicensesPage: React.FC = () => {
           </ListItemIcon>
           Copy License Key
         </MenuItem>
-        <MenuItem onClick={() => setAssignDialogOpen(true)}>
-          <ListItemIcon>
-            <Share fontSize="small" />
-          </ListItemIcon>
-          Assign License
-        </MenuItem>
+        {selectedLicense?.assignedTo ? (
+          <MenuItem onClick={handleUnassignLicense}>
+            <ListItemIcon>
+              <Delete fontSize="small" />
+            </ListItemIcon>
+            Unassign License
+          </MenuItem>
+        ) : (
+          <MenuItem onClick={() => setAssignDialogOpen(true)}>
+            <ListItemIcon>
+              <Share fontSize="small" />
+            </ListItemIcon>
+            Assign License
+          </MenuItem>
+        )}
         <MenuItem onClick={() => {}}>
           <ListItemIcon>
             <Edit fontSize="small" />

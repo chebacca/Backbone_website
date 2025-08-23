@@ -75,6 +75,53 @@ enum DemoConversionSource {
   MANUAL
 }
 
+enum OrgMemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+}
+
+enum OrgMemberStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+  REMOVED
+}
+
+enum ProjectType {
+  STANDALONE
+  NETWORKED
+  NETWORK
+  HYBRID
+}
+
+enum ApplicationMode {
+  STANDALONE
+  SHARED_NETWORK
+}
+
+enum ProjectVisibility {
+  PRIVATE
+  ORGANIZATION
+  PUBLIC
+}
+
+enum StorageBackend {
+  FIRESTORE
+  GCS
+  S3
+  LOCAL
+  AZURE_BLOB
+}
+
+enum ProjectAssignmentRole {
+  ADMIN
+  MANAGER
+  DO_ER
+  VIEWER
+}
+
 model User {
   id                       String     @id @default(uuid())
   email                    String     @unique
@@ -109,6 +156,16 @@ model User {
   registrationSource       String?
   organizationId           String?
   
+  // Firebase Authentication integration
+  firebaseUid              String?    @unique
+  
+  // Team member specific fields
+  isTeamMember             Boolean    @default(false)
+  licenseType              SubscriptionTier?
+  memberRole               OrgMemberRole?
+  memberStatus             OrgMemberStatus?
+  department               String?
+  
   // Demo mode fields
   isDemoUser               Boolean    @default(false)
   demoStartedAt            DateTime?
@@ -133,6 +190,17 @@ model User {
   compliance     ComplianceEvent[]
   demoSessions   DemoSession[]
   demoActivities DemoActivity[]
+  
+  // Organization relationships
+  organization           Organization?     @relation("OrganizationMember", fields: [organizationId], references: [id])
+  ownedOrganizations     Organization[]    @relation("OrganizationOwner")
+  orgMemberships         OrgMember[]
+  invitedOrgMembers      OrgMember[]       @relation("OrgMemberInvitedBy")
+  
+  // Project relationships
+  ownedProjects          Project[]         @relation("ProjectOwner")
+  projectAssignments     ProjectAssignment[]
+  assignedProjects       ProjectAssignment[] @relation("ProjectAssignedBy")
 }
 
 model Subscription {
@@ -155,11 +223,13 @@ model Subscription {
   updatedAt          DateTime            @updatedAt
   organizationId     String?
 
-  user       User     @relation(fields: [userId], references: [id])
-  licenses   License[]
-  payments   Payment[]
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  licenses     License[]
+  payments     Payment[]
 
   @@index([userId])
+  @@index([organizationId])
 }
 
 model License {
@@ -180,12 +250,14 @@ model License {
   updatedAt       DateTime         @updatedAt
   organizationId  String?
 
-  user         User         @relation(fields: [userId], references: [id])
-  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  subscription Subscription  @relation(fields: [subscriptionId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
   analytics    UsageAnalytics[]
 
   @@index([userId])
   @@index([subscriptionId])
+  @@index([organizationId])
 }
 
 model Payment {
@@ -395,6 +467,105 @@ model DemoActivity {
   @@index([userId, timestamp])
   @@index([demoSessionId, timestamp])
   @@index([activityType, timestamp])
+}
+
+model Organization {
+  id        String           @id @default(uuid())
+  name      String
+  ownerId   String
+  tier      SubscriptionTier @default(PRO)
+  domain    String?
+  settings  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  owner         User           @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  members       User[]         @relation("OrganizationMember")
+  orgMembers    OrgMember[]
+  subscriptions Subscription[]
+  projects      Project[]
+  licenses      License[]
+
+  @@index([ownerId])
+  @@index([tier])
+}
+
+model OrgMember {
+  id             String          @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrgMemberRole   @default(MEMBER)
+  status         OrgMemberStatus @default(PENDING)
+  seatReserved   Boolean         @default(false)
+  invitedBy      String
+  invitedAt      DateTime        @default(now())
+  joinedAt       DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedByUser User        @relation("OrgMemberInvitedBy", fields: [invitedBy], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Project {
+  id                String            @id @default(uuid())
+  name              String
+  description       String?
+  ownerId           String
+  organizationId    String
+  type              ProjectType       @default(STANDALONE)
+  applicationMode   ApplicationMode   @default(STANDALONE)
+  visibility        ProjectVisibility @default(PRIVATE)
+  storageBackend    StorageBackend    @default(FIRESTORE)
+  allowCollaboration Boolean          @default(false)
+  maxCollaborators  Int               @default(0)
+  realTimeEnabled   Boolean           @default(false)
+  isActive          Boolean           @default(true)
+  isArchived        Boolean           @default(false)
+  settings          Json?
+  metadata          Json?
+  lastAccessedAt    DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  owner        User                @relation("ProjectOwner", fields: [ownerId], references: [id])
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments  ProjectAssignment[]
+
+  @@index([ownerId])
+  @@index([organizationId])
+  @@index([isActive])
+  @@index([isArchived])
+  @@index([type])
+  @@index([visibility])
+}
+
+model ProjectAssignment {
+  id         String                @id @default(uuid())
+  projectId  String
+  userId     String
+  role       ProjectAssignmentRole @default(DO_ER)
+  assignedBy String
+  assignedAt DateTime              @default(now())
+  isActive   Boolean               @default(true)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  project        Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedByUser User    @relation("ProjectAssignedBy", fields: [assignedBy], references: [id])
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+  @@index([role])
+  @@index([isActive])
 }
 
 

@@ -6,34 +6,35 @@
  */
 
 import '@testing-library/jest-dom';
+import { vi, beforeAll, afterAll, beforeEach } from 'vitest';
 
 // Mock window.matchMedia for Material-UI components
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: jest.fn().mockImplementation(query => ({
+  value: vi.fn().mockImplementation(query => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener: jest.fn(), // deprecated
-    removeListener: jest.fn(), // deprecated
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
+    addListener: vi.fn(), // deprecated
+    removeListener: vi.fn(), // deprecated
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
   })),
 });
 
 // Mock ResizeObserver for Material-UI components
-global.ResizeObserver = jest.fn().mockImplementation(() => ({
-  observe: jest.fn(),
-  unobserve: jest.fn(),
-  disconnect: jest.fn(),
+global.ResizeObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
 }));
 
 // Mock IntersectionObserver for Material-UI components
-global.IntersectionObserver = jest.fn().mockImplementation(() => ({
-  observe: jest.fn(),
-  unobserve: jest.fn(),
-  disconnect: jest.fn(),
+global.IntersectionObserver = vi.fn().mockImplementation(() => ({
+  observe: vi.fn(),
+  unobserve: vi.fn(),
+  disconnect: vi.fn(),
 }));
 
 // Mock window.location for navigation tests
@@ -49,19 +50,19 @@ window.location = {
 
 // Mock localStorage
 const localStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
 };
 global.localStorage = localStorageMock as any;
 
 // Mock sessionStorage
 const sessionStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
 };
 global.sessionStorage = sessionStorageMock as any;
 
@@ -102,7 +103,7 @@ afterAll(() => {
 
 // Clear all mocks before each test
 beforeEach(() => {
-  jest.clearAllMocks();
+  vi.clearAllMocks();
   localStorageMock.getItem.mockClear();
   localStorageMock.setItem.mockClear();
   localStorageMock.removeItem.mockClear();
@@ -113,20 +114,20 @@ beforeEach(() => {
   sessionStorageMock.clear.mockClear();
 });
 
-// Extend Jest matchers
+// Extend Vitest matchers
 declare global {
-  namespace jest {
-    interface Matchers<R> {
-      toBeInTheDocument(): R;
-      toHaveClass(className: string): R;
-      toHaveStyle(style: Record<string, any>): R;
-      toHaveAttribute(attr: string, value?: string): R;
-      toHaveValue(value: string | number): R;
-      toBeChecked(): R;
-      toBeDisabled(): R;
-      toBeEnabled(): R;
-      toBeVisible(): R;
-      toHaveFocus(): R;
+  namespace Vi {
+    interface JestAssertion<T = any> {
+      toBeInTheDocument(): T;
+      toHaveClass(className: string): T;
+      toHaveStyle(style: Record<string, any>): T;
+      toHaveAttribute(attr: string, value?: string): T;
+      toHaveValue(value: string | number): T;
+      toBeChecked(): T;
+      toBeDisabled(): T;
+      toBeEnabled(): T;
+      toBeVisible(): T;
+      toHaveFocus(): T;
     }
   }
 }

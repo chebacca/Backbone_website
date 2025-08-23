@@ -13,22 +13,11 @@ declare global {
 }
 
 // Determine the base URL for API calls
+// Licensing website is ALWAYS in production mode (web-only)
 const getBaseURL = (): string => {
-  // Check if we're in production (Firebase hosting)
-  const isProduction = window.location.hostname !== 'localhost' && 
-                      window.location.hostname !== '127.0.0.1' &&
-                      !window.location.hostname.includes('localhost');
-  
-  if (isProduction) {
-    // In production (Firebase hosting), use the same domain with /api path
-    // This works with Firebase hosting rewrites that route /api/* to Cloud Functions
-    return '/api';
-  }
-  
-  // In development, use environment variable or default to relative /api
-  // This works with Vite's proxy configuration
-  const envBaseURL = (import.meta.env as any).VITE_API_BASE_URL || (import.meta.env as any).VITE_API_URL;
-  return envBaseURL || '/api';
+  // Licensing website always uses production mode with Firebase hosting
+  // This works with Firebase hosting rewrites that route /api/* to Cloud Functions
+  return '/api';
 };
 
 const baseURL = getBaseURL();
@@ -55,11 +44,9 @@ const tokenStorage = {
   },
 };
 
-// Debug: surface which baseURL is being used (dev only)
-if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-  // eslint-disable-next-line no-console
-  console.info('[api] baseURL =', baseURL, 'hostname =', window.location.hostname);
-}
+// Debug: surface which baseURL is being used
+// Licensing website is always in production mode
+console.info('[api] baseURL =', baseURL, 'mode = production (web-only)');
 
 // Create axios instance with default config
 const createApiInstance = (): AxiosInstance => {
@@ -351,6 +338,7 @@ export const endpoints = {
     deactivate: () => 'licenses/deactivate',
     validate: () => 'licenses/validate',
     details: (licenseId: string) => `licenses/${licenseId}`,
+    assign: (licenseId: string) => `licenses/${licenseId}/assign`,
     downloadSDK: (licenseKey: string) => `licenses/download-sdk/${licenseKey}`,
     downloadSpecificSDK: (sdkId: string, licenseKey: string) => `licenses/download-sdk/${sdkId}/${licenseKey}`,
     analytics: (licenseId?: string) => `licenses/analytics${licenseId ? `/${licenseId}` : ''}`,

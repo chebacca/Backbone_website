@@ -10,6 +10,8 @@ export interface User {
   isEmailVerified: boolean;
   organizationId?: string;
   lastLoginAt?: Date;
+  // Firebase Authentication integration
+  firebaseUid?: string;
 }
 
 export enum UserRole {

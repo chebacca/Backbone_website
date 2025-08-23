@@ -2,10 +2,11 @@
  * Firebase Client Configuration for WebOnly Mode
  * 
  * This service provides direct Firestore access in webonly production mode
- * without relying on API endpoints.
+ * without relying on API endpoints. Integrates with FirestoreCollectionManager
+ * for centralized collection management.
  */
 
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { 
   getFirestore, 
   collection, 
@@ -19,17 +20,23 @@ import {
   updateDoc,
   orderBy,
   limit,
-  Firestore 
+  Firestore,
+  connectFirestoreEmulator
 } from 'firebase/firestore';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
 
 // Firebase configuration - these are public config values
 // For backbone-logic project - these are safe to expose in client code
 const getFirebaseConfig = () => {
+  // Prefer runtime-injected global to avoid drift across apps
+  if (typeof window !== 'undefined' && (window as any).FIREBASE_CONFIG) {
+    return (window as any).FIREBASE_CONFIG;
+  }
+
   // Try to get from environment variables first
   const envApiKey = (import.meta.env as any)?.VITE_FIREBASE_API_KEY;
   
-  // Actual Firebase config for backbone-logic project
+  // Fallback to static config for backbone-logic project
   return {
     apiKey: envApiKey || "AIzaSyDFnIzSYCdPsDDdvP1lympVxEeUn0AQhWs",
     authDomain: "backbone-logic.firebaseapp.com",
@@ -43,10 +50,217 @@ const getFirebaseConfig = () => {
 
 const firebaseConfig = getFirebaseConfig();
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const db: Firestore = getFirestore(app);
-export const auth: Auth = getAuth(app);
+// Initialize Firebase app
+let app: FirebaseApp | undefined;
+try {
+  app = initializeApp(firebaseConfig);
+  console.log('🔥 [Firebase] App initialized successfully');
+} catch (error) {
+  // App might already be initialized
+  console.log('ℹ️ [Firebase] App already initialized or error:', error);
+}
+
+// Function to ensure app is properly initialized
+async function ensureAppInitialized(): Promise<FirebaseApp> {
+  if (app) return app;
+  
+  try {
+    const { getApps } = await import('firebase/app');
+    const apps = getApps();
+    if (apps.length > 0) {
+      app = apps[0];
+      console.log('✅ [Firebase] Using existing app instance');
+      return app;
+    }
+  } catch (importError) {
+    console.warn('⚠️ [Firebase] Failed to get existing apps:', importError);
+  }
+  
+  // Create a new app if none exists
+  try {
+    app = initializeApp(firebaseConfig, 'fallback');
+    console.log('✅ [Firebase] Created fallback app instance');
+    return app;
+  } catch (fallbackError) {
+    console.error('❌ [Firebase] Failed to create fallback app:', fallbackError);
+    throw new Error('Failed to initialize Firebase app');
+  }
+}
+
+// Initialize Firestore with lazy initialization
+export const db = app ? getFirestore(app) : getFirestore();
+
+// Initialize Auth with lazy initialization
+export const auth = app ? getAuth(app) : getAuth();
+
+// Function to get properly initialized services
+export async function getInitializedServices() {
+  const initializedApp = await ensureAppInitialized();
+  return {
+    app: initializedApp,
+    db: getFirestore(initializedApp),
+    auth: getAuth(initializedApp)
+  };
+}
+
+// Fix Content Security Policy issues for WebOnly mode
+export function fixCSPIssues() {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    // TEMPORARY FIX: Disable client-side CSP override to prevent SES lockdown conflicts
+    // The Firebase hosting CSP should be sufficient
+    console.log('ℹ️ [Firebase] Skipping client-side CSP override - relying on Firebase hosting CSP');
+    
+    // Remove any existing CSP meta tag that might conflict
+    const existingMeta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+    if (existingMeta) {
+      existingMeta.remove();
+      console.log('🧹 [Firebase] Removed conflicting client-side CSP meta tag');
+    }
+    
+  } catch (error) {
+    console.warn('⚠️ [Firebase] Failed to clean up CSP:', error);
+  }
+}
+
+// Apply CSP fixes immediately
+fixCSPIssues();
+
+// Export the app instance
+export { app };
+
+// Export Firebase services
+export { db as firestore, auth as firebaseAuth };
+
+// Configure Firestore settings to ignore undefined properties
+// This prevents errors when creating documents with undefined fields
+const firestoreSettings = {
+  ignoreUndefinedProperties: true
+};
+
+// Apply settings to Firestore instance
+if (typeof window !== 'undefined') {
+  // In web environment, we need to configure this through the app
+  // The setting will be applied when Firestore operations are performed
+  (window as any).FIREBASE_IGNORE_UNDEFINED_PROPERTIES = true;
+}
+
+/**
+ * Clean document data by removing undefined and null values
+ * This prevents Firestore errors when creating/updating documents
+ */
+const cleanDocumentData = <T>(data: T): T => {
+  if (typeof data !== 'object' || data === null) {
+    return data;
+  }
+  
+  if (Array.isArray(data)) {
+    return data.map(item => cleanDocumentData(item)) as T;
+  }
+  
+  const cleaned: any = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined && value !== null) {
+      cleaned[key] = cleanDocumentData(value);
+    }
+  }
+  
+  return cleaned as T;
+};
+
+// Emulator connection - Licensing website never uses emulators
+// Licensing website is ALWAYS in production mode (web-only)
+console.log('🌐 [Firebase] Licensing website mode: production (web-only) - no emulators');
+
+// WebOnly mode detection - Licensing website is ALWAYS web-only
+export const isWebOnlyMode = (): boolean => {
+  // Licensing website is always in web-only mode
+  // This ensures consistent behavior across all environments
+  return true;
+};
+
+// Initialize collection manager on load
+let collectionManagerInitialized = false;
+export const initializeFirebaseCollections = async (): Promise<void> => {
+  if (collectionManagerInitialized) return;
+  
+  try {
+    const { firestoreCollectionManager } = await import('./FirestoreCollectionManager');
+    await firestoreCollectionManager.initializeCollections();
+    collectionManagerInitialized = true;
+    console.log('✅ [Firebase] Collection manager initialized');
+  } catch (error) {
+    console.error('❌ [Firebase] Failed to initialize collection manager:', error);
+  }
+};
+
+/**
+ * Check if a user is already authenticated with Firebase Auth
+ */
+export const isUserAuthenticated = (): boolean => {
+  return auth.currentUser !== null;
+};
+
+/**
+ * Get the current Firebase Auth user
+ */
+export const getCurrentFirebaseUser = () => {
+  return auth.currentUser;
+};
+
+/**
+ * Check if a specific email is already authenticated
+ */
+export const isEmailAuthenticated = (email: string): boolean => {
+  return auth.currentUser?.email === email;
+};
+
+/**
+ * Try to restore Firebase Auth session for an existing user
+ * This is useful when the user has a server session but needs Firebase Auth for Firestore access
+ */
+export const tryRestoreFirebaseSession = async (email: string): Promise<boolean> => {
+  try {
+    // Check if already authenticated with the right user
+    if (isEmailAuthenticated(email)) {
+      return true;
+    }
+    
+    // Check if there's a different user authenticated
+    if (auth.currentUser && auth.currentUser.email !== email) {
+      const { signOut } = await import('firebase/auth');
+      await signOut(auth);
+    }
+    
+    // Try to get the password from AuthContext temp credentials
+    try {
+      const authUserStr = localStorage.getItem('auth_user');
+      const tempCredentials = localStorage.getItem('temp_credentials');
+      
+      if (authUserStr && tempCredentials) {
+        const credentials = JSON.parse(tempCredentials);
+        if (credentials.email === email && credentials.password) {
+          console.log('🔑 [Firebase] Attempting to restore Firebase Auth session with stored credentials');
+          const { signInWithEmailAndPassword } = await import('firebase/auth');
+          await signInWithEmailAndPassword(auth, email, credentials.password);
+          console.log('✅ [Firebase] Firebase Auth session restored successfully');
+          return true;
+        }
+      }
+    } catch (credError) {
+      console.warn('⚠️ [Firebase] Could not restore session with stored credentials:', credError);
+    }
+    
+    // If we can't restore with credentials, return false
+    console.log('ℹ️ [Firebase] No stored credentials available for session restoration');
+    return false;
+    
+  } catch (error) {
+    console.warn('⚠️ [Firebase] Error during session restoration:', error);
+    return false;
+  }
+};
 
 // Team Member interfaces
 export interface FirestoreTeamMember {
@@ -350,7 +564,10 @@ export class FirebaseTeamMemberService {
         isActive: true
       };
       
-      const docRef = await addDoc(collection(db, 'projectTeamMembers'), projectTeamMember);
+      // Clean the data to remove undefined values that could cause Firestore errors
+      const cleanedData = cleanDocumentData(projectTeamMember);
+      
+      const docRef = await addDoc(collection(db, 'projectTeamMembers'), cleanedData);
       
       console.log('✅ [Firebase] Team member added successfully:', docRef.id);
       

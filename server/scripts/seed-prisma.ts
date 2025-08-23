@@ -82,7 +82,7 @@ async function main() {
     if (existingSubs > 0) continue;
 
     const tier = pick(tiers);
-    const seats = tier === 'BASIC' ? 1 : tier === 'PRO' ? Math.floor(Math.random() * 20) + 1 : Math.floor(Math.random() * 100) + 10;
+    const seats = tier === 'BASIC' ? 1 : tier === 'PRO' ? Math.floor(Math.random() * 41) + 10 : Math.floor(Math.random() * 51) + 50;
     const pricePerSeat = pricePerSeatByTier[tier];
     const createdAt = new Date(Date.now() - Math.floor(Math.random() * 90) * 24 * 60 * 60 * 1000);
     const termDays = tier === 'BASIC' ? 30 : 30;

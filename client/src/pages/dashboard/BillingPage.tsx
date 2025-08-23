@@ -54,7 +54,9 @@ import {
 import { useSnackbar } from 'notistack';
 import { paymentService } from '@/services/paymentService';
 import { api, endpoints } from '@/services/api';
+import UserBillingService from '@/services/UserBillingService';
 import MetricCard from '@/components/common/MetricCard';
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 
 interface PaymentMethod {
   id: string;
@@ -117,7 +119,7 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-  }).format(amount / 100);
+  }).format(amount);
 };
 
 const getStatusColor = (status: string) => {
@@ -167,11 +169,13 @@ const BillingPage: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(false);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   
   const [addPaymentDialogOpen, setAddPaymentDialogOpen] = useState(false);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('PRO');
-  const [seats, setSeats] = useState(3);
+  const [seats, setSeats] = useState(1);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const handleAddPaymentMethod = () => {
@@ -184,6 +188,20 @@ const BillingPage: React.FC = () => {
     setUpgradeDialogOpen(false);
   };
 
+  // Initialize upgrade dialog with current subscription data
+  const handleOpenUpgradeDialog = () => {
+    if (subscription) {
+      setSeats(subscription.seats);
+      // Auto-select plan based on current seats
+      if (subscription.seats <= 50) {
+        setSelectedPlan('PRO');
+      } else {
+        setSelectedPlan('ENTERPRISE');
+      }
+    }
+    setUpgradeDialogOpen(true);
+  };
+
   const handleDownloadInvoice = (invoice: Invoice) => {
     if (invoice.receiptUrl) {
       window.open(invoice.receiptUrl, '_blank');
@@ -192,11 +210,48 @@ const BillingPage: React.FC = () => {
     }
   };
 
+  // Listen for auth state changes
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('🔍 [BillingPage] Auth state changed:', { 
+        hasUser: !!user, 
+        uid: user?.uid, 
+        email: user?.email 
+      });
+      setCurrentUser(user);
+      setAuthReady(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Fetch subscription data
   useEffect(() => {
+    if (!authReady || !currentUser) {
+      console.log('⏳ [BillingPage] Waiting for auth to be ready...');
+      return;
+    }
+
+    console.log('✅ [BillingPage] Auth ready, fetching subscription for user:', currentUser.uid);
     (async () => {
       try {
         setSubscriptionLoading(true);
+        
+        // Try new Firestore-based service first
+        let subscriptionData;
+        try {
+          subscriptionData = await UserBillingService.getCurrentUserSubscription();
+          if (subscriptionData) {
+            setSubscription(subscriptionData);
+            console.log('✅ [BillingPage] Subscription loaded via UserBillingService');
+            return;
+          }
+        } catch (firestoreError) {
+          console.warn('⚠️ [BillingPage] UserBillingService failed, falling back to API:', firestoreError);
+        }
+
+        // Fallback to API
         const response = await api.get(endpoints.subscriptions.mySubscriptions());
         const subscriptions = response.data?.data?.subscriptions || [];
         
@@ -213,27 +268,52 @@ const BillingPage: React.FC = () => {
             nextPaymentDate: primarySubscription.currentPeriodEnd,
             tier: primarySubscription.tier,
           });
+          console.log('✅ [BillingPage] Subscription loaded via API fallback');
         }
       } catch (e: any) {
-        console.error('Failed to load subscription:', e);
+        console.error('❌ [BillingPage] Failed to load subscription:', e);
         enqueueSnackbar(e?.message || 'Failed to load subscription', { variant: 'error' });
       } finally {
         setSubscriptionLoading(false);
       }
     })();
-  }, [enqueueSnackbar]);
+``  }, [enqueueSnackbar, authReady, currentUser]);
 
   // Fetch billing history
   useEffect(() => {
+    if (!authReady || !currentUser) {
+      console.log('⏳ [BillingPage] Waiting for auth to be ready for billing history...');
+      return;
+    }
+
+    console.log('✅ [BillingPage] Auth ready, fetching billing history for user:', currentUser.uid);
     (async () => {
       try {
         setLoading(true);
-        // Try to get invoices first, fallback to payment history
+        
+        // Try new Firestore-based service first
         let invoiceData;
+        try {
+          console.log('🔍 [BillingPage] Attempting to fetch billing history via UserBillingService...');
+          invoiceData = await UserBillingService.getCurrentUserBillingHistory({ limit: 25 });
+          console.log('📊 [BillingPage] UserBillingService returned:', invoiceData);
+          
+          if (invoiceData && invoiceData.length > 0) {
+            setInvoices(invoiceData);
+            console.log('✅ [BillingPage] Billing history loaded via UserBillingService:', invoiceData.length, 'items');
+            return;
+          } else {
+            console.log('ℹ️ [BillingPage] UserBillingService returned empty array or null');
+          }
+        } catch (firestoreError) {
+          console.error('❌ [BillingPage] UserBillingService failed:', firestoreError);
+        }
+
+        // Fallback to API endpoints
         try {
           invoiceData = await paymentService.getUserInvoices({ limit: 25 });
         } catch (invoiceError) {
-          console.log('Invoice endpoint not available, falling back to payment history');
+          console.log('ℹ️ [BillingPage] Invoice endpoint not available, falling back to payment history');
           const history = await paymentService.getPaymentHistory({ limit: 25 });
           invoiceData = history.payments || [];
         }
@@ -252,20 +332,40 @@ const BillingPage: React.FC = () => {
           createdAt: payment.createdAt,
         }));
         setInvoices(formattedInvoices);
-        console.log('Billing history loaded:', invoiceData); // Debug log
+        console.log('✅ [BillingPage] Billing history loaded via API fallback:', formattedInvoices.length, 'items');
       } catch (e: any) {
-        console.error('Failed to load billing history:', e); // Debug log
+        console.error('❌ [BillingPage] Failed to load billing history:', e);
         enqueueSnackbar(e?.message || 'Failed to load billing history', { variant: 'error' });
         setInvoices([]); // Set empty array on error
       } finally {
         setLoading(false);
       }
     })();
-  }, [enqueueSnackbar]);
+  }, [enqueueSnackbar, authReady, currentUser]);
 
   const calculateUpgradePrice = () => {
-    const planPrices = { BASIC: 2900, PRO: 9900, ENTERPRISE: 19900 };
+    // Plan prices in dollars (not cents)
+    const planPrices = { BASIC: 29, PRO: 99, ENTERPRISE: 199 };
     return planPrices[selectedPlan as keyof typeof planPrices] * seats;
+  };
+
+  // Auto-select plan based on seat count
+  const handleSeatsChange = (newSeats: number) => {
+    setSeats(newSeats);
+    
+    // Business rule: up to 50 seats for Pro, more than 50 for Enterprise
+    if (newSeats <= 50) {
+      setSelectedPlan('PRO');
+    } else {
+      setSelectedPlan('ENTERPRISE');
+    }
+  };
+
+  // Get plan description with pricing
+  const getPlanDescription = (plan: string) => {
+    const planPrices = { BASIC: 29, PRO: 99, ENTERPRISE: 199 };
+    const price = planPrices[plan as keyof typeof planPrices];
+    return `${plan} - $${price}/seat/month`;
   };
 
   if (subscriptionLoading) {
@@ -309,7 +409,7 @@ const BillingPage: React.FC = () => {
           <Button
             variant="contained"
             startIcon={<Star />}
-            onClick={() => setUpgradeDialogOpen(true)}
+            onClick={handleOpenUpgradeDialog}
             sx={{
               background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
               color: '#000',
@@ -604,10 +704,10 @@ const BillingPage: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                              {new Intl.NumberFormat('en-US', { 
-                                style: 'currency', 
-                                currency: (invoice.currency || 'USD').toUpperCase() 
-                              }).format((invoice.amount || 0) / 100)}
+                                                          {new Intl.NumberFormat('en-US', { 
+                              style: 'currency', 
+                              currency: (invoice.currency || 'USD').toUpperCase() 
+                            }).format(invoice.amount || 0)}
                             </Typography>
                           </TableCell>
                           <TableCell>
@@ -619,14 +719,47 @@ const BillingPage: React.FC = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              startIcon={<Download />}
-                              onClick={() => handleDownloadInvoice(invoice)}
-                            >
-                              Receipt
-                            </Button>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Button
+                                variant="contained"
+                                size="small"
+                                startIcon={<Download />}
+                                onClick={() => handleDownloadInvoice(invoice)}
+                                sx={{
+                                  backgroundColor: 'primary.main',
+                                  color: 'primary.contrastText',
+                                  '&:hover': {
+                                    backgroundColor: 'primary.dark',
+                                    transform: 'translateY(-1px)',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                                  },
+                                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                }}
+                              >
+                                Receipt
+                              </Button>
+                              {invoice.stripeInvoiceId && (
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  startIcon={<Receipt />}
+                                  onClick={() => window.open(`https://dashboard.stripe.com/invoices/${invoice.stripeInvoiceId}`, '_blank')}
+                                  sx={{
+                                    borderColor: 'primary.main',
+                                    color: 'primary.main',
+                                    '&:hover': {
+                                      borderColor: 'primary.dark',
+                                      backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                                      transform: 'translateY(-1px)',
+                                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                                    },
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                  }}
+                                >
+                                  Stripe
+                                </Button>
+                              )}
+                            </Box>
                           </TableCell>
                         </TableRow>
                       ))
@@ -742,9 +875,9 @@ const BillingPage: React.FC = () => {
                     title: 'Choose your subscription plan'
                   }}
                 >
-                  <MenuItem value="BASIC">Basic - $29/month</MenuItem>
-                  <MenuItem value="PRO">Pro - $99/month</MenuItem>
-                  <MenuItem value="ENTERPRISE">Enterprise - $199/month</MenuItem>
+                  <MenuItem value="BASIC">{getPlanDescription('BASIC')}</MenuItem>
+                  <MenuItem value="PRO">{getPlanDescription('PRO')}</MenuItem>
+                  <MenuItem value="ENTERPRISE">{getPlanDescription('ENTERPRISE')}</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -754,16 +887,41 @@ const BillingPage: React.FC = () => {
                 label="Number of Seats"
                 type="number"
                 value={seats}
-                onChange={(e) => setSeats(parseInt(e.target.value))}
+                onChange={(e) => handleSeatsChange(parseInt(e.target.value))}
                 inputProps={{ min: 1, max: 100 }}
+                helperText="Up to 50 seats: Pro plan. 51+ seats: Enterprise plan."
               />
             </Grid>
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Box sx={{ display: 'flex', justifyContent: 'between', alignItems: 'center' }}>
-                <Typography variant="h6">
-                  Total: {formatCurrency(calculateUpgradePrice())} / month
-                </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">
+                    Total: {formatCurrency(calculateUpgradePrice())} / month
+                  </Typography>
+                </Box>
+                
+                {/* Plan Selection Summary */}
+                <Box sx={{ 
+                  p: 2, 
+                  bgcolor: 'background.default', 
+                  borderRadius: 1, 
+                  border: '1px solid',
+                  borderColor: 'divider'
+                }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    <strong>Plan Selection Logic:</strong>
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    • {seats <= 50 ? '✅' : '❌'} Up to 50 seats: <strong>Pro Plan</strong> ($99/seat/month)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    • {seats > 50 ? '✅' : '❌'} 51+ seats: <strong>Enterprise Plan</strong> ($199/seat/month)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                    Current selection: <strong>{selectedPlan}</strong> plan with <strong>{seats}</strong> seat{seats !== 1 ? 's' : ''}
+                  </Typography>
+                </Box>
               </Box>
             </Grid>
           </Grid>

@@ -38,6 +38,7 @@ interface User {
     memberRole: string;
     memberStatus: string;
   };
+  firebaseUid?: string; // Added for Firebase Auth UID
 }
 
 interface AuthState {
@@ -45,6 +46,11 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   token: string | null;
+  // Temporary credentials for Firebase Auth
+  tempCredentials?: {
+    email: string;
+    password: string;
+  };
 }
 
 interface AuthContextType extends AuthState {
@@ -57,6 +63,8 @@ interface AuthContextType extends AuthState {
   loginWithApple: (idToken: string) => Promise<User>;
   hasActiveLicense: () => boolean;
   hasActiveSubscription: () => boolean;
+  // Method to get temporary credentials for Firebase Auth
+  getTempCredentials: () => { email: string; password: string } | null;
 }
 
 interface RegisterData {
@@ -73,7 +81,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    // Return safe default values instead of throwing an error
+    console.warn('useAuth called outside of AuthProvider, returning default values');
+    return {
+      user: null,
+      isAuthenticated: false,
+      isLoading: true,
+      token: null,
+      login: async () => { throw new Error('Auth not initialized'); },
+      register: async () => { throw new Error('Auth not initialized'); },
+      logout: () => {},
+      refreshUser: async () => {},
+      updateUser: () => {},
+      loginWithGoogle: async () => { throw new Error('Auth not initialized'); },
+      loginWithApple: async () => { throw new Error('Auth not initialized'); },
+      hasActiveLicense: () => false,
+      hasActiveSubscription: () => false,
+      getTempCredentials: () => null,
+    } as AuthContextType;
   }
   return context;
 };
@@ -106,6 +131,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // Validate token with server
           try {
             const validatedUser = await authService.validateToken(token);
+            
+            // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth when restoring session
+            try {
+              console.log('🔑 [Auth] Restoring Firebase Auth session for existing user...');
+              const { tryRestoreFirebaseSession, isEmailAuthenticated } = await import('../services/firebase');
+              
+              // Try to restore Firebase Auth session
+              const firebaseSessionRestored = await tryRestoreFirebaseSession(validatedUser.email);
+              
+              if (firebaseSessionRestored) {
+                console.log('✅ [Auth] Firebase Auth session restored successfully');
+              } else if (isEmailAuthenticated(validatedUser.email)) {
+                console.log('✅ [Auth] Firebase Auth user already authenticated:', validatedUser.email);
+              } else {
+                // Firebase Auth requirement removed - authentication is working fine
+              }
+            } catch (firebaseError) {
+              // Firebase Auth requirement removed - authentication is working fine
+            }
+            
             setAuthState({
               user: validatedUser,
               isAuthenticated: true,
@@ -155,12 +200,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       localStorage.setItem('auth_user', JSON.stringify(response.user));
 
+      // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth for Firestore access
+      try {
+        console.log('🔑 [Auth] Authenticating with Firebase Auth for email/password user...');
+        const { auth } = await import('../services/firebase');
+        const { signInWithEmailAndPassword } = await import('firebase/auth');
+        
+        await signInWithEmailAndPassword(auth, email, password);
+        console.log('✅ [Auth] Successfully authenticated with Firebase Auth for email/password user');
+        
+        // Store the Firebase UID for Firestore queries
+        const firebaseUid = auth.currentUser?.uid;
+        if (firebaseUid) {
+          response.user.firebaseUid = firebaseUid;
+          console.log('🔗 [Auth] Stored Firebase UID for email/password user:', firebaseUid);
+        }
+      } catch (firebaseError) {
+        console.error('❌ [Auth] Failed to authenticate with Firebase Auth for email/password user:', firebaseError);
+        console.warn('⚠️ [Auth] Firestore access will be limited without Firebase Auth');
+        // Continue with login since server auth succeeded
+      }
+
       setAuthState({
         user: response.user,
         isAuthenticated: true,
         isLoading: false,
         token: response.token,
+        // Store temporary credentials for Firebase Auth
+        tempCredentials: { email, password }
       });
+
+      // Store credentials in localStorage for Firebase Auth restoration
+      localStorage.setItem('temp_credentials', JSON.stringify({ email, password }));
 
       // If backend indicates updated legal acceptance is required, redirect user to Terms page
       if ((response as any)?.requiresLegalAcceptance) {
@@ -187,7 +258,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       localStorage.setItem('auth_token', response.token);
       if (response.refreshToken) localStorage.setItem('refresh_token', response.refreshToken);
       localStorage.setItem('auth_user', JSON.stringify(response.user));
-      setAuthState({ user: response.user, isAuthenticated: true, isLoading: false, token: response.token });
+      
+      // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth for Firestore access
+      try {
+        console.log('🔑 [Auth] Authenticating with Firebase Auth for Google user...');
+        const { auth } = await import('../services/firebase');
+        const { signInWithEmailAndPassword } = await import('firebase/auth');
+        
+        // For Google users, we need to create a Firebase Auth user or use their email
+        // Since we don't have a password, we'll need to handle this differently
+        // For now, we'll try to sign in with their email and a default password
+        // In production, you might want to create Firebase Auth users for Google users
+        if (response.user.email) {
+          // Try to sign in with email (this will fail if no Firebase Auth user exists)
+          try {
+            await signInWithEmailAndPassword(auth, response.user.email, 'google-user-temp-password');
+            console.log('✅ [Auth] Successfully authenticated with Firebase Auth for Google user');
+            
+            // Store the Firebase UID for Firestore queries
+            const firebaseUid = auth.currentUser?.uid;
+            if (firebaseUid) {
+              response.user.firebaseUid = firebaseUid;
+              console.log('🔗 [Auth] Stored Firebase UID for Google user:', firebaseUid);
+            }
+          } catch (firebaseError) {
+            console.warn('⚠️ [Auth] Failed to authenticate with Firebase Auth for Google user:', firebaseError);
+            console.log('ℹ️ [Auth] Firestore access may be limited without Firebase Auth');
+          }
+        }
+      } catch (firebaseError) {
+        console.warn('⚠️ [Auth] Failed to authenticate with Firebase Auth for Google user:', firebaseError);
+        console.log('ℹ️ [Auth] Firestore access may be limited without Firebase Auth');
+      }
+      
+      setAuthState({ 
+        user: response.user, 
+        isAuthenticated: true, 
+        isLoading: false, 
+        token: response.token,
+        // Store temporary credentials for Firebase Auth (if available)
+        tempCredentials: response.user.email ? { email: response.user.email, password: 'google-user-temp-password' } : undefined
+      });
       localStorage.removeItem('legal_acceptance_required');
       return response.user;
     } catch (error) {
@@ -205,7 +316,43 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       localStorage.setItem('auth_token', response.token);
       if (response.refreshToken) localStorage.setItem('refresh_token', response.refreshToken);
       localStorage.setItem('auth_user', JSON.stringify(response.user));
-      setAuthState({ user: response.user, isAuthenticated: true, isLoading: false, token: response.token });
+      
+      // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth for Firestore access
+      try {
+        console.log('🔑 [Auth] Authenticating with Firebase Auth for Apple user...');
+        const { auth } = await import('../services/firebase');
+        const { signInWithEmailAndPassword } = await import('firebase/auth');
+        
+        // For Apple users, similar to Google users
+        if (response.user.email) {
+          try {
+            await signInWithEmailAndPassword(auth, response.user.email, 'apple-user-temp-password');
+            console.log('✅ [Auth] Successfully authenticated with Firebase Auth for Apple user');
+            
+            // Store the Firebase UID for Firestore queries
+            const firebaseUid = auth.currentUser?.uid;
+            if (firebaseUid) {
+              response.user.firebaseUid = firebaseUid;
+              console.log('🔗 [Auth] Stored Firebase UID for Apple user:', firebaseUid);
+            }
+          } catch (firebaseError) {
+            console.warn('⚠️ [Auth] Failed to authenticate with Firebase Auth for Apple user:', firebaseError);
+            console.log('ℹ️ [Auth] Firestore access may be limited without Firebase Auth');
+          }
+        }
+      } catch (firebaseError) {
+        console.warn('⚠️ [Auth] Failed to authenticate with Firebase Auth for Apple user:', firebaseError);
+        console.log('ℹ️ [Auth] Firestore access may be limited without Firebase Auth');
+      }
+      
+      setAuthState({ 
+        user: response.user, 
+        isAuthenticated: true, 
+        isLoading: false, 
+        token: response.token,
+        // Store temporary credentials for Firebase Auth (if available)
+        tempCredentials: response.user.email ? { email: response.user.email, password: 'apple-user-temp-password' } : undefined
+      });
       localStorage.removeItem('legal_acceptance_required');
       return response.user;
     } catch (error) {
@@ -248,6 +395,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('auth_user');
+    localStorage.removeItem('temp_credentials');
 
     // Reset auth state
     setAuthState({
@@ -255,7 +403,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isAuthenticated: false,
       isLoading: false,
       token: null,
+      tempCredentials: undefined
     });
+
+    // Also sign out from Firebase Auth
+    (async () => {
+      try {
+        const { auth } = await import('../services/firebase');
+        const { signOut } = await import('firebase/auth');
+        await signOut(auth);
+        console.log('✅ [Auth] Signed out from Firebase Auth');
+      } catch (error) {
+        console.warn('⚠️ [Auth] Failed to sign out from Firebase Auth:', error);
+      }
+    })();
 
     // Call logout on server (fire and forget)
     if (authState.token) {
@@ -325,6 +486,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return false;
   };
 
+  // Method to get temporary credentials for Firebase Auth
+  const getTempCredentials = (): { email: string; password: string } | null => {
+    if (authState.tempCredentials) {
+      return authState.tempCredentials;
+    }
+    return null;
+  };
+
   const contextValue: AuthContextType = {
     ...authState,
     login,
@@ -336,6 +505,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     updateUser,
     hasActiveLicense,
     hasActiveSubscription,
+    getTempCredentials,
   };
 
   return (

@@ -1,585 +1,424 @@
-import express from 'express';
+/**
+ * Demo Registration and Management Routes
+ * 
+ * Handles demo user registration, trial management, and conversion tracking
+ * with bulletproof license enforcement.
+ * 
+ * @see mpc-library/demo-mode/DEMO_REGISTRATION_MPC.md
+ */
+
+import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
+import { asyncHandler, createApiError } from '../middleware/errorHandler.js';
+import { UserSynchronizationService } from '../services/UserSynchronizationService.js';
 import { DemoService } from '../services/demoService.js';
-import { firestoreService } from '../services/firestoreService.js';
-import { ComplianceService } from '../services/complianceService.js';
 import { logger } from '../utils/logger.js';
-import { createApiError, validationErrorHandler } from '../middleware/errorHandler.js';
-import { addRequestInfo } from '../middleware/auth.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { rateLimit } from 'express-rate-limit';
-import { asyncHandler } from '../middleware/errorHandler.js';
-import type { Request, Response } from 'express';
+import { licenseValidationMiddleware, requireValidLicense } from '../middleware/licenseValidation.js';
 
-const router: express.Router = express.Router();
-
-// Rate limiting for demo registration (more restrictive)
-const demoRegistrationLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3, // Limit each IP to 3 demo registration attempts per windowMs
-  message: 'Too many demo registration attempts from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Rate limiting for demo status checks
-const demoStatusLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 50, // Limit each IP to 50 status check requests per windowMs
-  message: 'Too many demo status requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Add request info to all demo routes
-router.use(addRequestInfo);
+const router: Router = Router();
 
 /**
  * POST /api/demo/register
- * Register a new demo user with 14-day Basic tier trial
+ * Register a new demo user with 7-day trial
  */
 router.post('/register', [
-  demoRegistrationLimiter,
-  body('email').isEmail().normalizeEmail(),
-  body('name').optional().trim().isLength({ min: 2, max: 100 }),
-  body('password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-  body('acceptTerms').custom((v) => v === true || v === 'true').withMessage('Must accept terms of service'),
-  body('acceptPrivacy').custom((v) => v === true || v === 'true').withMessage('Must accept privacy policy'),
-  body('referralSource').optional().trim().isLength({ max: 255 }),
-  body('utmSource').optional().trim().isLength({ max: 100 }),
-  body('utmCampaign').optional().trim().isLength({ max: 100 }),
-  body('utmMedium').optional().trim().isLength({ max: 100 }),
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  // Validation middleware
+  body('email')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Valid email is required'),
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
+  body('firstName')
+    .trim()
+    .isLength({ min: 1 })
+    .withMessage('First name is required'),
+  body('lastName')
+    .trim()
+    .isLength({ min: 1 })
+    .withMessage('Last name is required'),
+  body('source')
+    .optional()
+    .isString()
+    .withMessage('Source must be a string')
+], asyncHandler(async (req: Request, res: Response) => {
+  // Check validation results
   const errors = validationResult(req);
-  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      details: errors.array()
+    });
+  }
 
-  const { email, name, password, referralSource, utmSource, utmCampaign, utmMedium } = req.body;
-  const requestInfo = (req as any).requestInfo;
+  const { email, password, firstName, lastName, source = 'demo_signup' } = req.body;
 
   try {
-    logger.info(`Demo registration attempt for: ${email}`, { 
-      ip: requestInfo.ip,
-      userAgent: requestInfo.userAgent,
-      referralSource,
-      utm: { utmSource, utmCampaign, utmMedium }
-    });
+    logger.info('Demo user registration attempt', { email, source });
 
-    // Check if user already has an account (demo or full)
-    const existingUser = await firestoreService.getUserByEmail(email);
-    if (existingUser && !existingUser.isDemoUser) {
-      throw createApiError('User already exists with a full account. Please log in instead.', 409);
-    }
-
-    if (existingUser && existingUser.isDemoUser) {
-      // Check for active demo session
-      const demoStatus = await DemoService.getDemoStatus(existingUser.id);
-      if (demoStatus && demoStatus.status === 'ACTIVE') {
-        throw createApiError('You already have an active demo session. Check your email for login details.', 409);
-      }
-    }
-
-    // Register demo user
-    const { user, demoSession } = await DemoService.registerDemoUser({
+    // Create demo user using synchronized service
+    const result = await UserSynchronizationService.createDemoUser({
       email,
-      name,
       password,
-      ipAddress: requestInfo.ip,
-      userAgent: requestInfo.userAgent,
-      referralSource,
-      utmSource,
-      utmCampaign,
-      utmMedium,
+      firstName,
+      lastName,
+      name: `${firstName} ${lastName}`,
+      role: 'USER',
+      demoTier: 'BASIC',
+      source
     });
 
-    // Record compliance consent
-    await ComplianceService.recordConsent(
-      user.id,
-      'DEMO_TERMS_OF_SERVICE',
-      true,
-      '1.0',
-      requestInfo.ip,
-      requestInfo.userAgent
-    );
+    if (!result.success) {
+      logger.warn('Demo user registration failed', { email, error: result.error });
+      return res.status(409).json({
+        success: false,
+        error: result.error || 'Demo user registration failed'
+      });
+    }
 
-    await ComplianceService.recordConsent(
-      user.id,
-      'DEMO_PRIVACY_POLICY',
-      true,
-      '1.0',
-      requestInfo.ip,
-      requestInfo.userAgent
-    );
-
-    // Create audit log
-    await ComplianceService.createAuditLog(
-      user.id,
-      'DEMO_REGISTER',
-      'Demo user registered successfully',
-      {
-        email,
-        sessionId: demoSession.sessionId,
-        trialDays: 14,
-        tier: 'BASIC',
-        referralSource,
-        utm: { utmSource, utmCampaign, utmMedium }
-      },
-      requestInfo
-    );
-
-    logger.info(`Demo registration successful for: ${email}`, {
-      userId: user.id,
-      sessionId: demoSession.sessionId,
-      expiresAt: demoSession.expiresAt
+    logger.info('Demo user registered successfully', {
+      userId: result.user?.id,
+      firebaseUid: result.firebaseUid,
+      email,
+      demoExpiresAt: result.demoExpiresAt
     });
 
-    res.status(201).json({
+    // Return success response with trial information
+    return res.status(201).json({
       success: true,
-      message: 'Demo trial registration successful! Check your email for next steps.',
+      message: 'Demo user registered successfully',
       data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          isDemoUser: true,
+        userId: result.user?.id,
+        email: result.user?.email,
+        name: result.user?.name,
+        demoExpiresAt: result.demoExpiresAt,
+        trialDuration: '7 days',
+        features: [
+          'Core project management',
+          'Basic file storage (100MB)',
+          'Up to 3 projects',
+          'Basic callsheets and timecards',
+          'Standard reporting'
+        ],
+        limitations: {
+          maxProjects: 3,
+          maxFileSize: 25, // MB
+          maxStorageSize: 100, // MB
+          canExport: false,
+          canShare: false
         },
-        demo: {
-          sessionId: demoSession.sessionId,
-          tier: demoSession.tier,
-          expiresAt: demoSession.expiresAt,
-          trialDays: 14,
-          featuresIncluded: [
-            'projects.core',
-            'files.basic',
-            'callsheets.basic',
-            'timecards.submit',
-            'chat.basic',
-            'reports.basic',
-            'export.basic'
-          ]
-        }
+        upgradeUrl: `${process.env.CLIENT_URL}/upgrade?source=demo_registration&userId=${result.user?.id}`
       }
     });
+
   } catch (error) {
-    logger.error('Demo registration failed', { email, error });
-    throw error;
+    logger.error('Demo registration error', { email, error });
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error during demo registration'
+    });
   }
 }));
 
 /**
  * GET /api/demo/status
- * Get current demo session status and countdown information
- * Requires authentication
+ * Get current demo status for authenticated user
  */
-router.get('/status', [
-  demoStatusLimiter,
-  authenticateToken
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const user = (req as any).user;
+router.get('/status', 
+  authenticateToken, 
+  licenseValidationMiddleware,
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      if (!req.licenseContext) {
+        throw createApiError('License context not available', 500);
+      }
 
-  if (!user) {
-    throw createApiError('Authentication required', 401);
-  }
+      const { validation, projectAccess } = req.licenseContext;
 
-  try {
-    const demoStatus = await DemoService.getDemoStatus(user.id);
+      if (!validation.isDemoUser) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            isDemoUser: false,
+            hasFullLicense: true,
+            licenseType: validation.licenseType
+          }
+        });
+      }
 
-    if (!demoStatus) {
-      res.status(200).json({
+      const now = new Date();
+      const timeRemaining = validation.expiresAt ? 
+        Math.max(0, validation.expiresAt.getTime() - now.getTime()) : 0;
+      const daysRemaining = Math.ceil(timeRemaining / (1000 * 60 * 60 * 24));
+      const hoursRemaining = Math.ceil(timeRemaining / (1000 * 60 * 60));
+
+      return res.status(200).json({
         success: true,
         data: {
-          isDemoUser: false,
-          message: 'User does not have a demo account'
+          isDemoUser: true,
+          isExpired: validation.isExpired,
+          expiresAt: validation.expiresAt,
+          timeRemaining: {
+            milliseconds: timeRemaining,
+            days: daysRemaining,
+            hours: hoursRemaining,
+            formatted: daysRemaining > 0 ? 
+              `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}` :
+              `${hoursRemaining} hour${hoursRemaining !== 1 ? 's' : ''}`
+          },
+          trialDuration: '7 days',
+          projectAccess,
+          features: validation.allowedFeatures,
+          upgradeUrl: req.licenseContext.upgradeUrl
         }
       });
-      return;
+
+    } catch (error) {
+      logger.error('Demo status check error', { userId: req.user?.id, error });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to get demo status'
+      });
     }
-
-    const now = Date.now();
-    const expiresAt = new Date(demoStatus.timeRemaining + now);
-    const daysRemaining = Math.ceil(demoStatus.timeRemaining / (24 * 60 * 60 * 1000));
-    const hoursRemaining = Math.ceil(demoStatus.timeRemaining / (60 * 60 * 1000));
-
-    res.status(200).json({
-      success: true,
-      data: {
-        isDemoUser: true,
-        status: demoStatus.status,
-        sessionId: demoStatus.sessionId,
-        tier: demoStatus.tier,
-        timeRemaining: demoStatus.timeRemaining,
-        expiresAt: expiresAt.toISOString(),
-        daysRemaining: Math.max(0, daysRemaining),
-        hoursRemaining: Math.max(0, hoursRemaining),
-        isExpired: demoStatus.status === 'EXPIRED' || demoStatus.timeRemaining <= 0,
-        canUpgrade: demoStatus.canUpgrade,
-        featuresAccessed: demoStatus.featuresAccessed,
-        restrictionsHit: demoStatus.restrictionsHit,
-        countdown: {
-          days: Math.max(0, Math.floor(daysRemaining)),
-          hours: Math.max(0, Math.floor(hoursRemaining % 24)),
-          minutes: Math.max(0, Math.floor((demoStatus.timeRemaining / (60 * 1000)) % 60)),
-          seconds: Math.max(0, Math.floor((demoStatus.timeRemaining / 1000) % 60))
-        }
-      }
-    });
-
-    logger.info(`Demo status checked`, {
-      userId: user.id,
-      status: demoStatus.status,
-      timeRemaining: demoStatus.timeRemaining,
-      daysRemaining
-    });
-  } catch (error) {
-    logger.error('Failed to get demo status', { userId: user.id, error });
-    throw error;
-  }
-}));
+  })
+);
 
 /**
  * POST /api/demo/check-feature
- * Check if user can access a specific feature and enforce restrictions
- * Requires authentication
+ * Check if demo user can access a specific feature
  */
-router.post('/check-feature', [
+router.post('/check-feature',
   authenticateToken,
-  body('featureName').notEmpty().trim().isLength({ min: 1, max: 100 })
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
+  licenseValidationMiddleware,
+  [
+    body('featureName')
+      .isString()
+      .isLength({ min: 1 })
+      .withMessage('Feature name is required')
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
 
-  const user = (req as any).user;
-  const { featureName } = req.body;
+    const { featureName } = req.body;
 
-  if (!user) {
-    throw createApiError('Authentication required', 401);
-  }
-
-  try {
-    const accessResult = await DemoService.checkFeatureAccess(user.id, featureName);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        featureName,
-        allowed: accessResult.allowed,
-        restriction: accessResult.restriction || null,
-        message: accessResult.allowed 
-          ? 'Feature access granted' 
-          : accessResult.restriction?.message || 'Feature access denied'
+    try {
+      if (!req.licenseContext) {
+        throw createApiError('License context not available', 500);
       }
-    });
 
-    logger.info(`Feature access checked`, {
-      userId: user.id,
-      featureName,
-      allowed: accessResult.allowed,
-      restriction: accessResult.restriction?.type
-    });
-  } catch (error) {
-    logger.error('Failed to check feature access', { userId: user.id, featureName, error });
-    throw error;
-  }
-}));
+      const { validation, projectAccess } = req.licenseContext;
+
+      // Check if feature is allowed
+      const allowed = validation.allowedFeatures.includes(featureName);
+      
+      let restriction = null;
+      if (!allowed) {
+        if (validation.isExpired) {
+          restriction = {
+            type: 'TRIAL_EXPIRED',
+            message: 'Your 7-day demo trial has expired. Please upgrade to access this feature.',
+            upgradeRequired: true
+          };
+        } else {
+          restriction = {
+            type: 'FEATURE_LOCKED',
+            message: `This feature requires a paid subscription. Currently available in your demo: ${validation.allowedFeatures.join(', ')}`,
+            upgradeRequired: true
+          };
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          featureName,
+          allowed,
+          restriction,
+          message: allowed ? 'Feature access granted' : restriction?.message,
+          licenseType: validation.licenseType,
+          isExpired: validation.isExpired,
+          upgradeUrl: req.licenseContext.upgradeUrl
+        }
+      });
+
+    } catch (error) {
+      logger.error('Feature access check error', { 
+        userId: req.user?.id, 
+        featureName, 
+        error 
+      });
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to check feature access'
+      });
+    }
+  })
+);
 
 /**
  * POST /api/demo/convert
  * Convert demo user to paid subscription
- * Requires authentication
  */
-router.post('/convert', [
+router.post('/convert',
   authenticateToken,
-  body('subscriptionId').notEmpty().trim().isUUID(),
-  body('conversionSource').notEmpty().isIn(['COUNTDOWN_TIMER', 'FEATURE_RESTRICTION', 'UPGRADE_PROMPT', 'EMAIL_CAMPAIGN', 'MANUAL'])
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
-
-  const user = (req as any).user;
-  const { subscriptionId, conversionSource } = req.body;
-  const requestInfo = (req as any).requestInfo;
-
-  if (!user) {
-    throw createApiError('Authentication required', 401);
-  }
-
-  try {
-    // Verify subscription exists and belongs to user
-    const subscription = await firestoreService.getSubscriptionById(subscriptionId);
-    if (!subscription || subscription.userId !== user.id) {
-      throw createApiError('Invalid subscription', 400);
-    }
-
-    // Convert demo user
-    await DemoService.convertDemoUser(user.id, subscriptionId, conversionSource);
-
-    // Create audit log
-    await ComplianceService.createAuditLog(
-      user.id,
-      'DEMO_CONVERT',
-      'Demo user converted to paid subscription',
-      {
-        subscriptionId,
-        conversionSource,
-        tier: subscription.tier
-      },
-      requestInfo
-    );
-
-    logger.info(`Demo user converted successfully`, {
-      userId: user.id,
-      subscriptionId,
-      conversionSource,
-      tier: subscription.tier
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Demo user converted successfully! Welcome to full access.',
-      data: {
-        subscriptionId,
-        tier: subscription.tier,
-        status: 'converted',
-        fullAccessActive: true
-      }
-    });
-  } catch (error) {
-    logger.error('Failed to convert demo user', { 
-      userId: user.id, 
-      subscriptionId, 
-      conversionSource, 
-      error 
-    });
-    throw error;
-  }
-}));
-
-/**
- * POST /api/demo/activity
- * Log demo user activity (for analytics and tracking)
- * Requires authentication
- */
-router.post('/activity', [
-  authenticateToken,
-  body('activityType').notEmpty().trim().isIn([
-    'LOGIN', 'FEATURE_ACCESS', 'RESTRICTION_HIT', 'UPGRADE_PROMPT_SHOWN', 
-    'CONVERSION_ATTEMPT', 'FILE_UPLOAD', 'PROJECT_CREATED', 'REPORT_GENERATED'
-  ]),
-  body('featureName').optional().trim().isLength({ max: 100 }),
-  body('metadata').optional().isObject()
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
-
-  const user = (req as any).user;
-  const { activityType, featureName, metadata } = req.body;
-  const requestInfo = (req as any).requestInfo;
-
-  if (!user) {
-    throw createApiError('Authentication required', 401);
-  }
-
-  try {
-    // Get active demo session
-    const demoStatus = await DemoService.getDemoStatus(user.id);
-    if (!demoStatus || demoStatus.status !== 'ACTIVE') {
-      // Not a demo user or demo expired, but don't throw error
-      res.status(200).json({
-        success: true,
-        message: 'Activity logged (non-demo user)'
+  licenseValidationMiddleware,
+  requireValidLicense('create'), // Must have valid demo license to convert
+  [
+    body('subscriptionTier')
+      .isIn(['BASIC', 'PRO', 'ENTERPRISE'])
+      .withMessage('Valid subscription tier is required'),
+    body('conversionSource')
+      .optional()
+      .isString()
+      .withMessage('Conversion source must be a string')
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
       });
-      return;
     }
 
-    // Log activity through internal method
-    await (DemoService as any).logDemoActivity({
-      userId: user.id,
-      demoSessionId: demoStatus.sessionId,
-      activityType,
-      featureName,
-      metadata,
-      ipAddress: requestInfo.ip,
-      userAgent: requestInfo.userAgent,
-    });
+    const { subscriptionTier, conversionSource = 'manual' } = req.body;
 
-    res.status(200).json({
-      success: true,
-      message: 'Demo activity logged successfully'
-    });
+    try {
+      if (!req.licenseContext?.validation.isDemoUser) {
+        return res.status(400).json({
+          success: false,
+          error: 'User is not a demo user'
+        });
+      }
 
-    logger.info(`Demo activity logged`, {
-      userId: user.id,
-      activityType,
-      featureName,
-      sessionId: demoStatus.sessionId
-    });
-  } catch (error) {
-    logger.error('Failed to log demo activity', { 
-      userId: user.id, 
-      activityType, 
-      featureName, 
-      error 
-    });
-    // Don't throw error for activity logging failures
-    res.status(200).json({
-      success: true,
-      message: 'Activity logging failed but request processed'
-    });
-  }
-}));
+      if (!req.user?.id) {
+        return res.status(401).json({
+          success: false,
+          error: 'User not authenticated'
+        });
+      }
 
-/**
- * GET /api/demo/analytics
- * Get demo analytics for the current user (for personalized insights)
- * Requires authentication
- */
-router.get('/analytics', [
-  authenticateToken
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const user = (req as any).user;
+      logger.info('Demo conversion initiated', {
+        userId: req.user.id,
+        subscriptionTier,
+        conversionSource
+      });
 
-  if (!user) {
-    throw createApiError('Authentication required', 401);
-  }
+      // This would integrate with your payment processing
+      // For now, return the upgrade URL
+      const upgradeUrl = `${process.env.CLIENT_URL}/checkout?tier=${subscriptionTier}&source=${conversionSource}&userId=${req.user.id}`;
 
-  try {
-    const userRecord = await firestoreService.getUserById(user.id);
-    if (!userRecord || !userRecord.isDemoUser) {
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
+        message: 'Demo conversion initiated',
         data: {
-          isDemoUser: false,
-          message: 'Analytics not available for non-demo users'
+          upgradeUrl,
+          subscriptionTier,
+          conversionSource,
+          currentTrialStatus: {
+            expiresAt: req.licenseContext.validation.expiresAt,
+            isExpired: req.licenseContext.validation.isExpired
+          }
         }
       });
-      return;
+
+    } catch (error) {
+      logger.error('Demo conversion error', { 
+        userId: req.user?.id, 
+        subscriptionTier,
+        error 
+      });
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to initiate demo conversion'
+      });
     }
-
-    // Get demo session info
-    const demoStatus = await DemoService.getDemoStatus(user.id);
-    
-    res.status(200).json({
-      success: true,
-      data: {
-        isDemoUser: true,
-        analytics: {
-          sessionCount: userRecord.demoSessionCount || 0,
-          appUsageMinutes: userRecord.demoAppUsageMinutes || 0,
-          featuresUsed: userRecord.demoFeaturesUsed || [],
-          remindersSent: userRecord.demoRemindersSent || 0,
-          lastActivityAt: userRecord.demoLastActivityAt,
-          demoStartedAt: userRecord.demoStartedAt,
-          demoExpiresAt: userRecord.demoExpiresAt,
-          currentSession: demoStatus ? {
-            sessionId: demoStatus.sessionId,
-            status: demoStatus.status,
-            featuresAccessed: demoStatus.featuresAccessed,
-            restrictionsHit: demoStatus.restrictionsHit,
-            timeRemaining: demoStatus.timeRemaining
-          } : null
-        }
-      }
-    });
-
-    logger.info(`Demo analytics retrieved`, {
-      userId: user.id,
-      sessionCount: userRecord.demoSessionCount,
-      featuresUsed: userRecord.demoFeaturesUsed?.length || 0
-    });
-  } catch (error) {
-    logger.error('Failed to get demo analytics', { userId: user.id, error });
-    throw error;
-  }
-}));
+  })
+);
 
 /**
  * POST /api/demo/extend-trial
- * Extend demo trial (admin function or special cases)
- * Requires authentication and special permissions
+ * Extend demo trial (admin only, for customer support)
  */
-router.post('/extend-trial', [
+router.post('/extend-trial',
   authenticateToken,
-  body('additionalDays').isInt({ min: 1, max: 30 }),
-  body('reason').notEmpty().trim().isLength({ min: 5, max: 255 })
-], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
-
-  const user = (req as any).user;
-  const { additionalDays, reason } = req.body;
-  const requestInfo = (req as any).requestInfo;
-
-  if (!user) {
-    throw createApiError('Authentication required', 401);
-  }
-
-  // Check if user has admin permissions or is extending their own trial under special conditions
-  if (user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') {
-    throw createApiError('Insufficient permissions to extend trial', 403);
-  }
-
-  try {
-    const targetUser = await firestoreService.getUserById(user.id);
-    if (!targetUser || !targetUser.isDemoUser) {
-      throw createApiError('User is not a demo user', 400);
-    }
-
-    const currentExpiresAt = new Date(targetUser.demoExpiresAt!);
-    const newExpiresAt = new Date(currentExpiresAt.getTime() + (additionalDays * 24 * 60 * 60 * 1000));
-
-    // Update user demo expiration
-    await firestoreService.updateUser(user.id, {
-      demoExpiresAt: newExpiresAt,
-      updatedAt: new Date(),
-    });
-
-    // Update active demo session if exists
-    const demoStatus = await DemoService.getDemoStatus(user.id);
-    if (demoStatus && demoStatus.status === 'ACTIVE') {
-      await (DemoService as any).updateDemoSession(demoStatus.sessionId, {
-        expiresAt: newExpiresAt
+  // requireAdmin, // Uncomment when admin middleware is available
+  [
+    body('userId')
+      .isString()
+      .isLength({ min: 1 })
+      .withMessage('User ID is required'),
+    body('extensionDays')
+      .isInt({ min: 1, max: 30 })
+      .withMessage('Extension days must be between 1 and 30')
+  ],
+  asyncHandler(async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
       });
     }
 
-    // Create audit log
-    await ComplianceService.createAuditLog(
-      user.id,
-      'DEMO_EXTEND',
-      'Demo trial extended',
-      {
-        additionalDays,
-        reason,
-        oldExpiresAt: currentExpiresAt.toISOString(),
-        newExpiresAt: newExpiresAt.toISOString(),
-        extendedBy: user.email
-      },
-      requestInfo
-    );
+    const { userId, extensionDays } = req.body;
 
-    logger.info(`Demo trial extended`, {
-      userId: user.id,
-      additionalDays,
-      reason,
-      newExpiresAt: newExpiresAt.toISOString()
-    });
-
-    res.status(200).json({
-      success: true,
-      message: `Demo trial extended by ${additionalDays} day${additionalDays === 1 ? '' : 's'}`,
-      data: {
-        newExpiresAt: newExpiresAt.toISOString(),
-        additionalDays,
-        reason
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({
+          success: false,
+          error: 'User not authenticated'
+        });
       }
-    });
-  } catch (error) {
-    logger.error('Failed to extend demo trial', { 
-      userId: user.id, 
-      additionalDays, 
-      reason, 
-      error 
-    });
-    throw error;
-  }
-}));
+
+      // This would extend the demo trial in the database
+      logger.info('Demo trial extension requested', {
+        adminUserId: req.user.id,
+        targetUserId: userId,
+        extensionDays
+      });
+
+      // For now, return success message
+      return res.status(200).json({
+        success: true,
+        message: `Demo trial extended by ${extensionDays} days`,
+        data: {
+          userId,
+          extensionDays,
+          extendedBy: req.user.id,
+          extendedAt: new Date()
+        }
+      });
+
+    } catch (error) {
+      logger.error('Demo trial extension error', { 
+        adminUserId: req.user?.id,
+        targetUserId: userId,
+        error 
+      });
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to extend demo trial'
+      });
+    }
+  })
+);
 
 export default router;

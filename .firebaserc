@@ -9,6 +9,9 @@
       "hosting": {
         "main": [
           "backbone-logic"
+        ],
+        "backbone-client.web": [
+          "backbone-client"
         ]
       }
     }

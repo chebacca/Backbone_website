@@ -158,6 +158,15 @@ export class PaymentService {
         cancelAtPeriodEnd: false,
       });
 
+      // 12b. Provision tenant data for the organization (seed defaults)
+      try {
+        if (organizationId) {
+          await db.ensureTenantProvisioned(organizationId, user.id);
+        }
+      } catch (provisionErr) {
+        logger.warn?.('Tenant provisioning failed (will retry later):', (provisionErr as any)?.message || provisionErr);
+      }
+
       // 13. Create payment record
       const latestInvoice = stripeSubscription.latest_invoice as Stripe.Invoice;
       const paymentIntent = latestInvoice.payment_intent as Stripe.PaymentIntent;

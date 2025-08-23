@@ -34,6 +34,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   Popover,
+  Collapse,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -49,12 +50,21 @@ import {
   Clear as ClearIcon,
   ArrowBack as ArrowBackIcon,
   Person as PersonIcon,
+  ExpandMore as ExpandMoreIcon,
+  Folder as FolderIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { api, endpoints } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
+import AdminDashboardService, { 
+  AdminStats as ServiceAdminStats, 
+  AdminUser as ServiceAdminUser, 
+  AdminPayment as ServiceAdminPayment, 
+  AdminLicense as ServiceAdminLicense, 
+  SystemHealth as ServiceSystemHealth 
+} from '@/services/AdminDashboardService';
 
 interface AdminStats {
   totalUsers: number;
@@ -163,6 +173,9 @@ const AdminDashboard: React.FC = () => {
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [paymentsTotalPages, setPaymentsTotalPages] = useState(1);
   const [paymentsFilters, setPaymentsFilters] = useState<{ status?: string; email?: string; from?: string; to?: string }>({});
+  
+  // State for managing expanded/collapsed folders
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsData, setDetailsData] = useState<{ payment?: any; licenses?: any[] }>({});
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -245,9 +258,9 @@ const AdminDashboard: React.FC = () => {
     return new Date(value);
   };
 
-  const formatCurrency = (amountCents: number | undefined | null): string => {
-    const cents = typeof amountCents === 'number' ? amountCents : 0;
-    return `$${(cents / 100).toFixed(2)}`;
+  const formatCurrency = (amount: number | undefined | null): string => {
+    const dollars = typeof amount === 'number' ? amount : 0;
+    return `$${dollars.toFixed(2)}`;
   };
 
   const filteredPayments = useMemo(() => {
@@ -264,10 +277,89 @@ const AdminDashboard: React.FC = () => {
     );
   }, [payments, paymentsSearch]);
 
+  // Group payments by user for better organization
+  const groupedPayments = useMemo(() => {
+    if (!filteredPayments || filteredPayments.length === 0) return {};
+    
+    const groups: Record<string, ServiceAdminPayment[]> = {};
+    
+    filteredPayments.forEach(payment => {
+      const userEmail = payment.user?.email || 'Unknown User';
+      if (!groups[userEmail]) {
+        groups[userEmail] = [];
+      }
+      groups[userEmail].push(payment);
+    });
+    
+    // Sort each group by date (newest first)
+    Object.keys(groups).forEach(userEmail => {
+      groups[userEmail].sort((a, b) => {
+        const dateA = new Date(a.createdAt?.seconds * 1000 || 0);
+        const dateB = new Date(b.createdAt?.seconds * 1000 || 0);
+        return dateB.getTime() - dateA.getTime();
+      });
+    });
+    
+    return groups;
+  }, [filteredPayments]);
+
+  // Group payments by user for folder-style display
+  const groupedPaymentsForDisplay = useMemo(() => {
+    if (!filteredPayments || filteredPayments.length === 0) return [];
+    
+    const groups: Array<{
+      userEmail: string;
+      userName: string;
+      payments: ServiceAdminPayment[];
+      totalAmount: number;
+      paymentCount: number;
+    }> = [];
+    
+    Object.entries(groupedPayments).forEach(([userEmail, userPayments]) => {
+      const totalAmount = userPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const userName = userPayments[0]?.user?.name || userEmail;
+      
+      groups.push({
+        userEmail,
+        userName,
+        payments: userPayments,
+        totalAmount,
+        paymentCount: userPayments.length
+      });
+    });
+    
+    // Sort groups by total amount (highest first)
+    groups.sort((a, b) => b.totalAmount - a.totalAmount);
+    
+    return groups;
+  }, [groupedPayments, filteredPayments]);
+
   // Clear search functions
   const clearUsersSearch = () => setUsersSearch('');
   const clearPaymentsSearch = () => setPaymentsSearch('');
   const clearLicensesSearch = () => setLicensesSearch('');
+  
+  // Folder expansion/collapse functions
+  const toggleFolder = (userEmail: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(userEmail)) {
+        newSet.delete(userEmail);
+      } else {
+        newSet.add(userEmail);
+      }
+      return newSet;
+    });
+  };
+  
+  const expandAllFolders = () => {
+    const allEmails = groupedPaymentsForDisplay.map(group => group.userEmail);
+    setExpandedFolders(new Set(allEmails));
+  };
+  
+  const collapseAllFolders = () => {
+    setExpandedFolders(new Set());
+  };
 
   const openUserLicensesPopover = async (event: React.MouseEvent<HTMLElement>, userRow: User) => {
     event.stopPropagation();
@@ -277,52 +369,19 @@ const AdminDashboard: React.FC = () => {
     setUserLicenses([]);
     setUserLicensesLoading(true);
     try {
-      const res = await api.get(endpoints.admin.userDetails(userRow.id));
-      const subs: any[] = res.data?.data?.user?.subscriptions || [];
-      let allLicenses: License[] = subs.flatMap((s: any) => (
-        (s.licenses || []).map((l: any) => ({
-          id: l.id,
-          key: l.key,
-          userId: l.userId || userRow.id,
-          userEmail: userRow.email,
-          tier: l.tier,
-          status: String(l.status || '').toLowerCase() as License['status'],
-          activatedAt: new Date(parseDate(l.activatedAt || l.createdAt)).toISOString(),
-          expiresAt: new Date(parseDate(l.expiresAt || l.createdAt)).toISOString(),
-          lastUsed: new Date(parseDate(l.updatedAt || l.createdAt)).toISOString(),
-        }))
-      ));
-      // Fallback: if none found via user details, scan admin/licenses and filter by email
-      if (allLicenses.length === 0) {
-        try {
-          let page = 1;
-          let collected: License[] = [];
-          while (page <= MAX_LICENSE_PAGES_TO_SCAN) {
-            const r = await api.get(`${endpoints.admin.licenses()}?page=${page}&limit=100`);
-            const list = (r.data?.data?.licenses || []) as any[];
-            const mapped: License[] = list
-              .filter((l: any) => (l.user?.email || '').toLowerCase() === userRow.email.toLowerCase())
-              .map((l: any) => ({
-                id: l.id,
-                key: l.key,
-                userId: l.userId || userRow.id,
-                userEmail: l.user?.email || userRow.email,
-                tier: l.tier,
-                status: String(l.status || '').toLowerCase() as License['status'],
-                activatedAt: new Date(parseDate(l.activatedAt || l.createdAt)).toISOString(),
-                expiresAt: new Date(parseDate(l.expiresAt || l.createdAt)).toISOString(),
-                lastUsed: new Date(parseDate(l.updatedAt || l.createdAt)).toISOString(),
-              }));
-            collected = collected.concat(mapped);
-            const pages = Number(r.data?.data?.pagination?.pages || 1);
-            if (page >= pages) break;
-            page += 1;
-          }
-          allLicenses = collected;
-        } catch {
-          // ignore fallback errors
-        }
-      }
+      const result = await AdminDashboardService.getUserDetails(userRow.id);
+      const allLicenses: License[] = result.licenses.map((l: ServiceAdminLicense) => ({
+        id: l.id,
+        key: l.key,
+        userId: l.userId,
+        userEmail: l.userEmail,
+        tier: l.tier,
+        status: (l.status === 'inactive' ? 'suspended' : l.status) as 'active' | 'suspended' | 'pending' | 'expired' | 'revoked',
+        activatedAt: new Date(parseDate(l.activatedAt)).toISOString(),
+        expiresAt: new Date(parseDate(l.expiresAt)).toISOString(),
+        lastUsed: new Date(parseDate(l.lastUsed)).toISOString(),
+      }));
+
       // Show all licenses (active first)
       const sorted = allLicenses.sort((a, b) => {
         const aActive = a.status === 'active' ? 0 : 1;
@@ -332,6 +391,7 @@ const AdminDashboard: React.FC = () => {
       });
       setUserLicenses(sorted);
     } catch (e: any) {
+      console.error('Error loading user licenses:', e);
       enqueueSnackbar(e?.message || 'Failed to load licenses', { variant: 'error' });
       setUserLicenses([]);
     } finally {
@@ -357,46 +417,51 @@ const AdminDashboard: React.FC = () => {
           return;
         }
 
-        const [usersRes, paymentsRes, systemHealthRes, statsRes] = await Promise.all([
-          api.get(`${endpoints.admin.users()}?page=1&limit=100`),
-          api.get(endpoints.admin.paymentAnalytics()),
-          api.get(endpoints.admin.systemHealth()),
-          api.get(endpoints.admin.dashboardStats()),
+        // Use the new AdminDashboardService which handles webonly mode automatically
+        const [usersResult, statsResult, healthResult] = await Promise.all([
+          AdminDashboardService.getUsers(1, 100),
+          AdminDashboardService.getDashboardStats(),
+          AdminDashboardService.getSystemHealth(),
         ]);
 
-        const usersData = usersRes.data?.data?.users ?? [];
-        // Use dashboard-stats as the source of truth for revenue/subscriptions
-        const dashboardStats = statsRes.data?.data?.stats ?? { totalRevenue: 0, activeSubscriptions: 0 };
-        const recent = dashboardStats?.recentPayments ?? [];
-        const healthObj = systemHealthRes.data?.data?.health || systemHealthRes.data?.data;
-        const health = healthObj?.overall || healthObj?.status || 'healthy';
-
         if (!isMounted) return;
-        setUsers(usersData.map((u: any) => ({
+
+        // Map service users to component format
+        setUsers(usersResult.users.map((u: ServiceAdminUser) => ({
           id: u.id,
           email: u.email,
-          firstName: u.name?.split(' ')[0] ?? '',
-          lastName: u.name?.split(' ').slice(1).join(' ') ?? '',
+          firstName: u.firstName,
+          lastName: u.lastName,
           role: u.role,
-          status: u.status?.toLowerCase?.() || 'active',
-          subscription: (u.subscriptions?.[0]?.tier) ?? undefined,
-          lastLogin: u.lastLoginAt || new Date().toISOString(),
-          createdAt: u.createdAt || new Date().toISOString(),
+          status: (u.status?.toLowerCase?.() || 'active') as 'active' | 'suspended' | 'pending',
+          subscription: u.subscription,
+          lastLogin: u.lastLogin,
+          createdAt: u.createdAt,
         })));
 
-        // Licenses are loaded on-demand per user
+        // Map service stats to component format
         setStats({
-          totalUsers: Number(dashboardStats.totalUsers || usersData.length) || 0,
-          activeSubscriptions: dashboardStats.activeSubscriptions ?? 0,
-          // Convert cents to dollars for display
-          totalRevenue: Math.round((dashboardStats.totalRevenue ?? 0)) / 100,
-          pendingApprovals: 0,
-          systemHealth: health === 'healthy' ? 'healthy' : health === 'degraded' ? 'warning' : 'error',
+          totalUsers: statsResult.totalUsers,
+          activeSubscriptions: statsResult.activeSubscriptions,
+          totalRevenue: statsResult.totalRevenue, // Already converted to dollars in service
+          pendingApprovals: statsResult.pendingApprovals,
+          systemHealth: statsResult.systemHealth === 'healthy' ? 'healthy' : 
+                       statsResult.systemHealth === 'warning' ? 'warning' : 'error',
         });
-        setSystemHealth(healthObj || null);
-        setRecentPayments(recent);
+
+        // Map service health to component format
+        setSystemHealth({
+          overall: healthResult.overall,
+          checkedAt: healthResult.checkedAt,
+          database: healthResult.database,
+          email: healthResult.email,
+          payment: healthResult.payment,
+        });
+
+        setRecentPayments(statsResult.recentPayments || []);
       } catch (error) {
         if (!isMounted) return;
+        console.error('Admin Dashboard data loading error:', error);
         setUsers([]);
         setStats((s) => ({ ...s, systemHealth: 'error' }));
         setRecentPayments([]);
@@ -411,12 +476,21 @@ const AdminDashboard: React.FC = () => {
   const refreshHealth = async () => {
     try {
       setHealthLoading(true);
-      const res = await api.get(endpoints.admin.systemHealth());
-      const healthObj = res.data?.data?.health || res.data?.data;
-      setSystemHealth(healthObj || null);
-      const overall = healthObj?.overall || 'healthy';
-      setStats((s) => ({ ...s, systemHealth: overall === 'healthy' ? 'healthy' : overall === 'degraded' ? 'warning' : 'error' }));
-    } catch {
+      const healthResult = await AdminDashboardService.getSystemHealth();
+      setSystemHealth({
+        overall: healthResult.overall,
+        checkedAt: healthResult.checkedAt,
+        database: healthResult.database,
+        email: healthResult.email,
+        payment: healthResult.payment,
+      });
+      setStats((s) => ({ 
+        ...s, 
+        systemHealth: healthResult.overall === 'healthy' ? 'healthy' : 
+                     healthResult.overall === 'degraded' ? 'warning' : 'error' 
+      }));
+    } catch (error) {
+      console.error('Error refreshing health:', error);
       setSystemHealth(null);
       setStats((s) => ({ ...s, systemHealth: 'error' }));
     } finally {
@@ -425,19 +499,21 @@ const AdminDashboard: React.FC = () => {
   };
 
   const fetchPayments = async (page = 1) => {
-    const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('limit', '100');
-    if (paymentsFilters.status) params.set('status', paymentsFilters.status);
-    if (paymentsFilters.email) params.set('email', paymentsFilters.email);
-    if (paymentsFilters.from) params.set('from', paymentsFilters.from);
-    if (paymentsFilters.to) params.set('to', paymentsFilters.to);
-    const res = await api.get(`${endpoints.admin.payments()}?${params.toString()}`);
-    const list = res.data?.data?.payments ?? [];
-    const pag = res.data?.data?.pagination ?? { pages: 1, page: 1 };
-    setPayments(list);
-    setPaymentsPage(pag.page || page);
-    setPaymentsTotalPages(pag.pages || 1);
+    try {
+      const filters: any = {};
+      if (paymentsFilters.status) filters.status = paymentsFilters.status;
+      if (paymentsFilters.email) filters.email = paymentsFilters.email;
+      if (paymentsFilters.from) filters.from = paymentsFilters.from;
+      if (paymentsFilters.to) filters.to = paymentsFilters.to;
+
+      const result = await AdminDashboardService.getPayments(page, 100, filters);
+      setPayments(result.payments);
+      setPaymentsPage(result.pagination?.page || page);
+      setPaymentsTotalPages(result.pagination?.pages || 1);
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      setPayments([]);
+    }
   };
 
   useEffect(() => {
@@ -451,11 +527,11 @@ const AdminDashboard: React.FC = () => {
 
   const openPaymentDetails = async (paymentId: string) => {
     try {
-      const res = await api.get(endpoints.admin.paymentDetails(paymentId));
-      const data = res.data?.data || {};
-      setDetailsData({ payment: data.payment, licenses: data.licenses || [] });
+      const result = await AdminDashboardService.getPaymentDetails(paymentId);
+      setDetailsData({ payment: result.payment, licenses: result.licenses });
       setDetailsOpen(true);
     } catch (e) {
+      console.error('Error loading payment details:', e);
       enqueueSnackbar('Failed to load payment details', { variant: 'error' });
     }
   };
@@ -469,22 +545,37 @@ const AdminDashboard: React.FC = () => {
     try {
       if (!selectedUser) return;
       // Only role and status are allowed to be updated from this dialog
-      await api.put(endpoints.admin.updateUser(selectedUser.id), {
+      await AdminDashboardService.updateUser(selectedUser.id, {
         role: selectedUser.role,
-        status: selectedUser.status.toUpperCase(),
+        status: selectedUser.status,
       });
       enqueueSnackbar('User updated successfully', { variant: 'success' });
       setUserDialogOpen(false);
       setSelectedUser(null);
+      
+      // Refresh the users list
+      const usersResult = await AdminDashboardService.getUsers(1, 100);
+      setUsers(usersResult.users.map((u: ServiceAdminUser) => ({
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role: u.role,
+        status: (u.status?.toLowerCase?.() || 'active') as 'active' | 'suspended' | 'pending',
+        subscription: u.subscription,
+        lastLogin: u.lastLogin,
+        createdAt: u.createdAt,
+      })));
     } catch (e: any) {
-      enqueueSnackbar(e?.response?.data?.message || e?.message || 'Failed to update user', { variant: 'error' });
+      console.error('Error updating user:', e);
+      enqueueSnackbar(e?.message || 'Failed to update user', { variant: 'error' });
     }
   };
 
   const openUserSeatDialog = async (user: User) => {
     try {
-      const detailsRes = await api.get(endpoints.admin.userDetails(user.id));
-      const subs = (detailsRes.data?.data?.user?.subscriptions || []) as any[];
+      const result = await AdminDashboardService.getUserDetails(user.id);
+      const subs = result.subscriptions || [];
       const active = subs.find(s => s.status === 'ACTIVE' && (String(s.tier).toUpperCase() === 'PRO' || String(s.tier).toUpperCase() === 'ENTERPRISE'));
       if (!active) {
         enqueueSnackbar('No active PRO/ENTERPRISE subscription for this user', { variant: 'warning' });
@@ -494,6 +585,7 @@ const AdminDashboard: React.FC = () => {
       setUserSeatInput(Number(active.seats || 0));
       setUserSeatDialogOpen(true);
     } catch (e: any) {
+      console.error('Error loading subscription:', e);
       enqueueSnackbar(e?.message || 'Failed to load subscription', { variant: 'error' });
     }
   };
@@ -533,9 +625,14 @@ const AdminDashboard: React.FC = () => {
   const onUserSelect = async (uid: string) => {
     setAddForm(prev => ({ ...prev, userId: uid, subscriptionId: '' }));
     if (uid) {
-      const detailsRes = await api.get(endpoints.admin.userDetails(uid));
-      const subs = detailsRes.data?.data?.user?.subscriptions || [];
-      setUserSubscriptions(subs.filter((s: any) => s.status === 'ACTIVE'));
+      try {
+        const result = await AdminDashboardService.getUserDetails(uid);
+        const subs = result.subscriptions || [];
+        setUserSubscriptions(subs.filter((s: any) => s.status === 'ACTIVE'));
+      } catch (error) {
+        console.error('Error loading user subscriptions:', error);
+        setUserSubscriptions([]);
+      }
     } else {
       setUserSubscriptions([]);
     }
@@ -1183,79 +1280,290 @@ const AdminDashboard: React.FC = () => {
                 <Button variant="outlined" onClick={() => fetchPayments(1)}>Apply Filters</Button>
               </Box>
             </Box>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Payment ID</TableCell>
-                    <TableCell>User</TableCell>
-                    <TableCell>Tier</TableCell>
-                    <TableCell>Amount</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Invoice</TableCell>
-                    <TableCell>Details</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredPayments.length > 0 ? (
-                    filteredPayments.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell>
-                          <Typography variant="body2" fontFamily="monospace">{p.id}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">{p.user?.email || '—'}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip 
-                            size="small" 
-                            label={p.subscription?.tier || '—'} 
-                            color={getTierColor(p.subscription?.tier)} 
-                            variant={getTierVariant(p.subscription?.tier)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">{formatCurrency(p.amount)}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip size="small" label={p.status} color={p.status === 'SUCCEEDED' ? 'success' : p.status === 'FAILED' ? 'error' : 'default'} />
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2">{parseDate(p.createdAt).toLocaleDateString()}</Typography>
-                        </TableCell>
-                        <TableCell>
-                          {p.stripeInvoiceId ? (
-                            <Button size="small" variant="outlined" onClick={() => {
-                              const token = localStorage.getItem('auth_token');
-                              const url = `/api/invoices/${p.stripeInvoiceId}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-                              window.open(url, '_blank');
-                            }}>View</Button>
-                          ) : p.receiptUrl ? (
-                            <Button size="small" variant="outlined" onClick={() => window.open(p.receiptUrl, '_blank')}>View</Button>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">N/A</Typography>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button size="small" onClick={() => openPaymentDetails(p.id)}>Open</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={8} align="center">
-                        <Box sx={{ py: 4 }}>
-                          <Typography variant="body1" color="text.secondary">
-                            {paymentsSearch ? 'No payments found matching your search criteria.' : 'No payments available.'}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            {/* Folder-style grouping with collapsible sections */}
+            <Box sx={{ mt: 2 }}>
+              {/* Folder Controls */}
+              <Box sx={{ display: 'flex', gap: 2, mb: 2, justifyContent: 'flex-end' }}>
+                <Button 
+                  size="small" 
+                  variant="contained" 
+                  onClick={expandAllFolders}
+                  startIcon={<ExpandMoreIcon />}
+                  sx={{
+                    backgroundColor: 'primary.main',
+                    color: 'primary.contrastText',
+                    fontWeight: 'medium',
+                    borderRadius: '8px',
+                    textTransform: 'none',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                    '&:hover': {
+                      backgroundColor: 'primary.dark',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                      transform: 'translateY(-1px)'
+                    },
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                >
+                  Expand All
+                </Button>
+                <Button 
+                  size="small" 
+                  variant="outlined" 
+                  onClick={collapseAllFolders}
+                  startIcon={<ExpandMoreIcon sx={{ transform: 'rotate(180deg)' }} />}
+                  sx={{
+                    color: 'primary.main',
+                    borderColor: 'primary.main',
+                    fontWeight: 'medium',
+                    borderRadius: '8px',
+                    textTransform: 'none',
+                    '&:hover': {
+                      backgroundColor: 'primary.light',
+                      borderColor: 'primary.main',
+                      color: 'primary.contrastText',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      transform: 'translateY(-1px)'
+                    },
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                >
+                  Collapse All
+                </Button>
+              </Box>
+              
+              {/* Folders */}
+              {groupedPaymentsForDisplay.length > 0 ? (
+                groupedPaymentsForDisplay.map((group) => (
+                  <Paper 
+                    key={group.userEmail} 
+                    sx={{ 
+                      mb: 3, 
+                      border: '1px solid',
+                      borderColor: 'primary.main',
+                      overflow: 'hidden',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      '&:hover': {
+                        boxShadow: '0 8px 30px rgba(0,0,0,0.2)',
+                        transform: 'translateY(-2px)'
+                      }
+                    }}
+                  >
+                    {/* Folder Header - Always Visible */}
+                    <Box 
+                      sx={{ 
+                        p: 2, 
+                        background: 'linear-gradient(135deg, primary.main 0%, primary.dark 100%)',
+                        color: 'primary.contrastText',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        '&:hover': { 
+                          background: 'linear-gradient(135deg, primary.dark 0%, primary.main 100%)',
+                          transform: 'translateY(-1px)',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                        },
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                        borderRadius: '8px 8px 0 0'
+                      }}
+                      onClick={() => toggleFolder(group.userEmail)}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <FolderIcon 
+                          sx={{ 
+                            fontSize: '1.8rem', 
+                            color: '#ffffff',
+                            filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.2))'
+                          }} 
+                        />
+                        <Typography 
+                          variant="h6" 
+                          fontWeight="bold"
+                          sx={{ 
+                            color: '#ffffff',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                            letterSpacing: '0.02em'
+                          }}
+                        >
+                          {group.userName}
+                        </Typography>
+                        <Chip 
+                          label={`${group.paymentCount} payments`} 
+                          color="secondary" 
+                          variant="filled"
+                          sx={{ 
+                            color: '#ffffff', 
+                            fontWeight: 'medium',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                            backgroundColor: 'rgba(255,255,255,0.2)',
+                            border: '1px solid rgba(255,255,255,0.3)'
+                          }}
+                        />
+                        <Typography 
+                          variant="body1" 
+                          fontWeight="bold"
+                          sx={{ 
+                            color: '#ffffff',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                            backgroundColor: 'rgba(255,255,255,0.15)',
+                            borderRadius: '4px',
+                            px: 1.5,
+                            py: 0.5
+                          }}
+                        >
+                          Total: {formatCurrency(group.totalAmount)}
+                        </Typography>
+                      </Box>
+                      <ExpandMoreIcon 
+                        sx={{ 
+                          transform: expandedFolders.has(group.userEmail) ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.3s ease',
+                          color: '#ffffff',
+                          fontSize: '1.8rem',
+                          filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.2))',
+                          '&:hover': {
+                            transform: expandedFolders.has(group.userEmail) 
+                              ? 'rotate(180deg) scale(1.1)' 
+                              : 'rotate(0deg) scale(1.1)',
+                            filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.3))'
+                          }
+                        }} 
+                      />
+                    </Box>
+                    
+                    {/* Collapsible Payment Details */}
+                    <Collapse in={expandedFolders.has(group.userEmail)}>
+                      <TableContainer 
+                        sx={{
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                          borderRadius: '0 0 8px 8px',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <Table 
+                          size="small"
+                          sx={{
+                            '& .MuiTableCell-root': {
+                              borderColor: 'divider'
+                            }
+                          }}
+                        >
+                          <TableHead>
+                            <TableRow 
+                              sx={{ 
+                                backgroundColor: 'primary.light',
+                                '& .MuiTableCell-head': {
+                                  color: 'primary.contrastText',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.875rem'
+                                }
+                              }}
+                            >
+                              <TableCell>Payment ID</TableCell>
+                              <TableCell>Type</TableCell>
+                              <TableCell>User</TableCell>
+                              <TableCell>Tier</TableCell>
+                              <TableCell>Amount</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell>Date</TableCell>
+                              <TableCell>Details</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {group.payments.map((payment) => (
+                              <TableRow 
+                                key={payment.id} 
+                                sx={{ 
+                                  '&:hover': { 
+                                    backgroundColor: 'action.hover',
+                                    transform: 'translateY(-1px)',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                    transition: 'all 0.2s ease-in-out'
+                                  },
+                                  transition: 'all 0.2s ease-in-out',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <TableCell>
+                                  <Typography variant="body2" fontFamily="monospace">{payment.id}</Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Chip 
+                                    size="small" 
+                                    label="Payment" 
+                                    color="success" 
+                                    variant="outlined"
+                                    sx={{ fontWeight: 'bold' }}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">{payment.user?.email || '—'}</Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Chip 
+                                    size="small" 
+                                    label={payment.subscription?.tier || '—'} 
+                                    color={getTierColor(payment.subscription?.tier)} 
+                                    variant={getTierVariant(payment.subscription?.tier)}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">{formatCurrency(payment.amount)}</Typography>
+                                </TableCell>
+                                <TableCell>
+                                  <Chip size="small" label={payment.status} color={payment.status === 'succeeded' ? 'success' : payment.status === 'FAILED' ? 'error' : 'default'} />
+                                </TableCell>
+                                <TableCell>
+                                  <Typography variant="body2">
+                                    {payment.createdAt?.seconds ? new Date(payment.createdAt.seconds * 1000).toLocaleDateString() : '—'}
+                                  </Typography>
+                                </TableCell>
+
+                                                                <TableCell>
+                                  <Button 
+                                    size="small" 
+                                    variant="contained" 
+                                    onClick={() => openPaymentDetails(payment.id)}
+                                    sx={{
+                                      backgroundColor: 'primary.main',
+                                      color: 'primary.contrastText',
+                                      '&:hover': {
+                                        backgroundColor: 'primary.dark',
+                                        transform: 'translateY(-1px)',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                                      },
+                                      '&:active': {
+                                        transform: 'translateY(0px)',
+                                        boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+                                      },
+                                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                      fontWeight: 'medium',
+                                      textTransform: 'none',
+                                      borderRadius: '8px',
+                                      px: 2
+                                    }}
+                                  >
+                                    Open
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Collapse>
+                  </Paper>
+                ))
+              ) : (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No payments available.
+                  </Typography>
+                </Paper>
+              )}
+            </Box>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', mt: 2 }}>
               <Button disabled={paymentsPage <= 1} onClick={() => setPaymentsPage((p) => Math.max(1, p - 1))}>Prev</Button>
               <Chip label={`Page ${paymentsPage} of ${paymentsTotalPages}`} />

@@ -39,6 +39,7 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  FormHelperText,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -54,6 +55,9 @@ import {
   Dataset as DatasetIcon,
   Delete as DeleteIcon,
   Launch as LaunchIcon,
+  Lock as LockIcon,
+  Business as BusinessIcon,
+  Public as PublicIcon,
 } from '@mui/icons-material';
 /**
  * Unified Project Creation Dialog
@@ -421,11 +425,51 @@ export const UnifiedProjectCreationDialog: React.FC<UnifiedProjectCreationDialog
                                 updateFormData({ visibility: e.target.value as 'private' | 'organization' | 'public' });
                             }}
                             label="Visibility"
+                            MenuProps={{
+                                PaperProps: {
+                                    style: {
+                                        maxHeight: 300,
+                                    },
+                                },
+                            }}
                         >
-                            <MenuItem value="private">Private</MenuItem>
-                            <MenuItem value="organization">Organization</MenuItem>
-                            <MenuItem value="public">Public</MenuItem>
+                            <MenuItem value="private">
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <LockIcon fontSize="small" />
+                                    <Box>
+                                        <Typography variant="body1">Private</Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Only you and invited team members
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </MenuItem>
+                            <MenuItem value="organization">
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <BusinessIcon fontSize="small" />
+                                    <Box>
+                                        <Typography variant="body1">Organization</Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            All organization members
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </MenuItem>
+                            <MenuItem value="public">
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <PublicIcon fontSize="small" />
+                                    <Box>
+                                        <Typography variant="body1">Public</Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                            Anyone can access (read-only)
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </MenuItem>
                         </Select>
+                        <FormHelperText>
+                            Choose who can access this project and its data
+                        </FormHelperText>
                     </FormControl>
                 </Grid>
             </Grid>

@@ -63,6 +63,26 @@ A comprehensive, enterprise-grade licensing and subscription management platform
 - **Download History** and re-download capabilities
 - **License Key Integration** for authenticated downloads
 
+## 🌐 Always Web-Only Mode with Offline Support
+
+**The licensing website is configured to always run in web-only mode**, ensuring consistent behavior across all environments. This means:
+
+- ✅ **Always Firebase/Firestore**: No local database dependencies
+- ✅ **Consistent Behavior**: Same functionality in all deployments
+- ✅ **Simplified Configuration**: No environment-specific setup needed
+- ✅ **Production Ready**: Always optimized for Firebase hosting
+- ✅ **Offline Support**: Create projects even when offline or when Firebase Auth fails
+
+The licensing website includes a hybrid approach that supports:
+
+- **Online Operation**: Direct Firestore access when online
+- **Offline Operation**: Local storage with automatic sync when online
+- **Fallback Operation**: Local creation with immediate sync when Firebase Auth fails
+
+For more details, see:
+- [LICENSING_WEBSITE_ALWAYS_WEBONLY.md](./LICENSING_WEBSITE_ALWAYS_WEBONLY.md)
+- [HYBRID_OFFLINE_PROJECT_CREATION.md](./HYBRID_OFFLINE_PROJECT_CREATION.md)
+
 ## 📦 Git Repository
 
 This project is now a standalone Git repository located at:

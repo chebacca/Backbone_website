@@ -335,23 +335,44 @@ router.post('/login', [
   }
 
   // Check if this user is a team member (org member)
+  let isTeamMember = false;
+  let organizationId = null;
+  let memberRole = null;
+  let memberStatus = null;
+  
+  // Log the original user role for debugging
+  logger.info(`User login role check: ${email} has role: ${user.role}`);
+  
   try {
     const orgMemberships = await firestoreService.getOrgMembershipsByUserId(user.id);
     if (orgMemberships && orgMemberships.length > 0) {
       const primaryMembership = orgMemberships[0]; // Use first membership
-      user.organizationId = primaryMembership.orgId;
-      user.memberRole = primaryMembership.role;
-      user.memberStatus = primaryMembership.status;
-      
-      // Only set as team member if they're not an organization owner
-      // Enterprise owners who created their own org should retain their original role
-      if (primaryMembership.role !== 'OWNER') {
-        user.isTeamMember = true;
-        user.role = 'TEAM_MEMBER';
+      organizationId = primaryMembership.orgId;
+      memberRole = primaryMembership.role;
+      memberStatus = primaryMembership.status;
+
+      // Preserve privileged roles. SUPERADMIN (and ADMIN) should never be downgraded.
+      const isPrivilegedRole = String(user.role).toUpperCase() === 'SUPERADMIN' || String(user.role).toUpperCase() === 'ADMIN';
+
+      if (isPrivilegedRole) {
+        isTeamMember = false;
+        logger.info(`Preserving privileged role for ${email}: ${user.role} (not marking as team member)`);
+        // Keep original role for privileged users
       } else {
-        // This is an enterprise owner - preserve their original role and don't mark as team member
-        user.isTeamMember = false;
+        // Only set as team member if they're not an organization owner
+        // Enterprise owners who created their own org should retain their original role
+        if (primaryMembership.role !== 'OWNER') {
+          isTeamMember = true;
+          logger.info(`Marking ${email} as team member (role: ${user.role})`);
+          // Note: We don't change the user.role here - we'll use the original role
+        } else {
+          // This is an enterprise owner - preserve their original role and don't mark as team member
+          isTeamMember = false;
+          logger.info(`Preserving enterprise owner role for ${email}: ${user.role}`);
+        }
       }
+    } else {
+      logger.info(`No org memberships found for ${email}, keeping original role: ${user.role}`);
     }
   } catch (error) {
     logger.warn('Error checking org membership:', error);
@@ -377,7 +398,7 @@ router.post('/login', [
 
   // For team members, get their project access and licenses
   let teamMemberData = null;
-  if (user.isTeamMember) {
+  if (isTeamMember) {
     try {
       const projectAccess = await firestoreService.getTeamMemberProjectAccess(user.id);
       const licenses = await firestoreService.getTeamMemberLicenses(user.id);
@@ -385,18 +406,18 @@ router.post('/login', [
       teamMemberData = {
         projectAccess,
         licenses,
-        organizationId: user.organizationId,
-        memberRole: user.memberRole,
-        memberStatus: user.memberStatus
+        organizationId: organizationId,
+        memberRole: memberRole,
+        memberStatus: memberStatus
       };
     } catch (error) {
       logger.warn('Error fetching team member data:', error);
       teamMemberData = {
         projectAccess: [],
         licenses: [],
-        organizationId: user.organizationId,
-        memberRole: user.memberRole,
-        memberStatus: user.memberStatus
+        organizationId: organizationId,
+        memberRole: memberRole,
+        memberStatus: memberStatus
       };
     }
   }
@@ -418,21 +439,26 @@ router.post('/login', [
     activeOrgSubscription = subs.find(s => s.status === 'ACTIVE') || null;
   }
 
+  // Log the final response for debugging
+  const responseUser = { 
+    id: user.id, 
+    email: user.email, 
+    name: user.name, 
+    role: user.role, // This now preserves the original role
+    isEmailVerified: user.isEmailVerified,
+    isTeamMember: isTeamMember,
+    organizationId: organizationId,
+    memberRole: memberRole,
+    memberStatus: memberStatus
+  };
+  
+  logger.info(`Login response for ${email}: role=${responseUser.role}, isTeamMember=${responseUser.isTeamMember}`);
+  
   res.json({
     success: true,
     message: 'Login successful',
     data: {
-      user: { 
-        id: user.id, 
-        email: user.email, 
-        name: user.name, 
-        role: user.role, 
-        isEmailVerified: user.isEmailVerified,
-        isTeamMember: user.isTeamMember || false,
-        organizationId: user.organizationId,
-        memberRole: user.memberRole,
-        memberStatus: user.memberStatus
-      },
+      user: responseUser,
       tokens,
       requiresLegalAcceptance,
       requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },

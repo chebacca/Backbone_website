@@ -1,173 +1,145 @@
-#!/usr/bin/env node
-
 /**
- * Debug Team Member Creation API
- * This script helps identify why the team member creation is failing with 400 errors
+ * Debug script for team member creation in webonly mode
+ * This script helps diagnose Firestore permissions and authentication issues
  */
 
-import https from 'https';
-import http from 'http';
-
-const API_BASE = 'https://backbone-logic.web.app/api';
-
-// Test data
-const testPayload = {
-  email: 'test@example.com',
-  firstName: 'Test',
-  lastName: 'User',
-  department: 'Engineering',
-  licenseType: 'PROFESSIONAL',
-  organizationId: 'test-org-123', // This should match the regex pattern
-  sendWelcomeEmail: true,
-};
-
-function makeRequest(url, options) {
-  return new Promise((resolve, reject) => {
-    const isHttps = url.startsWith('https://');
-    const client = isHttps ? https : http;
-    
-    const req = client.request(url, options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => data += chunk);
-      res.on('end', () => {
-        resolve({
-          status: res.statusCode,
-          headers: res.headers,
-          body: data
-        });
-      });
-    });
-    
-    req.on('error', reject);
-    
-    if (options.body) {
-      req.write(options.body);
-    }
-    
-    req.end();
-  });
-}
-
-async function testTeamMemberCreation() {
-  console.log('🔍 Testing Team Member Creation API...');
-  console.log('📡 API Base:', API_BASE);
-  console.log('📦 Request Payload:', JSON.stringify(testPayload, null, 2));
+// Debug function to test team member creation
+async function debugTeamMemberCreation() {
+  console.log('🔍 Starting team member creation debug...');
   
   try {
-    // Test 1: Check if endpoint exists
-    console.log('\n🧪 Test 1: Checking endpoint availability...');
-    const healthCheck = await makeRequest(`${API_BASE}/health`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Debug-Script/1.0',
+    // Check if we're in webonly mode
+    const isWebOnly = typeof window !== 'undefined' && (
+      (window as any).WEBONLY_MODE === true ||
+      localStorage.getItem('WEB_ONLY') === 'true' ||
+      localStorage.getItem('USE_FIRESTORE') === 'true' ||
+      window.location.hostname.includes('backbone-client.web.app') ||
+      window.location.hostname.includes('web.app') ||
+      window.location.hostname.includes('firebaseapp.com')
+    );
+    
+    console.log('🌐 WebOnly mode detected:', isWebOnly);
+    console.log('🏠 Hostname:', window.location.hostname);
+    console.log('💾 WEB_ONLY localStorage:', localStorage.getItem('WEB_ONLY'));
+    console.log('🔥 WEBONLY_MODE window:', (window as any).WEBONLY_MODE);
+    
+    // Check Firebase Auth state
+    const { auth } = await import('./client/src/services/firebase');
+    const currentUser = auth.currentUser;
+    
+    console.log('👤 Current Firebase user:', currentUser);
+    console.log('📧 User email:', currentUser?.email);
+    console.log('🆔 User UID:', currentUser?.uid);
+    console.log('✅ User verified:', currentUser?.emailVerified);
+    
+    if (!currentUser) {
+      console.error('❌ No Firebase user authenticated - this is the problem!');
+      console.log('💡 Solution: User needs to log in with Firebase Auth');
+      return;
+    }
+    
+    // Get user's ID token for debugging
+    const idToken = await currentUser.getIdToken();
+    console.log('🔑 Firebase ID Token (first 50 chars):', idToken.substring(0, 50) + '...');
+    
+    // Test Firestore access
+    const { db } = await import('./client/src/services/firebase');
+    const { collection, doc, getDoc, getDocs, query, where } = await import('firebase/firestore');
+    
+    console.log('🔥 Testing Firestore access...');
+    
+    // Test reading from teamMembers collection
+    try {
+      const teamMembersRef = collection(db, 'teamMembers');
+      const snapshot = await getDocs(teamMembersRef);
+      console.log('✅ Can read teamMembers collection. Documents found:', snapshot.size);
+    } catch (readError) {
+      console.error('❌ Cannot read teamMembers collection:', readError);
+    }
+    
+    // Test reading from organizations collection
+    try {
+      const orgsRef = collection(db, 'organizations');
+      const orgQuery = query(orgsRef, where('ownerUserId', '==', currentUser.uid));
+      const orgSnapshot = await getDocs(orgQuery);
+      console.log('✅ Can read organizations. User owns:', orgSnapshot.size, 'organizations');
+      
+      orgSnapshot.forEach(doc => {
+        console.log('🏢 Organization:', doc.id, doc.data());
+      });
+    } catch (orgError) {
+      console.error('❌ Cannot read organizations:', orgError);
+    }
+    
+    // Test creating a team member document (dry run)
+    const testTeamMemberData = {
+      email: 'test@example.com',
+      firstName: 'Test',
+      lastName: 'User',
+      licenseType: 'PROFESSIONAL',
+      organizationId: '8E1GLGmM0iWdLVbBWQly', // From the logs
+      role: 'MEMBER',
+      status: 'ACTIVE',
+      createdBy: currentUser.uid,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    console.log('🧪 Testing team member creation with data:', testTeamMemberData);
+    
+    // Try to create the document
+    const { addDoc } = await import('firebase/firestore');
+    try {
+      const docRef = await addDoc(collection(db, 'teamMembers'), testTeamMemberData);
+      console.log('✅ SUCCESS! Team member created with ID:', docRef.id);
+      
+      // Clean up - delete the test document
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(docRef);
+      console.log('🧹 Test document cleaned up');
+      
+    } catch (createError) {
+      console.error('❌ FAILED to create team member:', createError);
+      console.error('Error code:', createError.code);
+      console.error('Error message:', createError.message);
+      
+      if (createError.code === 'permission-denied') {
+        console.log('🔒 This is a Firestore security rules issue');
+        console.log('💡 Check firestore.rules for teamMembers collection permissions');
       }
-    });
-    console.log('Health check status:', healthCheck.status);
-    
-    // Test 2: Try to create team member (this will likely fail due to auth)
-    console.log('\n🧪 Test 2: Testing team member creation (will fail due to auth)...');
-    const response = await makeRequest(`${API_BASE}/team-members/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Debug-Script/1.0',
-      },
-      body: JSON.stringify(testPayload),
-    });
-    
-    console.log('Response status:', response.status);
-    console.log('Response headers:', response.headers);
-    console.log('Response body:', response.body);
-    
-    if (response.status === 400) {
-      console.log('\n❌ 400 Bad Request - Validation Error');
-      console.log('This suggests the request payload is invalid or missing required fields');
-      console.log('\n🔍 Possible issues:');
-      console.log('1. Missing authentication token');
-      console.log('2. Invalid organizationId format (must match /^[a-zA-Z0-9]+$/)');
-      console.log('3. Missing required fields');
-      console.log('4. Server-side validation errors');
-    } else if (response.status === 401) {
-      console.log('\n🔐 401 Unauthorized - Authentication Required');
-      console.log('This is expected without a valid auth token');
-    } else if (response.status === 404) {
-      console.log('\n🚫 404 Not Found - Endpoint not available');
-      console.log('The team-members endpoint might not be deployed');
     }
     
   } catch (error) {
-    console.error('❌ Request failed:', error.message);
-    
-    if (error.code === 'ENOTFOUND') {
-      console.log('\n🌐 Network Error: Cannot resolve hostname');
-      console.log('This suggests the API endpoint is not accessible');
-    } else if (error.code === 'ECONNREFUSED') {
-      console.log('\n🚫 Connection Refused: Server not running');
-      console.log('This suggests the server is not accessible');
-    }
+    console.error('❌ Debug script failed:', error);
   }
 }
 
-async function testOrganizationIdValidation() {
-  console.log('\n🔍 Testing Organization ID Validation...');
+// Check Firestore rules
+async function checkFirestoreRules() {
+  console.log('📋 Checking Firestore security rules...');
   
-  const testIds = [
-    'test123',
-    'test-123',
-    'test_123',
-    'test.123',
-    'test@123',
-    'test#123',
-    'test$123',
-    'test%123',
-    'test^123',
-    'test&123',
-    'test*123',
-    'test(123)',
-    'test[123]',
-    'test{123}',
-    'test<123>',
-    'test|123',
-    'test\\123',
-    'test/123',
-    'test:123',
-    'test;123',
-    'test=123',
-    'test+123',
-    'test~123',
-    'test`123',
-    'test\'123',
-    'test"123',
-  ];
-  
-  const regex = /^[a-zA-Z0-9]+$/;
-  
-  console.log('Regex pattern: /^[a-zA-Z0-9]+$/');
-  console.log('\nTesting various organization ID formats:');
-  
-  testIds.forEach(id => {
-    const isValid = regex.test(id);
-    const status = isValid ? '✅ VALID' : '❌ INVALID';
-    console.log(`${status} "${id}"`);
-  });
-  
-  console.log('\n💡 Only alphanumeric characters (a-z, A-Z, 0-9) are allowed');
-  console.log('💡 No hyphens, underscores, dots, or special characters');
+  // This would need to be run from Firebase CLI or console
+  console.log('🔧 To check Firestore rules, run:');
+  console.log('   firebase firestore:rules:get');
+  console.log('');
+  console.log('🔧 Expected rules for teamMembers collection:');
+  console.log(`
+    match /teamMembers/{document} {
+      allow read, write: if request.auth != null && 
+        (request.auth.uid == resource.data.createdBy || 
+         request.auth.uid in get(/databases/$(database)/documents/organizations/$(resource.data.organizationId)).data.ownerUserId);
+    }
+  `);
 }
 
-async function main() {
-  console.log('🚀 Team Member Creation API Debug Script');
-  console.log('=====================================\n');
+// Export functions for console use
+if (typeof window !== 'undefined') {
+  window.debugTeamMemberCreation = debugTeamMemberCreation;
+  window.checkFirestoreRules = checkFirestoreRules;
   
-  await testTeamMemberCreation();
-  await testOrganizationIdValidation();
-  
-  console.log('\n📋 Summary of Findings:');
-  console.log('1. Check if the API endpoint is accessible');
-  console.log('2. Verify the organizationId format matches /^[a-zA-Z0-9]+$/');
-  console.log('3. Ensure all required fields are present');
-  console.log('4. Check server logs for detailed validation errors');
-  console.log('5. Verify Firebase Functions are deployed and running');
+  console.log('🛠️ Debug functions available:');
+  console.log('   debugTeamMemberCreation() - Test team member creation');
+  console.log('   checkFirestoreRules() - Show expected Firestore rules');
 }
 
-main().catch(console.error);
+export { debugTeamMemberCreation, checkFirestoreRules };

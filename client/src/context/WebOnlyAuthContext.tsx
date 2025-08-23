@@ -1,41 +1,31 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useLoading } from './LoadingContext';
-import { authService, LoginResponse, RegisterRequest } from '@/services/authService';
-
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING';
-  subscription?: {
-    plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
-    status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'TRIALING';
-    currentPeriodEnd: string;
-  };
-  licenses?: Array<{
-    id: string;
-    key: string;
-    status: 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'PENDING';
-    createdAt: string;
-    expiresAt: string;
-  }>;
-}
+import { authService, LoginResponse, RegisterRequest, User } from '@/services/authService';
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   token: string | null;
+  // Temporary credentials for Firebase Auth
+  tempCredentials?: {
+    email: string;
+    password: string;
+  };
 }
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<User>;
-  register: (userData: RegisterData) => Promise<void>;
+  register: (userData: RegisterRequest) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
   loginWithGoogle: (idToken: string) => Promise<User>;
   loginWithApple: (idToken: string) => Promise<User>;
+  // Method to get temporary credentials for Firebase Auth
+  getTempCredentials: () => { email: string; password: string } | null;
+  // Method to manually authenticate with Firebase Auth for existing sessions
+  authenticateWithFirebase: (email: string, password: string) => Promise<boolean>;
 }
 
 interface RegisterData {
@@ -82,15 +72,59 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        // Initialize Firebase first
+        const { firebaseInitializer } = await import('../services/FirebaseInitializer');
+        const initResult = await firebaseInitializer.initialize();
+        
+        console.log('🔧 [WebOnlyAuth] Firebase initialization result:', {
+          success: initResult.success,
+          mode: initResult.mode,
+          accessibleCollections: initResult.collections.accessible.length
+        });
+        
         // In webonly mode, try to validate any existing session with the server
         // The server should maintain session state via cookies or other means
         const validatedUser = await authService.getProfile();
         if (validatedUser) {
+          // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth for existing sessions
+          try {
+            console.log('🔑 [WebOnlyAuth] Checking Firebase Auth for existing session...');
+            const { auth } = await import('../services/firebase');
+            
+            if (auth.currentUser) {
+              console.log('✅ [WebOnlyAuth] Firebase Auth user already authenticated:', auth.currentUser.uid);
+            } else {
+              console.log('⚠️ [WebOnlyAuth] No Firebase Auth user found for existing session');
+              console.log('🔄 [WebOnlyAuth] Attempting to authenticate with Firebase Auth...');
+              
+              // Try to authenticate with Firebase Auth using stored credentials or session
+              try {
+                const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import('firebase/auth');
+                
+                // Try to sign in with the validated user's email
+                // For now, we'll need to prompt for password or use a default
+                console.log('💡 [WebOnlyAuth] Need Firebase Auth credentials for:', validatedUser.email);
+                console.log('💡 [WebOnlyAuth] Please log out and log back in to establish Firebase Auth session');
+                
+              } catch (firebaseAuthError) {
+                console.warn('⚠️ [WebOnlyAuth] Failed to authenticate with Firebase Auth:', firebaseAuthError);
+              }
+            }
+          } catch (firebaseError) {
+            console.warn('⚠️ [WebOnlyAuth] Failed to check Firebase Auth status:', firebaseError);
+          }
+          
+          // Prefer any persisted access token so API interceptor attaches Authorization
+          const storedToken = (() => {
+            try { return localStorage.getItem('auth_token'); } catch { return null; }
+          })();
+          try { localStorage.setItem('auth_user', JSON.stringify(validatedUser)); } catch {}
+
           setAuthState({
             user: validatedUser,
             isAuthenticated: true,
             isLoading: false,
-            token: 'session-based', // Placeholder token for webonly mode
+            token: storedToken || 'session-based',
           });
         } else {
           setAuthState({
@@ -127,19 +161,87 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
       // Type assertion since we know it's LoginResponse at this point
       const loginResult = result as LoginResponse;
       
+      // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth for Firestore access
+      try {
+        console.log('🔑 [WebOnlyAuth] Authenticating with Firebase Auth for Firestore access...');
+        const { auth } = await import('../services/firebase');
+        const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import('firebase/auth');
+        
+        let firebaseAuthSuccess = false;
+        
+        // First, try to sign in with existing Firebase Auth user
+        try {
+          await signInWithEmailAndPassword(auth, email, password);
+          console.log('✅ [WebOnlyAuth] Successfully signed in with existing Firebase Auth user');
+          firebaseAuthSuccess = true;
+        } catch (signInError: any) {
+          console.log('ℹ️ [WebOnlyAuth] Sign in failed:', signInError.code);
+          
+          // If user doesn't exist, try to create one
+          if (signInError.code === 'auth/user-not-found') {
+            try {
+              console.log('🆕 [WebOnlyAuth] Creating new Firebase Auth user...');
+              await createUserWithEmailAndPassword(auth, email, password);
+              console.log('✅ [WebOnlyAuth] Successfully created and authenticated with Firebase Auth');
+              firebaseAuthSuccess = true;
+            } catch (createError: any) {
+              if (createError.code === 'auth/email-already-in-use') {
+                // User exists but password might be different
+                console.log('⚠️ [WebOnlyAuth] User exists in Firebase Auth but password doesn\'t match');
+                console.log('💡 [WebOnlyAuth] This user needs to be created in Firebase Auth with the correct password');
+              } else {
+                console.warn('⚠️ [WebOnlyAuth] Failed to create Firebase Auth user:', createError.code);
+              }
+            }
+          } else if (signInError.code === 'auth/wrong-password') {
+            console.log('⚠️ [WebOnlyAuth] Wrong password for existing Firebase Auth user');
+            console.log('💡 [WebOnlyAuth] This user exists in Firebase Auth but with a different password');
+          } else {
+            console.warn('⚠️ [WebOnlyAuth] Firebase Auth sign in failed:', signInError.code);
+          }
+        }
+        
+        if (firebaseAuthSuccess) {
+          // Reinitialize Firebase collections with authenticated user
+          try {
+            const { firebaseInitializer } = await import('../services/FirebaseInitializer');
+            await firebaseInitializer.reinitialize();
+            console.log('✅ [WebOnlyAuth] Firebase collections reinitialized with authenticated user');
+          } catch (initError) {
+            console.warn('⚠️ [WebOnlyAuth] Failed to reinitialize Firebase collections:', initError);
+          }
+        } else {
+          console.log('ℹ️ [WebOnlyAuth] Firebase Auth authentication failed - Firestore access will be limited');
+          console.log('💡 [WebOnlyAuth] Contact your administrator to create a Firebase Auth user for this email');
+        }
+        
+      } catch (firebaseError) {
+        console.warn('⚠️ [WebOnlyAuth] Failed to authenticate with Firebase Auth:', firebaseError);
+        console.log('ℹ️ [WebOnlyAuth] Firestore access may be limited without Firebase Auth');
+        // Don't throw here - server auth succeeded, so continue with login
+      }
+      
+      // Persist tokens for API interceptor (Authorization header) and user cache
+      try {
+        localStorage.setItem('auth_token', loginResult.token);
+        if (loginResult.refreshToken) localStorage.setItem('refresh_token', loginResult.refreshToken);
+        localStorage.setItem('auth_user', JSON.stringify(loginResult.user));
+      } catch {}
+
       setAuthState({
         user: loginResult.user,
         isAuthenticated: true,
         isLoading: false,
         token: loginResult.token,
+        // Store temporary credentials for Firebase Auth retry
+        tempCredentials: { email, password }
       });
 
       return loginResult.user;
+      
     } catch (error) {
-      setAuthState(prev => ({ ...prev, isLoading: false }));
-      throw error;
-    } finally {
       setLoading(false);
+      throw error;
     }
   };
 
@@ -160,10 +262,86 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
       isAuthenticated: false,
       isLoading: false,
       token: null,
+      tempCredentials: undefined
     });
+    // Clear persisted auth
+    try {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('auth_user');
+    } catch {}
+    
+    // Also sign out from Firebase Auth
+    (async () => {
+      try {
+        const { auth } = await import('../services/firebase');
+        const { signOut } = await import('firebase/auth');
+        await signOut(auth);
+        console.log('✅ [WebOnlyAuth] Signed out from Firebase Auth');
+      } catch (error) {
+        console.warn('⚠️ [WebOnlyAuth] Failed to sign out from Firebase Auth:', error);
+      }
+    })();
     
     // Call server logout to clear server-side session
     authService.logout().catch(console.error);
+  };
+
+  // 🔥 NEW FUNCTION: Manually authenticate with Firebase Auth for existing sessions
+  const authenticateWithFirebase = async (email: string, password: string): Promise<boolean> => {
+    try {
+      console.log('🔑 [WebOnlyAuth] Manually authenticating with Firebase Auth...');
+      const { auth } = await import('../services/firebase');
+      const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import('firebase/auth');
+      
+      let firebaseAuthSuccess = false;
+      
+      // First, try to sign in with existing Firebase Auth user
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        console.log('✅ [WebOnlyAuth] Successfully signed in with existing Firebase Auth user');
+        firebaseAuthSuccess = true;
+      } catch (signInError: any) {
+        console.log('ℹ️ [WebOnlyAuth] Sign in failed:', signInError.code);
+        
+        // If user doesn't exist, try to create one
+        if (signInError.code === 'auth/user-not-found') {
+          try {
+            console.log('🆕 [WebOnlyAuth] Creating new Firebase Auth user...');
+            await createUserWithEmailAndPassword(auth, email, password);
+            console.log('✅ [WebOnlyAuth] Successfully created and authenticated with Firebase Auth');
+            firebaseAuthSuccess = true;
+          } catch (createError: any) {
+            if (createError.code === 'auth/email-already-in-use') {
+              console.log('⚠️ [WebOnlyAuth] User exists in Firebase Auth but password doesn\'t match');
+            } else {
+              console.warn('⚠️ [WebOnlyAuth] Failed to create Firebase Auth user:', createError.code);
+            }
+          }
+        } else if (signInError.code === 'auth/wrong-password') {
+          console.log('⚠️ [WebOnlyAuth] Wrong password for existing Firebase Auth user');
+        } else {
+          console.warn('⚠️ [WebOnlyAuth] Firebase Auth sign in failed:', signInError.code);
+        }
+      }
+      
+      if (firebaseAuthSuccess) {
+        // Reinitialize Firebase collections with authenticated user
+        try {
+          const { firebaseInitializer } = await import('../services/FirebaseInitializer');
+          await firebaseInitializer.reinitialize();
+          console.log('✅ [WebOnlyAuth] Firebase collections reinitialized with authenticated user');
+        } catch (initError) {
+          console.warn('⚠️ [WebOnlyAuth] Failed to reinitialize Firebase collections:', initError);
+        }
+      }
+      
+      return firebaseAuthSuccess;
+      
+    } catch (firebaseError) {
+      console.warn('⚠️ [WebOnlyAuth] Failed to authenticate with Firebase Auth:', firebaseError);
+      return false;
+    }
   };
 
   const refreshUser = async (): Promise<void> => {
@@ -196,6 +374,13 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
     try {
       const result = await authService.loginWithGoogle(idToken);
       
+      // Persist tokens for API interceptor and user cache
+      try {
+        localStorage.setItem('auth_token', result.token);
+        if ((result as any).refreshToken) localStorage.setItem('refresh_token', (result as any).refreshToken);
+        localStorage.setItem('auth_user', JSON.stringify(result.user));
+      } catch {}
+
       setAuthState({
         user: result.user,
         isAuthenticated: true,
@@ -205,7 +390,7 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
 
       return result.user;
     } catch (error) {
-      setAuthState(prev => ({ ...prev, isLoading: false }));
+      setLoading(false);
       throw error;
     } finally {
       setLoading(false);
@@ -217,6 +402,13 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
     try {
       const result = await authService.loginWithApple(idToken);
       
+      // Persist tokens for API interceptor and user cache
+      try {
+        localStorage.setItem('auth_token', result.token);
+        if ((result as any).refreshToken) localStorage.setItem('refresh_token', (result as any).refreshToken);
+        localStorage.setItem('auth_user', JSON.stringify(result.user));
+      } catch {}
+
       setAuthState({
         user: result.user,
         isAuthenticated: true,
@@ -226,11 +418,15 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
 
       return result.user;
     } catch (error) {
-      setAuthState(prev => ({ ...prev, isLoading: false }));
+      setLoading(false);
       throw error;
     } finally {
       setLoading(false);
     }
+  };
+
+  const getTempCredentials = () => {
+    return authState.tempCredentials || null;
   };
 
   const contextValue: AuthContextType = {
@@ -242,6 +438,8 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
     updateUser,
     loginWithGoogle,
     loginWithApple,
+    getTempCredentials,
+    authenticateWithFirebase, // Add the new function
   };
 
   return (

@@ -557,7 +557,13 @@ class SimplifiedStartupSequencer {
                 cloudProjectIntegration.setAuthToken(token);
             }
 
-            return await cloudProjectIntegration.createCloudProject(options);
+            const cloudProject = await cloudProjectIntegration.createCloudProject(options);
+            if (cloudProject && cloudProject.id) {
+                return cloudProject.id;
+            } else {
+                // Fallback to local project creation if cloud creation fails
+                return await this.createLocalProject(options);
+            }
         } else {
             // For local-only projects, use local project creation
             return await this.createLocalProject(options);

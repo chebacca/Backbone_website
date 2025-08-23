@@ -5,6 +5,8 @@ import { PasswordUtil } from '../utils/password.js';
 import { v4 as uuidv4 } from 'uuid';
 import { firestoreService } from '../services/firestoreService.js';
 import { LicenseService } from '../services/licenseService.js';
+import { ComplianceService } from '../services/complianceService.js';
+import { EmailService } from '../services/emailService.js';
 
 // Initialize the db connection by importing the service (this ensures firebase is initialized)
 import '../services/firestoreService.js';
@@ -604,6 +606,61 @@ class DatabaseSeeder {
       return user.id;
     };
 
+    const ensureDemoUser = async (email: string, name: string, customPassword?: string): Promise<string> => {
+      const existing = await firestoreService.getUserByEmail(email);
+      const demoExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const base: any = {
+        isEmailVerified: true,
+        twoFactorEnabled: false,
+        twoFactorBackupCodes: [],
+        privacyConsent: [],
+        marketingConsent: false,
+        dataProcessingConsent: false,
+        termsAcceptedAt: now,
+        termsVersionAccepted: 'v1',
+        privacyPolicyAcceptedAt: now,
+        privacyPolicyVersionAccepted: 'v1',
+        identityVerified: false,
+        kycStatus: 'PENDING',
+        // Demo flags
+        isDemoUser: true,
+        demoStatus: 'ACTIVE',
+        demoStartedAt: now,
+        demoExpiresAt,
+        demoTier: 'BASIC',
+        demoFeatureAccess: {
+          features: ['projects', 'chat', 'comments'],
+          limitations: {
+            maxProjects: 3,
+            maxFileSize: 50,
+            maxStorageSize: 512,
+            canExport: false,
+            canShare: true,
+          },
+        },
+      };
+
+      if (existing) {
+        await firestoreService.updateUser(existing.id, {
+          name,
+          role: 'USER',
+          ...base,
+          ...(customPassword ? { password: await PasswordUtil.hash(customPassword) } : {}),
+        } as any);
+        return existing.id;
+      }
+
+      const password = customPassword || 'ChangeMe123!';
+      const user = await firestoreService.createUser({
+        email,
+        password: await PasswordUtil.hash(password),
+        name,
+        role: 'USER',
+        ...base,
+      } as any);
+      return user.id;
+    };
+
     const createDefaultProjects = async (userId: string, organizationId?: string | null): Promise<void> => {
       const defaults = [
         { name: 'Production', description: 'Primary production project' },
@@ -629,13 +686,24 @@ class DatabaseSeeder {
       }
     };
 
-    // Ensure users
-    const superadmin1Id = await ensureUser('chebacca@gmail.com', 'System Administrator', 'SUPERADMIN');
-    const superadmin2Id = await ensureUser('chrismole@gmail.com', 'Chris Mole', 'SUPERADMIN');
+    // Ensure users (exactly the requested 6)
+    // Assumption: set a known strong password for the master admin account
+    const superadmin1Id = await ensureUser('chebacca@gmail.com', 'System Administrator', 'SUPERADMIN', 'AdminMaster123!');
     const accountingId = await ensureUser('accounting@example.com', 'Accounting User', 'ACCOUNTING');
     const basicUserId = await ensureUser('basic.user@example.com', 'Basic User', 'USER');
     const proUserId = await ensureUser('pro.user@example.com', 'Pro User', 'USER');
     const enterpriseUserId = await ensureUser('enterprise.user@example.com', 'Enterprise User', 'USER', 'Admin1234!');
+    const demoUserId = await ensureDemoUser('demo.user@example.com', 'Demo User');
+
+    // Record legal consents for created users (mimic registration flow)
+    const consentVersion = 'v1';
+    const stubReq = { ip: '127.0.0.1', userAgent: 'Seeder/1.0' };
+    for (const uid of [superadmin1Id, accountingId, basicUserId, proUserId, enterpriseUserId, demoUserId]) {
+      try {
+        await ComplianceService.recordConsent(uid, 'TERMS_OF_SERVICE', true, consentVersion, stubReq.ip, stubReq.userAgent);
+        await ComplianceService.recordConsent(uid, 'PRIVACY_POLICY', true, consentVersion, stubReq.ip, stubReq.userAgent);
+      } catch {}
+    }
 
     // Create organizations for Pro and Enterprise (team-capable) and set owner membership
     const proOrg = await firestoreService.createOrganization({ name: 'Pro User Org', ownerUserId: proUserId, tier: 'PRO' } as any);
@@ -658,9 +726,23 @@ class DatabaseSeeder {
       };
       if (organizationId) subData.organizationId = organizationId;
       const sub = await firestoreService.createSubscription(subData);
-      await LicenseService.generateLicenses(userId, sub.id, tier as any, seats, 'ACTIVE' as any, 12);
-      // Generate a first payment
-      await firestoreService.createPayment({
+
+      // Minimal billing address similar to real flow
+      const billingAddress = this.generateBillingAddress(`seed+${userId}@example.com`);
+      try {
+        const validation = await ComplianceService.validateBillingAddress(billingAddress);
+        if (validation.valid) {
+          await firestoreService.updateUser(userId, {
+            billingAddress: { ...billingAddress, validated: true, validatedAt: now, validationSource: 'seed' },
+          } as any);
+        }
+      } catch {}
+
+      // Generate initial licenses (mirror BASIC immediate issuance; still generate for higher tiers for rich data)
+      const licenses = await LicenseService.generateLicenses(userId, sub.id, tier as any, seats, 'ACTIVE' as any, 12, organizationId || undefined);
+
+      // Generate a first payment (receipt + billing snapshot)
+      const payment = await firestoreService.createPayment({
         userId,
         subscriptionId: sub.id,
         stripePaymentIntentId: `pi_seed_${sub.id}`,
@@ -670,35 +752,63 @@ class DatabaseSeeder {
         status: 'SUCCEEDED',
         description: `${tier} subscription - ${seats} seats`,
         receiptUrl: 'https://example.com/receipt',
-        billingAddressSnapshot: { firstName: 'Seed', lastName: 'User', country: 'US' },
+        billingAddressSnapshot: billingAddress,
         taxAmount: Math.round(pricePerSeat[tier] * seats * 0.08),
         taxRate: 0.08,
-        taxJurisdiction: 'US',
+        taxJurisdiction: billingAddress.state ? `${billingAddress.state}, US` : 'US',
         paymentMethod: 'credit_card',
-        complianceData: { invoiceNumber: `INV-${Date.now()}` },
-        amlScreeningStatus: 'PASSED',
+        complianceData: { invoiceNumber: `INV-${Date.now()}`, userType: 'individual', subscriptionTier: tier, seats },
+        amlScreeningStatus: 'PENDING',
         amlScreeningDate: now,
-        amlRiskScore: 0.1,
+        amlRiskScore: 0,
         pciCompliant: true,
         ipAddress: '127.0.0.1',
         userAgent: 'Seeder/1.0',
         processingLocation: 'US',
       } as any);
+
+      // Perform AML screening akin to live flow
+      try {
+        await ComplianceService.performAMLScreening(payment.id, { userId, amount: payment.amount, country: billingAddress.country || 'US' });
+      } catch {}
+
+      // Create audit logs similar to live flow
+      try {
+        await ComplianceService.createAuditLog(userId, 'SUBSCRIPTION_CREATE', `Created ${tier} subscription with ${seats} seats`, { subscriptionId: sub.id, amount: payment.amount, tier, seats }, stubReq);
+        await ComplianceService.createAuditLog(userId, 'PAYMENT_PROCESS', `Payment succeeded for subscription ${sub.id}`, { paymentId: payment.id, amount: payment.amount, licenseCount: licenses.length }, stubReq);
+      } catch {}
+
+      // Create license delivery logs and attempt sending delivery email (no-op if email disabled)
+      try {
+        for (const lic of licenses) {
+          await firestoreService.createLicenseDeliveryLog({
+            licenseId: lic.id,
+            paymentId: payment.id,
+            deliveryMethod: 'EMAIL',
+            emailAddress: (await firestoreService.getUserById(userId))?.email,
+            deliveryStatus: 'PENDING',
+          } as any);
+        }
+        const user = await firestoreService.getUserById(userId);
+        if (user) {
+          await EmailService.sendLicenseDeliveryEmail(user as any, licenses as any, sub as any, payment as any);
+        }
+      } catch {}
       return sub.id;
     };
 
     await mkSub(basicUserId, 'BASIC', 1, null);
-    await mkSub(proUserId, 'PRO', 5, proOrg.id);
-    await mkSub(enterpriseUserId, 'ENTERPRISE', 25, entOrg.id);
+    await mkSub(proUserId, 'PRO', 10, proOrg.id); // Minimum 10 seats for Pro
+    await mkSub(enterpriseUserId, 'ENTERPRISE', 50, entOrg.id); // Minimum 50 seats for Enterprise
 
     // Create default template projects for all users (org-scoped for Pro/Enterprise)
     await Promise.all([
       createDefaultProjects(superadmin1Id, null),
-      createDefaultProjects(superadmin2Id, null),
       createDefaultProjects(accountingId, null),
       createDefaultProjects(basicUserId, null),
       createDefaultProjects(proUserId, proOrg.id),
       createDefaultProjects(enterpriseUserId, entOrg.id),
+      createDefaultProjects(demoUserId, null),
     ]);
 
     logger.info('✅ Minimal dataset seeded successfully');
@@ -710,21 +820,78 @@ class DatabaseSeeder {
   public static async clearDatabase(): Promise<void> {
     try {
       logger.info('🧹 Clearing database...');
-
-      const collections = ['users', 'subscriptions', 'payments', 'licenses', 'audit_logs'];
-      
-      for (const collectionName of collections) {
-        const snapshot = await db.collection(collectionName).get();
-        const batch = db.batch();
-        
-        snapshot.docs.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-        
-        if (!snapshot.empty) {
+      // Helper to delete a top-level collection in batches
+      const deleteCollection = async (path: string) => {
+        const batchSize = 500;
+        let deleted = 0;
+        while (true) {
+          const snap = await db.collection(path).limit(batchSize).get();
+          if (snap.empty) break;
+          const batch = db.batch();
+          snap.docs.forEach((d) => batch.delete(d.ref));
           await batch.commit();
-          logger.info(`Cleared ${snapshot.size} documents from ${collectionName}`);
+          deleted += snap.size;
+          // small delay to avoid overwhelming Firestore
+          await new Promise((r) => setTimeout(r, 50));
         }
+        if (deleted > 0) logger.info(`Cleared ${deleted} documents from ${path}`);
+      };
+
+      // Helper to delete a subcollection path in batches
+      const deleteSubcollection = async (path: string) => {
+        const batchSize = 500;
+        let deleted = 0;
+        while (true) {
+          const snap = await db.collection(path).limit(batchSize).get();
+          if (snap.empty) break;
+          const batch = db.batch();
+          snap.docs.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+          deleted += snap.size;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        if (deleted > 0) logger.info(`Cleared ${deleted} documents from ${path}`);
+      };
+
+      // Gather known org IDs from organizations and tenant_mappings
+      const orgIds = new Set<string>();
+      try {
+        const orgSnap = await db.collection('organizations').get();
+        orgSnap.docs.forEach((d) => orgIds.add(d.id));
+      } catch {}
+      try {
+        const tenantSnap = await db.collection('tenant_mappings').get();
+        tenantSnap.docs.forEach((d) => orgIds.add((d.data() as any).orgId || d.id));
+      } catch {}
+
+      // Delete tenant subcollections for each org
+      for (const orgId of orgIds) {
+        await deleteSubcollection(`tenants/${orgId}/projects`);
+        await deleteSubcollection(`tenants/${orgId}/project_participants`);
+      }
+
+      // Now delete top-level collections
+      const collections = [
+        'users',
+        'subscriptions',
+        'payments',
+        'licenses',
+        'audit_logs',
+        'organizations',
+        'org_members',
+        'org_invitations',
+        'license_delivery_logs',
+        'webhook_events',
+        'compliance_events',
+        'usage_analytics',
+        'privacy_consents',
+        'email_logs',
+        'tenant_mappings',
+        'system_settings',
+      ];
+
+      for (const collectionName of collections) {
+        await deleteCollection(collectionName);
       }
 
       logger.info('✅ Database cleared successfully!');

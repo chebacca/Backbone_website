@@ -123,7 +123,7 @@ export interface FeatureAccessResult {
 }
 
 export class DemoService {
-  private static readonly DEMO_TRIAL_DAYS = 14;
+  private static readonly DEMO_TRIAL_DAYS = 7;
   private static readonly DEMO_BASIC_FEATURES = [
     'projects.core',
     'files.basic', 
@@ -135,7 +135,7 @@ export class DemoService {
   ];
 
   /**
-   * Register a new demo user with 14-day Basic tier trial
+   * Register a new demo user with 7-day Basic tier trial
    */
   static async registerDemoUser(data: DemoUserRegistrationData): Promise<{ user: User; demoSession: DemoSession }> {
     try {

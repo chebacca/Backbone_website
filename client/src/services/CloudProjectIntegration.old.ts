@@ -1921,38 +1921,53 @@ class CloudProjectIntegrationService {
             console.log('🔍 [CloudProjectIntegration] Fetching datasets from Firestore for project:', projectId);
             
             const { db } = await import('./firebase');
-            const { collection, query, where, getDocs } = await import('firebase/firestore');
+            const { collection, query, where, getDocs, doc, getDoc } = await import('firebase/firestore');
             
             const datasets: CloudDataset[] = [];
             
-            // Query datasets collection for this project - simplified to avoid index requirements
-            const datasetsQuery = query(
-                collection(db, 'datasets'),
+            // First, get the project-dataset links from the project_datasets collection
+            const projectDatasetQuery = query(
+                collection(db, 'project_datasets'),
                 where('projectId', '==', projectId)
             );
             
-            const snapshot = await getDocs(datasetsQuery);
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                datasets.push({
-                    id: doc.id,
-                    name: data.name || 'Untitled Dataset',
-                    description: data.description || '',
-                    projectId: data.projectId || null,
-                    type: data.type || 'general',
-                    status: data.status || 'active',
-                    createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
-                    updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || new Date().toISOString(),
-                    size: data.size || 0,
-                    recordCount: data.recordCount || 0,
-                    schema: data.schema || {},
-                    tags: data.tags || [],
-                    isPublic: data.isPublic || false,
-                    ownerId: data.ownerId,
-                    storage: data.storage || { backend: 'firestore' },
-                    visibility: data.visibility || 'private'
-                });
-            });
+            const projectDatasetSnapshot = await getDocs(projectDatasetQuery);
+            
+            if (projectDatasetSnapshot.empty) {
+                console.log(`✅ [CloudProjectIntegration] No datasets found for project ${projectId}`);
+                return [];
+            }
+
+            // Extract dataset IDs from the links and fetch the actual dataset documents
+            for (const linkDoc of projectDatasetSnapshot.docs) {
+                const linkData = linkDoc.data();
+                const datasetId = linkData.datasetId;
+                
+                // Fetch the dataset document
+                const datasetDoc = await getDoc(doc(db, 'datasets', datasetId));
+                
+                if (datasetDoc.exists()) {
+                    const data = datasetDoc.data();
+                    datasets.push({
+                        id: datasetDoc.id,
+                        name: data.name || 'Untitled Dataset',
+                        description: data.description || '',
+                        projectId: data.projectId || null,
+                        type: data.type || 'general',
+                        status: data.status || 'active',
+                        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
+                        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || new Date().toISOString(),
+                        size: data.size || 0,
+                        recordCount: data.recordCount || 0,
+                        schema: data.schema || {},
+                        tags: data.tags || [],
+                        isPublic: data.isPublic || false,
+                        ownerId: data.ownerId,
+                        storage: data.storage || { backend: 'firestore' },
+                        visibility: data.visibility || 'private'
+                    });
+                }
+            }
             
             // Sort results in memory to avoid Firestore index requirements
             datasets.sort((a, b) => {
@@ -2630,7 +2645,7 @@ class CloudProjectIntegrationService {
             console.log('🔍 [CloudProjectIntegration] Assigning dataset to project in Firestore:', { projectId, datasetId });
             
             const { db } = await import('./firebase');
-            const { doc, updateDoc, getDoc } = await import('firebase/firestore');
+            const { doc, updateDoc, getDoc, collection, addDoc } = await import('firebase/firestore');
             
             // First, check if the dataset exists
             const datasetRef = doc(db, 'datasets', datasetId);
@@ -2639,11 +2654,37 @@ class CloudProjectIntegrationService {
             if (!datasetDoc.exists()) {
                 throw new Error('Dataset not found');
             }
+
+            // Check if the project exists
+            const projectRef = doc(db, 'projects', projectId);
+            const projectDoc = await getDoc(projectRef);
+            
+            if (!projectDoc.exists()) {
+                throw new Error('Project not found');
+            }
             
             // Update the dataset to assign it to the project
             await updateDoc(datasetRef, {
                 projectId: projectId,
                 updatedAt: new Date()
+            });
+
+            // Create a link in the project_datasets collection (following server-side pattern)
+            const projectDatasetLink = {
+                projectId: projectId,
+                datasetId: datasetId,
+                addedByUserId: datasetDoc.data().ownerId || 'system',
+                addedAt: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            await addDoc(collection(db, 'project_datasets'), projectDatasetLink);
+
+            // Update the project document to reflect the dataset assignment
+            await updateDoc(projectRef, {
+                updatedAt: new Date(),
+                lastAccessedAt: new Date()
             });
             
             console.log('✅ [CloudProjectIntegration] Dataset assigned to project successfully in Firestore');
@@ -2662,7 +2703,7 @@ class CloudProjectIntegrationService {
             console.log('🔍 [CloudProjectIntegration] Unassigning dataset from project in Firestore:', { projectId, datasetId });
             
             const { db } = await import('./firebase');
-            const { doc, updateDoc, getDoc } = await import('firebase/firestore');
+            const { doc, updateDoc, getDoc, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore');
             
             // First, check if the dataset exists
             const datasetRef = doc(db, 'datasets', datasetId);
@@ -2682,6 +2723,25 @@ class CloudProjectIntegrationService {
             await updateDoc(datasetRef, {
                 projectId: null,
                 updatedAt: new Date()
+            });
+
+            // Remove the link from the project_datasets collection
+            const projectDatasetQuery = query(
+                collection(db, 'project_datasets'),
+                where('projectId', '==', projectId),
+                where('datasetId', '==', datasetId)
+            );
+            
+            const projectDatasetDocs = await getDocs(projectDatasetQuery);
+            if (!projectDatasetDocs.empty) {
+                await deleteDoc(projectDatasetDocs.docs[0].ref);
+            }
+
+            // Update the project document to reflect the dataset removal
+            const projectRef = doc(db, 'projects', projectId);
+            await updateDoc(projectRef, {
+                updatedAt: new Date(),
+                lastAccessedAt: new Date()
             });
             
             console.log('✅ [CloudProjectIntegration] Dataset unassigned from project successfully in Firestore');

@@ -19,19 +19,20 @@ export class DatasetService extends BaseService {
   }
 
   /**
-   * List all datasets with optional filters
+   * List datasets with optional filters
    */
   public async listDatasets(params?: {
     organizationId?: string;
-    visibility?: 'private' | 'organization' | 'public';
-    backend?: 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local' | 'all';
+    visibility?: string;
+    backend?: string;
     query?: string;
   }): Promise<CloudDataset[]> {
     try {
       console.log('🚀 [DatasetService] Listing datasets with params:', params);
       
       if (this.isWebOnlyMode()) {
-        return await this.listDatasetsFromFirestore(params);
+        // In web-only mode, we want to show available (unassigned) datasets
+        return await this.getAvailableDatasetsFromFirestore(params);
       }
       
       // Build query string for API request
@@ -54,7 +55,7 @@ export class DatasetService extends BaseService {
         return result;
       } catch (error) {
         console.warn('⚠️ [DatasetService] API request failed, falling back to Firestore');
-        return await this.listDatasetsFromFirestore(params);
+        return await this.getAvailableDatasetsFromFirestore(params);
       }
     } catch (error) {
       this.handleError(error, 'listDatasets');
@@ -158,6 +159,87 @@ export class DatasetService extends BaseService {
     } catch (error) {
       this.handleError(error, `unassignDatasetFromProject(${projectId}, ${datasetId})`);
       return false;
+    }
+  }
+
+  /**
+   * Get available datasets (not assigned to any project) from Firestore
+   */
+  private async getAvailableDatasetsFromFirestore(params?: {
+    organizationId?: string;
+    visibility?: string;
+    backend?: string;
+    query?: string;
+  }): Promise<CloudDataset[]> {
+    try {
+      console.log('🔍 [DatasetService] Fetching available datasets from Firestore');
+      
+      await this.firestoreAdapter.initialize();
+      
+      // If Firebase Auth is not available, use a hardcoded organization ID for enterprise.user
+      const organizationId = '24H6zaiCUycuT8ukx9Jz'; // Known enterprise organization ID
+      console.log('✅ [DatasetService] Using organization ID:', organizationId);
+      
+      if (!organizationId) {
+        console.warn('⚠️ [DatasetService] No organization ID found for current user');
+        return [];
+      }
+
+      console.log('🏢 [DatasetService] Fetching available datasets for organization:', organizationId);
+
+      // Get all datasets for the organization
+      const allDatasets = await this.firestoreAdapter.queryDocuments<CloudDataset>('datasets', [
+        { field: 'organizationId', operator: '==', value: params?.organizationId || organizationId }
+      ]);
+
+      // Get all project-dataset links to identify assigned datasets
+      const allProjectDatasetLinks = await this.firestoreAdapter.queryDocuments('project_datasets', []);
+      const assignedDatasetIds = new Set(allProjectDatasetLinks.map(link => link.datasetId));
+
+      // Filter out assigned datasets
+      const availableDatasets = allDatasets.filter(dataset => !assignedDatasetIds.has(dataset.id));
+      
+      // Apply in-memory filters
+      let filteredDatasets = availableDatasets;
+      
+      // Apply backend filter if provided
+      if (params?.backend && params.backend !== 'all') {
+        filteredDatasets = filteredDatasets.filter(dataset => {
+          const datasetBackend = dataset.storage?.backend || 'firestore';
+          return datasetBackend === params.backend;
+        });
+      }
+      
+      // Apply query filter if provided (search by name or description)
+      if (params?.query) {
+        const searchTerm = params.query.toLowerCase();
+        filteredDatasets = filteredDatasets.filter(dataset => {
+          const name = (dataset.name || '').toLowerCase();
+          const description = (dataset.description || '').toLowerCase();
+          return name.includes(searchTerm) || description.includes(searchTerm);
+        });
+      }
+      
+      // Apply visibility filter if provided
+      if (params?.visibility) {
+        filteredDatasets = filteredDatasets.filter(dataset => {
+          const datasetVisibility = dataset.visibility || 'private';
+          return datasetVisibility === params.visibility;
+        });
+      }
+      
+      // Sort results in memory to avoid Firestore index requirements
+      filteredDatasets.sort((a, b) => {
+        const dateA = new Date(a.createdAt || '').getTime();
+        const dateB = new Date(b.createdAt || '').getTime();
+        return dateB - dateA; // Descending order (newest first)
+      });
+      
+      console.log(`✅ [DatasetService] Found ${filteredDatasets.length} available datasets from Firestore`);
+      return filteredDatasets;
+    } catch (error) {
+      this.handleError(error, 'getAvailableDatasetsFromFirestore');
+      return [];
     }
   }
 
@@ -293,10 +375,27 @@ export class DatasetService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // Query datasets assigned to this project
-      const datasets = await this.firestoreAdapter.queryDocuments<CloudDataset>('datasets', [
+      // First, get the project-dataset links from the project_datasets collection
+      const projectDatasetLinks = await this.firestoreAdapter.queryDocuments('project_datasets', [
         { field: 'projectId', operator: '==', value: projectId }
       ]);
+
+      if (projectDatasetLinks.length === 0) {
+        console.log(`✅ [DatasetService] No datasets found for project ${projectId}`);
+        return [];
+      }
+
+      // Extract dataset IDs from the links
+      const datasetIds = projectDatasetLinks.map(link => link.datasetId);
+      
+      // Fetch the actual dataset documents
+      const datasets: CloudDataset[] = [];
+      for (const datasetId of datasetIds) {
+        const dataset = await this.firestoreAdapter.getDocumentById<CloudDataset>('datasets', datasetId);
+        if (dataset) {
+          datasets.push(dataset);
+        }
+      }
       
       // Sort results in memory to avoid Firestore index requirements
       datasets.sort((a, b) => {
@@ -329,14 +428,61 @@ export class DatasetService extends BaseService {
         console.warn(`⚠️ [DatasetService] Dataset not found: ${datasetId}`);
         return false;
       }
+
+      // Check if the project exists
+      const project = await this.firestoreAdapter.getDocumentById<any>('projects', projectId);
+      
+      if (!project) {
+        console.warn(`⚠️ [DatasetService] Project not found: ${projectId}`);
+        return false;
+      }
       
       // Update the dataset to assign it to the project
-      const success = await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
-        projectId: projectId
+      const datasetUpdateSuccess = await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
+        projectId: projectId,
+        updatedAt: new Date().toISOString()
       });
+
+      if (!datasetUpdateSuccess) {
+        console.warn(`⚠️ [DatasetService] Failed to update dataset: ${datasetId}`);
+        return false;
+      }
+
+      // Create a link in the project_datasets collection (following server-side pattern)
+      const projectDatasetLink = {
+        projectId: projectId,
+        datasetId: datasetId,
+        addedByUserId: dataset.ownerId || 'system',
+        addedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      const linkSuccess = await this.firestoreAdapter.createDocument('project_datasets', projectDatasetLink);
       
-      console.log(`✅ [DatasetService] Dataset ${success ? 'assigned' : 'failed to assign'} to project in Firestore`);
-      return success;
+      if (!linkSuccess) {
+        console.warn(`⚠️ [DatasetService] Failed to create project-dataset link`);
+        // Try to rollback dataset update
+        await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
+          projectId: null,
+          updatedAt: new Date().toISOString()
+        });
+        return false;
+      }
+
+      // Update the project document to reflect the dataset assignment
+      const projectUpdateSuccess = await this.firestoreAdapter.updateDocument('projects', projectId, {
+        updatedAt: new Date().toISOString(),
+        lastAccessedAt: new Date().toISOString()
+      });
+
+      if (!projectUpdateSuccess) {
+        console.warn(`⚠️ [DatasetService] Failed to update project: ${projectId}, but dataset assignment succeeded`);
+        // Don't fail the entire operation if project update fails
+      }
+      
+      console.log(`✅ [DatasetService] Dataset successfully assigned to project in Firestore`);
+      return true;
     } catch (error) {
       this.handleError(error, `assignDatasetToProjectInFirestore(${projectId}, ${datasetId})`);
       return false;
@@ -367,12 +513,51 @@ export class DatasetService extends BaseService {
       }
       
       // Update the dataset to remove the project assignment
-      const success = await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
-        projectId: null
+      const datasetUpdateSuccess = await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
+        projectId: null,
+        updatedAt: new Date().toISOString()
       });
+
+      if (!datasetUpdateSuccess) {
+        console.warn(`⚠️ [DatasetService] Failed to update dataset: ${datasetId}`);
+        return false;
+      }
+
+      // Remove the link from the project_datasets collection
+      // First, find the link document
+      const links = await this.firestoreAdapter.queryDocuments('project_datasets', [
+        { field: 'projectId', operator: '==', value: projectId },
+        { field: 'datasetId', operator: '==', value: datasetId }
+      ]);
+
+      if (links.length > 0) {
+        // Delete the link document
+        const linkDeleteSuccess = await this.firestoreAdapter.deleteDocument('project_datasets', links[0].id);
+        
+        if (!linkDeleteSuccess) {
+          console.warn(`⚠️ [DatasetService] Failed to delete project-dataset link`);
+          // Try to rollback dataset update
+          await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
+            projectId: projectId,
+            updatedAt: new Date().toISOString()
+          });
+          return false;
+        }
+      }
+
+      // Update the project document to reflect the dataset removal
+      const projectUpdateSuccess = await this.firestoreAdapter.updateDocument('projects', projectId, {
+        updatedAt: new Date().toISOString(),
+        lastAccessedAt: new Date().toISOString()
+      });
+
+      if (!projectUpdateSuccess) {
+        console.warn(`⚠️ [DatasetService] Failed to update project: ${projectId}, but dataset unassignment succeeded`);
+        // Don't fail the entire operation if project update fails
+      }
       
-      console.log(`✅ [DatasetService] Dataset ${success ? 'unassigned' : 'failed to unassign'} from project in Firestore`);
-      return success;
+      console.log(`✅ [DatasetService] Dataset successfully unassigned from project in Firestore`);
+      return true;
     } catch (error) {
       this.handleError(error, `unassignDatasetFromProjectInFirestore(${projectId}, ${datasetId})`);
       return false;

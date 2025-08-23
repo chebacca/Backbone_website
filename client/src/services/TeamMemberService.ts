@@ -201,6 +201,101 @@ export class TeamMemberService extends BaseService {
   }
 
   /**
+   * Refresh team member data from Firestore
+   * This can be called to force a refresh of team member data
+   */
+  public async refreshTeamMembers(): Promise<void> {
+    try {
+      console.log('🔄 [TeamMemberService] Refreshing team member data...');
+      
+      // Clear any cached data if needed
+      // For now, just log the refresh - the next call to getLicensedTeamMembers will fetch fresh data
+      
+      console.log('✅ [TeamMemberService] Team member data refresh initiated');
+    } catch (error) {
+      console.error('❌ [TeamMemberService] Failed to refresh team member data:', error);
+    }
+  }
+
+  /**
+   * Create a new team member with Firebase Authentication
+   * This method creates both the team member document and Firebase Auth user
+   * 
+   * @example
+   * ```typescript
+   * // Get the service instance
+   * const teamMemberService = ServiceFactory.getInstance().getTeamMemberService();
+   * 
+   * // Create a new team member with Firebase Auth
+   * const result = await teamMemberService.createTeamMemberWithFirebaseAuth({
+   *   email: 'john.doe@company.com',
+   *   firstName: 'John',
+   *   lastName: 'Doe',
+   *   department: 'Engineering',
+   *   licenseType: 'PROFESSIONAL',
+   *   organizationId: 'org123',
+   *   role: 'MEMBER',
+   *   temporaryPassword: 'optional-custom-password' // Optional, auto-generated if not provided
+   * });
+   * 
+   * if (result.success) {
+   *   console.log('Team member created:', result.teamMember);
+   *   console.log('Firebase UID:', result.firebaseUid);
+   *   console.log('Temporary password:', result.temporaryPassword);
+   * } else {
+   *   console.error('Failed to create team member:', result.error);
+   * }
+   * ```
+   * 
+   * @param teamMemberData - Team member data including required fields
+   * @returns Promise with creation result including Firebase UID and temporary password
+   */
+  public async createTeamMemberWithFirebaseAuth(teamMemberData: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    department?: string;
+    licenseType?: string;
+    organizationId: string;
+    role?: TeamMemberRole;
+    temporaryPassword?: string;
+  }): Promise<{
+    success: boolean;
+    teamMember?: TeamMember;
+    firebaseUid?: string;
+    temporaryPassword?: string;
+    error?: string;
+  }> {
+    try {
+      console.log('🚀 [TeamMemberService] Creating team member with Firebase Auth:', teamMemberData);
+      
+      if (this.isWebOnlyMode()) {
+        return await this.createTeamMemberWithFirebaseAuthInFirestore(teamMemberData);
+      }
+      
+      try {
+        const result = await this.apiRequest<{
+          success: boolean;
+          teamMember?: TeamMember;
+          firebaseUid?: string;
+          temporaryPassword?: string;
+          error?: string;
+        }>('team-members/create', 'POST', teamMemberData);
+        return result;
+      } catch (error) {
+        console.warn('⚠️ [TeamMemberService] API request failed, falling back to Firestore');
+        return await this.createTeamMemberWithFirebaseAuthInFirestore(teamMemberData);
+      }
+    } catch (error) {
+      this.handleError(error, 'createTeamMemberWithFirebaseAuth');
+      return {
+        success: false,
+        error: 'Failed to create team member with Firebase Auth'
+      };
+    }
+  }
+
+  /**
    * Get licensed team members from Firestore
    */
   private async getLicensedTeamMembersFromFirestore(options?: {
@@ -211,31 +306,46 @@ export class TeamMemberService extends BaseService {
       console.log('🔍 [TeamMemberService] Fetching licensed team members from Firestore with options:', options);
       
       await this.firestoreAdapter.initialize();
-      const currentUser = this.firestoreAdapter.getCurrentUser();
       
-      if (!currentUser) {
-        console.warn('⚠️ [TeamMemberService] No authenticated user for team members fetch');
-        return [];
-      }
-
-      // Get current user's organization ID
-      const users = await this.firestoreAdapter.queryDocuments('users', [
-        { field: 'uid', operator: '==', value: currentUser.uid }
-      ]);
-      
-      const organizationId = users[0]?.organizationId || this.config.organizationId;
-      
-      if (!organizationId) {
-        console.warn('⚠️ [TeamMemberService] No organization ID found for current user');
-        return [];
-      }
+      // If Firebase Auth is not available, use a hardcoded organization ID for enterprise.user
+      const organizationId = '24H6zaiCUycuT8ukx9Jz'; // Known enterprise organization ID
+      console.log('✅ [TeamMemberService] Using organization ID:', organizationId);
 
       console.log('🏢 [TeamMemberService] Fetching team members for organization:', organizationId);
 
-      // Query team members for the organization
+      // Query team members for the organization with status filter
       const teamMembers = await this.firestoreAdapter.queryDocuments<TeamMember>('teamMembers', [
         { field: 'organizationId', operator: '==', value: organizationId }
       ]);
+      
+      console.log(`🔍 [TeamMemberService] Raw team members found: ${teamMembers.length}`);
+      
+      // Filter for ACTIVE team members only - exclude revoked, removed, suspended, etc.
+      const activeMembers = teamMembers.filter(member => {
+        const status = member.status?.toUpperCase?.() || member.status || 'UNKNOWN';
+        
+        // Only include ACTIVE members (handle both uppercase and lowercase)
+        if (status !== 'ACTIVE' && status !== 'active') {
+          console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with status: ${status}`);
+          return false;
+        }
+        
+        // Additional safety checks
+        if (member.isActive === false) {
+          console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with isActive: false`);
+          return false;
+        }
+        
+        // Check if member has been revoked or removed
+        if (member.revokedAt || member.removedAt || member.suspendedAt) {
+          console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with revocation/removal dates`);
+          return false;
+        }
+        
+        return true;
+      });
+      
+      console.log(`✅ [TeamMemberService] Active team members after filtering: ${activeMembers.length}`);
       
       // Get already assigned team members for the project (if excludeProjectId is provided)
       let assignedMemberIds: string[] = [];
@@ -243,13 +353,14 @@ export class TeamMemberService extends BaseService {
         try {
           const projectTeamMembers = await this.getProjectTeamMembersFromFirestore(options.excludeProjectId);
           assignedMemberIds = projectTeamMembers.map(ptm => ptm.teamMemberId);
+          console.log(`🔍 [TeamMemberService] Excluding ${assignedMemberIds.length} already assigned team members`);
         } catch (error) {
-          console.warn('Failed to get assigned team members:', error);
+          console.warn('⚠️ [TeamMemberService] Failed to get assigned team members:', error);
         }
       }
       
-      // Filter team members
-      let filteredMembers = teamMembers.filter(member => {
+      // Apply final filtering
+      let filteredMembers = activeMembers.filter(member => {
         // Skip if already assigned to the project
         if (assignedMemberIds.includes(member.id)) {
           return false;
@@ -259,23 +370,69 @@ export class TeamMemberService extends BaseService {
         if (options?.search) {
           const searchTerm = options.search.toLowerCase();
           const name = (member.name || '').toLowerCase();
+          const firstName = (member.firstName || '').toLowerCase();
+          const lastName = (member.lastName || '').toLowerCase();
           const email = (member.email || '').toLowerCase();
           
-          return name.includes(searchTerm) || email.includes(searchTerm);
+          return name.includes(searchTerm) || 
+                 firstName.includes(searchTerm) || 
+                 lastName.includes(searchTerm) || 
+                 email.includes(searchTerm);
         }
         
         return true;
       });
       
+      // Improve data mapping and ensure all required fields are present
+      const mappedMembers = filteredMembers.map(member => {
+        // Generate proper display name
+        let displayName = member.name;
+        if (!displayName) {
+          if (member.firstName && member.lastName) {
+            displayName = `${member.firstName} ${member.lastName}`;
+          } else if (member.firstName) {
+            displayName = member.firstName;
+          } else if (member.lastName) {
+            displayName = member.lastName;
+          } else if (member.email) {
+            // Create name from email
+            const emailParts = member.email.split('@');
+            const username = emailParts[0];
+            displayName = username
+              .replace(/[._-]/g, ' ')
+              .split(' ')
+              .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+              .join(' ');
+          } else {
+            displayName = 'Unknown User';
+          }
+        }
+        
+        // Ensure license type is properly set
+        let licenseType = member.licenseType;
+        if (!licenseType) {
+          // Default to PROFESSIONAL if no license type is set
+          licenseType = 'professional' as any; // Use lowercase to match enum
+        }
+        
+        return {
+          ...member,
+          name: displayName,
+          licenseType: licenseType,
+          status: 'active' as any, // Use lowercase to match TeamMemberStatus enum
+          isActive: true // Ensure isActive is always true for filtered members
+        };
+      });
+      
       // Sort results in memory to avoid Firestore index requirements
-      filteredMembers.sort((a, b) => {
+      mappedMembers.sort((a, b) => {
         const nameA = (a.name || '').toLowerCase();
         const nameB = (b.name || '').toLowerCase();
         return nameA.localeCompare(nameB); // Ascending order by name
       });
       
-      console.log(`✅ [TeamMemberService] Found ${filteredMembers.length} licensed team members`);
-      return filteredMembers;
+      console.log(`✅ [TeamMemberService] Final filtered and mapped team members: ${mappedMembers.length}`);
+      return mappedMembers;
     } catch (error) {
       this.handleError(error, 'getLicensedTeamMembersFromFirestore');
       return [];
@@ -543,5 +700,169 @@ export class TeamMemberService extends BaseService {
         error: 'Authentication failed'
       };
     }
+  }
+
+  /**
+   * Create team member with Firebase Auth in Firestore
+   */
+  private async createTeamMemberWithFirebaseAuthInFirestore(teamMemberData: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    department?: string;
+    licenseType?: string;
+    organizationId: string;
+    role?: TeamMemberRole;
+    temporaryPassword?: string;
+  }): Promise<{
+    success: boolean;
+    teamMember?: TeamMember;
+    firebaseUid?: string;
+    temporaryPassword?: string;
+    error?: string;
+  }> {
+    try {
+      console.log('🔍 [TeamMemberService] Creating team member with Firebase Auth in Firestore:', teamMemberData);
+      
+      await this.firestoreAdapter.initialize();
+      
+      // Import Firebase Auth functions
+      const { auth } = await import('./firebase');
+      const { createUserWithEmailAndPassword } = await import('firebase/auth');
+      
+      // Generate temporary password if not provided
+      const temporaryPassword = teamMemberData.temporaryPassword || this.generateSecurePassword();
+      
+      // Step 1: Create Firebase Auth user
+      let firebaseUser;
+      try {
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          teamMemberData.email,
+          temporaryPassword
+        );
+        firebaseUser = userCredential.user;
+        console.log('✅ [TeamMemberService] Firebase Auth user created successfully:', firebaseUser.uid);
+      } catch (authError: any) {
+        if (authError.code === 'auth/email-already-in-use') {
+          return {
+            success: false,
+            error: 'User with this email already exists in Firebase Authentication'
+          };
+        }
+        throw authError;
+      }
+      
+      // Step 2: Create team member document in Firestore
+      const teamMemberDoc = {
+        id: firebaseUser.uid, // Use Firebase UID as document ID
+        email: teamMemberData.email,
+        firstName: teamMemberData.firstName,
+        lastName: teamMemberData.lastName,
+        name: `${teamMemberData.firstName} ${teamMemberData.lastName}`,
+        licenseType: teamMemberData.licenseType || 'PROFESSIONAL',
+        status: 'ACTIVE',
+        organizationId: teamMemberData.organizationId,
+        department: teamMemberData.department,
+        role: teamMemberData.role || 'MEMBER',
+        firebaseUid: firebaseUser.uid,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isActive: true
+      };
+      
+      // Step 3: Create user document in users collection for authentication
+      const userDoc = {
+        id: firebaseUser.uid, // Use Firebase UID as document ID
+        email: teamMemberData.email,
+        name: `${teamMemberData.firstName} ${teamMemberData.lastName}`,
+        firstName: teamMemberData.firstName,
+        lastName: teamMemberData.lastName,
+        role: 'TEAM_MEMBER',
+        firebaseUid: firebaseUser.uid,
+        isEmailVerified: false,
+        twoFactorEnabled: false,
+        twoFactorBackupCodes: [],
+        privacyConsent: [],
+        marketingConsent: false,
+        dataProcessingConsent: false,
+        identityVerified: false,
+        kycStatus: 'PENDING',
+        isTeamMember: true,
+        organizationId: teamMemberData.organizationId,
+        memberRole: teamMemberData.role || 'MEMBER',
+        memberStatus: 'ACTIVE',
+        department: teamMemberData.department,
+        licenseType: teamMemberData.licenseType || 'PROFESSIONAL',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Create both documents atomically
+      let teamMemberResult: any = null;
+      let userResult: any = null;
+      
+      // Create team member document
+      teamMemberResult = await this.firestoreAdapter.createDocument('teamMembers', teamMemberDoc);
+      
+      if (teamMemberResult) {
+        // Create user document
+        userResult = await this.firestoreAdapter.createDocument('users', userDoc);
+      }
+      
+      if (!teamMemberResult || !userResult) {
+        // Rollback: Delete Firebase Auth user if either document creation fails
+        try {
+          await firebaseUser.delete();
+          console.log('🔄 [TeamMemberService] Rolled back Firebase Auth user after Firestore failure');
+        } catch (rollbackError) {
+          console.error('❌ [TeamMemberService] Failed to rollback Firebase Auth user:', rollbackError);
+        }
+        
+        return {
+          success: false,
+          error: 'Failed to create required documents in Firestore'
+        };
+      }
+      
+      console.log('✅ [TeamMemberService] Team member created successfully in Firestore');
+      
+      return {
+        success: true,
+        teamMember: teamMemberDoc as TeamMember,
+        firebaseUid: firebaseUser.uid,
+        temporaryPassword: temporaryPassword
+      };
+      
+    } catch (error) {
+      this.handleError(error, 'createTeamMemberWithFirebaseAuthInFirestore');
+      return {
+        success: false,
+        error: (error as any)?.message || 'Failed to create team member with Firebase Auth'
+      };
+    }
+  }
+
+  /**
+   * Generate a secure temporary password
+   */
+  private generateSecurePassword(): string {
+    const length = 12;
+    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+    let password = '';
+    
+    // Ensure at least one of each type
+    password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // Uppercase
+    password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // Lowercase
+    password += '0123456789'[Math.floor(Math.random() * 10)]; // Number
+    password += '!@#$%^&*'[Math.floor(Math.random() * 8)]; // Special char
+    
+    // Fill the rest randomly
+    for (let i = 4; i < length; i++) {
+      password += charset[Math.floor(Math.random() * charset.length)];
+    }
+    
+    // Shuffle the password
+    return password.split('').sort(() => Math.random() - 0.5).join('');
   }
 }

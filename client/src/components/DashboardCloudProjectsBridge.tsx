@@ -506,6 +506,38 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         }
     }, [teamMemberSearch, selectedProject, showAddTeamMemberDialog, loadTeamMembersForProject]);
 
+    // Helper to load dataset counts for all projects
+    const loadDatasetCountsForAllProjects = useCallback(async (projectList: CloudProject[]) => {
+        try {
+            console.log('🔍 [DashboardCloudProjectsBridge] Loading dataset counts for all projects...');
+            
+            // Load dataset counts for each project in parallel
+            const datasetCountPromises = projectList.map(async (project) => {
+                try {
+                    const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
+                    return { projectId: project.id, count: datasets.length };
+                } catch (error) {
+                    console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
+                    return { projectId: project.id, count: 0 };
+                }
+            });
+            
+            const datasetCounts = await Promise.all(datasetCountPromises);
+            
+            // Update the projectDatasetCounts state
+            const newCounts: Record<string, number> = {};
+            datasetCounts.forEach(({ projectId, count }) => {
+                newCounts[projectId] = count;
+            });
+            
+            setProjectDatasetCounts(newCounts);
+            console.log('✅ [DashboardCloudProjectsBridge] Loaded dataset counts for all projects:', newCounts);
+            
+        } catch (error) {
+            console.error('❌ [DashboardCloudProjectsBridge] Failed to load dataset counts for all projects:', error);
+        }
+    }, []);
+
     const loadProjects = async () => {
         try {
             setError(null);
@@ -549,31 +581,43 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     }
                     
                     const data = await response.json();
+                    console.log('🔍 [DashboardCloudProjectsBridge] API response:', data);
                     const teamMemberProjects = data.projects || [];
+                    console.log('🔍 [DashboardCloudProjectsBridge] Team member projects:', teamMemberProjects);
                     
                     // Transform team member projects to match CloudProject format
-                    const transformedProjects = teamMemberProjects.map((project: any) => ({
-                        id: project.projectId || project.id,
-                        name: project.projectName || project.name || 'Unnamed Project',
-                        description: project.description || '',
-                        applicationMode: 'shared_network' as const, // Team members always use network mode
-                        storageBackend: 'firestore' as const, // Always Firestore in webonly mode
-                        lastAccessedAt: project.lastAccessed || project.assignedAt || new Date().toISOString(),
-                        isActive: project.isActive !== false,
-                        isArchived: project.isArchived === true,
-                        allowCollaboration: true, // Team member projects are collaborative
-                        maxCollaborators: project.maxCollaborators || 10,
-                        realTimeEnabled: true,
-                        enableComments: true,
-                        enableChat: true,
-                        enableActivityLog: true,
-                        // Team member specific fields
-                        teamMemberRole: project.role || project.teamMemberRole || 'MEMBER',
-                        assignedAt: project.assignedAt,
-                        projectOwner: project.ownerName || 'Organization Owner',
-                    }));
+                    const transformedProjects = teamMemberProjects.map((project: any) => {
+                        console.log('🔍 [DashboardCloudProjectsBridge] Transforming project:', project);
+                        
+                        const transformed = {
+                            id: project.projectId || project.id,
+                            name: project.projectName || project.name || 'Unnamed Project',
+                            description: project.description || '',
+                            applicationMode: 'shared_network' as const, // Team members always use network mode
+                            storageBackend: 'firestore' as const, // Always Firestore in webonly mode
+                            lastAccessedAt: project.lastAccessed || project.assignedAt || new Date().toISOString(),
+                            isActive: project.isActive !== false,
+                            isArchived: project.isArchived === true,
+                            allowCollaboration: true, // Team member projects are collaborative
+                            maxCollaborators: project.maxCollaborators || 10,
+                            realTimeEnabled: true,
+                            enableComments: true,
+                            enableChat: true,
+                            enableActivityLog: true,
+                            // Team member specific fields
+                            teamMemberRole: project.role || project.teamMemberRole || 'MEMBER',
+                            assignedAt: project.assignedAt,
+                            projectOwner: project.ownerName || 'Organization Owner',
+                        };
+                        
+                        console.log('🔍 [DashboardCloudProjectsBridge] Transformed to:', transformed);
+                        return transformed;
+                    });
                     
                     setProjects(transformedProjects);
+                    
+                    // Load dataset counts for all team member projects
+                    await loadDatasetCountsForAllProjects(transformedProjects);
                     
                 } catch (teamMemberError) {
                     console.error('Failed to fetch team member projects:', teamMemberError);
@@ -608,6 +652,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 }));
                                 
                                 setProjects(fallbackProjects);
+                                
+                                // Load dataset counts for fallback projects
+                                await loadDatasetCountsForAllProjects(fallbackProjects);
+                                
                                 return;
                             }
                         } catch (parseError) {
@@ -650,6 +698,9 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 const serviceProjects = await cloudProjectIntegration.getProjects();
                 const cloudProjects = serviceProjects.map(mapServiceProjectToComponentProject);
                 setProjects(cloudProjects);
+                
+                // Load dataset counts for all regular user projects
+                await loadDatasetCountsForAllProjects(cloudProjects);
             }
 
         } catch (err: any) {
@@ -665,8 +716,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
 
     const handleLaunchWeb = async () => {
       try {
-        // Launch to the correct Backbone Logic authentication page
-        const url = 'https://backbone-client.web.app/auth/login';
+        // Launch to the main Backbone Logic page
+        const url = 'https://backbone-client.web.app/';
         
         // Open via anchor click (more reliable than window.open in some blockers)
         let opened = false;
@@ -773,6 +824,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             network: projects.filter(p => p.applicationMode === 'shared_network').length,
         }
     };
+
+    // Helper to refresh dataset counts for all current projects
+    const refreshDatasetCounts = useCallback(async () => {
+        if (projects.length > 0) {
+            await loadDatasetCountsForAllProjects(projects);
+        }
+    }, [projects, loadDatasetCountsForAllProjects]);
 
     return (
         <Box sx={{ py: 4, px: 3 }}>

@@ -3,6 +3,7 @@
  */
 import { BaseService } from './base/BaseService';
 import { CloudDataset, ServiceConfig } from './models/types';
+import { FirestoreAdapter } from './adapters/FirestoreAdapter';
 
 export class DatasetService extends BaseService {
   private static instance: DatasetService;
@@ -192,12 +193,12 @@ export class DatasetService extends BaseService {
         { field: 'organizationId', operator: '==', value: params?.organizationId || organizationId }
       ]);
 
-      // Get all project-dataset links to identify assigned datasets
-      const allProjectDatasetLinks = await this.firestoreAdapter.queryDocuments('project_datasets', []);
-      const assignedDatasetIds = new Set(allProjectDatasetLinks.map(link => link.datasetId));
-
       // Filter out assigned datasets
-      const availableDatasets = allDatasets.filter(dataset => !assignedDatasetIds.has(dataset.id));
+      const availableDatasets = allDatasets.filter(dataset => {
+        // Check if dataset has any project assignments
+        const hasProjectAssignments = dataset.projectIds && dataset.projectIds.length > 0;
+        return !hasProjectAssignments;
+      });
       
       // Apply in-memory filters
       let filteredDatasets = availableDatasets;
@@ -356,7 +357,9 @@ export class DatasetService extends BaseService {
         organizationId,
         visibility: input.visibility || 'private',
         storage: input.storage || { backend: 'firestore' },
-        status: input.status || 'active'
+        status: input.status || 'active',
+        projectIds: [], // Initialize empty array for project assignments
+        primaryProjectId: null // Initialize primary project as null
       };
       
       return await this.firestoreAdapter.createDocument<CloudDataset>('datasets', datasetData);
@@ -438,8 +441,10 @@ export class DatasetService extends BaseService {
       }
       
       // Update the dataset to assign it to the project
-      const datasetUpdateSuccess = await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
-        projectId: projectId,
+      const datasetUpdateSuccess = await this.firestoreAdapter.updateDocumentWithArrayOps<CloudDataset>('datasets', datasetId, {
+        // Support multiple project assignments
+        projectIds: FirestoreAdapter.arrayUnion(projectId),
+        primaryProjectId: projectId, // Set as primary for backward compatibility
         updatedAt: new Date().toISOString()
       });
 
@@ -463,8 +468,9 @@ export class DatasetService extends BaseService {
       if (!linkSuccess) {
         console.warn(`⚠️ [DatasetService] Failed to create project-dataset link`);
         // Try to rollback dataset update
-        await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
-          projectId: null,
+        await this.firestoreAdapter.updateDocumentWithArrayOps<CloudDataset>('datasets', datasetId, {
+          projectIds: FirestoreAdapter.arrayRemove(projectId),
+          primaryProjectId: null,
           updatedAt: new Date().toISOString()
         });
         return false;
@@ -507,14 +513,14 @@ export class DatasetService extends BaseService {
       }
       
       // Check if the dataset is actually assigned to this project
-      if (dataset.projectId !== projectId) {
+      if (!dataset.projectIds?.includes(projectId)) {
         console.warn(`⚠️ [DatasetService] Dataset is not assigned to this project: ${datasetId}, ${projectId}`);
         return false;
       }
       
       // Update the dataset to remove the project assignment
-      const datasetUpdateSuccess = await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
-        projectId: null,
+      const datasetUpdateSuccess = await this.firestoreAdapter.updateDocumentWithArrayOps<CloudDataset>('datasets', datasetId, {
+        projectIds: FirestoreAdapter.arrayRemove(projectId),
         updatedAt: new Date().toISOString()
       });
 
@@ -537,8 +543,8 @@ export class DatasetService extends BaseService {
         if (!linkDeleteSuccess) {
           console.warn(`⚠️ [DatasetService] Failed to delete project-dataset link`);
           // Try to rollback dataset update
-          await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, {
-            projectId: projectId,
+          await this.firestoreAdapter.updateDocumentWithArrayOps<CloudDataset>('datasets', datasetId, {
+            projectIds: FirestoreAdapter.arrayUnion(projectId),
             updatedAt: new Date().toISOString()
           });
           return false;

@@ -78,7 +78,7 @@ export WEBONLY=true
 export USE_FIRESTORE=true
 
 # Deploy to Firebase hosting
-firebase deploy --only hosting:backbone-client.web
+firebase deploy --only hosting:main
 
 # Print success message
 echo ""

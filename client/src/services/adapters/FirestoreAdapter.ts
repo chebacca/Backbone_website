@@ -8,6 +8,15 @@ export class FirestoreAdapter {
   private db: any;
   private auth: any;
 
+  // Helper functions for array operations
+  public static arrayUnion(value: any) {
+    return { _method: 'arrayUnion', value };
+  }
+
+  public static arrayRemove(value: any) {
+    return { _method: 'arrayRemove', value };
+  }
+
   private constructor() {
     // Private constructor for singleton pattern
   }
@@ -135,6 +144,43 @@ export class FirestoreAdapter {
     } catch (error) {
       console.error(`❌ [FirestoreAdapter] Error creating document in ${collectionName}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Update a document in a collection with array operations
+   */
+  public async updateDocumentWithArrayOps<T extends BaseEntity>(
+    collectionName: string,
+    docId: string,
+    data: Record<string, any>
+  ): Promise<boolean> {
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const { arrayUnion, arrayRemove } = await import('firebase/firestore');
+      
+      // Process array operations
+      const processedData: Record<string, any> = {};
+      for (const [key, value] of Object.entries(data)) {
+        if (value && typeof value === 'object' && value._method === 'arrayUnion') {
+          processedData[key] = arrayUnion(value.value);
+        } else if (value && typeof value === 'object' && value._method === 'arrayRemove') {
+          processedData[key] = arrayRemove(value.value);
+        } else {
+          processedData[key] = value;
+        }
+      }
+      
+      const cleanedData = this.cleanDocumentData({
+        ...processedData,
+        updatedAt: new Date()
+      });
+      
+      await updateDoc(doc(this.db, collectionName, docId), cleanedData);
+      return true;
+    } catch (error) {
+      console.error(`❌ [FirestoreAdapter] Error updating document ${docId} in ${collectionName} with array ops:`, error);
+      return false;
     }
   }
 

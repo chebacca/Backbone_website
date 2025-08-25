@@ -93,7 +93,9 @@ export interface CloudProject extends BaseEntity {
 export interface CloudDataset extends BaseEntity {
   name: string;
   description?: string;
-  projectId?: string | null;
+  // Support multiple project assignments
+  projectIds?: string[]; // Array of project IDs this dataset is assigned to
+  primaryProjectId?: string | null; // Primary project for backward compatibility
   type?: string;
   status?: string;
   size?: number;

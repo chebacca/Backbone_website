@@ -62,7 +62,7 @@ fi
 print_status "Deploying to Firebase hosting..."
 
 # Deploy to Firebase hosting
-if firebase deploy --only hosting:backbone-client.web; then
+if firebase deploy --only hosting:main; then
     print_success "Deployment completed successfully!"
 else
     print_error "Deployment failed. Please check Firebase console for errors."

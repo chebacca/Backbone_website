@@ -144,7 +144,7 @@ deploy_to_firebase() {
     # Deploy based on targets
     if [[ "$DEPLOY_TARGETS" == *"hosting"* ]]; then
         print_status "Deploying hosting..."
-        firebase deploy --only hosting
+        firebase deploy --only hosting:main
     fi
     
     if [[ "$DEPLOY_TARGETS" == *"functions"* ]]; then

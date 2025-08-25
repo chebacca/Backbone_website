@@ -45,7 +45,7 @@ firebase deploy --only functions
 
 # Deploy to Firebase Hosting with webonly target
 echo "🌐 Deploying to Firebase Hosting (webonly)..."
-firebase deploy --only hosting:backbone-client.web
+firebase deploy --only hosting:main
 
 # Verify deployment
 echo "✅ Deployment completed!"

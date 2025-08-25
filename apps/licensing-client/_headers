@@ -1,0 +1,37 @@
+# MIME type headers for proper JavaScript module loading
+/*.js
+  Content-Type: application/javascript; charset=utf-8
+
+/*.mjs
+  Content-Type: application/javascript; charset=utf-8
+
+# Cache control for static assets
+/*.js
+  Cache-Control: max-age=31536000
+
+/*.mjs
+  Cache-Control: max-age=31536000
+
+/*.css
+  Cache-Control: max-age=31536000
+
+/*.png
+  Cache-Control: max-age=31536000
+
+/*.jpg
+  Cache-Control: max-age=31536000
+
+/*.jpeg
+  Cache-Control: max-age=31536000
+
+/*.gif
+  Cache-Control: max-age=31536000
+
+/*.svg
+  Cache-Control: max-age=31536000
+
+/*.ico
+  Cache-Control: max-age=31536000
+
+/*.woff2
+  Cache-Control: max-age=31536000

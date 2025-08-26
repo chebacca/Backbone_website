@@ -163,6 +163,30 @@ export class ProjectService extends BaseService {
   }
 
   /**
+   * Permanently delete a project
+   */
+  public async deleteProject(projectId: string): Promise<boolean> {
+    try {
+      console.log(`🗑️ [ProjectService] Deleting project: ${projectId}`);
+      
+      if (this.isWebOnlyMode()) {
+        return await this.deleteProjectFromFirestore(projectId);
+      }
+      
+      try {
+        await this.apiRequest(`projects/${projectId}`, 'DELETE');
+        return true;
+      } catch (error) {
+        console.warn('⚠️ [ProjectService] API request failed, falling back to Firestore');
+        return await this.deleteProjectFromFirestore(projectId);
+      }
+    } catch (error) {
+      this.handleError(error, `deleteProject(${projectId})`);
+      return false;
+    }
+  }
+
+  /**
    * Get projects from Firestore
    */
   private async getProjectsFromFirestore(): Promise<CloudProject[]> {
@@ -273,6 +297,46 @@ export class ProjectService extends BaseService {
     } catch (error) {
       this.handleError(error, `updateProjectInFirestore(${projectId})`);
       return null;
+    }
+  }
+
+  /**
+   * Permanently delete a project from Firestore
+   */
+  private async deleteProjectFromFirestore(projectId: string): Promise<boolean> {
+    try {
+      console.log(`🗑️ [ProjectService] Deleting project from Firestore: ${projectId}`);
+      
+      await this.firestoreAdapter.initialize();
+      
+      // Get current project data to check if it exists
+      const existingProject = await this.firestoreAdapter.getDocumentById<CloudProject>('projects', projectId);
+      
+      if (!existingProject) {
+        console.warn(`⚠️ [ProjectService] Project not found for deletion: ${projectId}`);
+        return false;
+      }
+      
+      // Delete the project document
+      const success = await this.firestoreAdapter.deleteDocument('projects', projectId);
+      
+      if (success) {
+        console.log(`✅ [ProjectService] Project successfully deleted from Firestore: ${projectId}`);
+        
+        // TODO: Clean up related data (datasets, team members, etc.)
+        // This could be enhanced to also remove:
+        // - Project-dataset links
+        // - Project-team member assignments
+        // - Any other project-related documents
+        
+        return true;
+      }
+      
+      console.warn(`⚠️ [ProjectService] Failed to delete project from Firestore: ${projectId}`);
+      return false;
+    } catch (error) {
+      this.handleError(error, `deleteProjectFromFirestore(${projectId})`);
+      return false;
     }
   }
 }

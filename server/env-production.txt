@@ -9,7 +9,7 @@ FROM_NAME=Backbone Logic
 
 # Frontend Configuration
 FRONTEND_URL=https://backbone-logic.web.app
-CORS_ORIGIN=https://backbone-logic.web.app
+CORS_ORIGIN=https://backbone-logic.web.app,https://backbone-client.web.app
 
 # Database Configuration (if needed)
 # DATABASE_URL="postgresql://username:password@localhost:5432/dashboard_v14_db"

@@ -81,27 +81,81 @@ export class TeamMemberAutoRegistrationService {
       firebaseUserRecord = { uid: syncResult.firebaseUid };
       teamMemberRef = teamMember;
       
-      // 🔧 CRITICAL FIX: Also create team member record in team_members collection for Dashboard app compatibility
-      const teamMemberCollectionData = {
-        email: request.email,
-        firstName: request.firstName,
-        lastName: request.lastName,
-        name: `${request.firstName} ${request.lastName}`,
-        licenseType: request.licenseType || 'PROFESSIONAL',
-        status: 'ACTIVE',
-        organizationId: request.organizationId,
-        department: request.department,
-        firebaseUid: firebaseUserRecord.uid,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      
-      // STREAMLINED: Update the user record with team member data instead of creating separate collections
+      // 🔧 CRITICAL FIX: Create proper teamMembers collection record for Dashboard app compatibility
       const licenseType: 'BASIC' | 'PROFESSIONAL' | 'ENTERPRISE' = 
         (request.licenseType === 'BASIC' || request.licenseType === 'ENTERPRISE' || request.licenseType === 'PROFESSIONAL') 
           ? request.licenseType 
           : 'PROFESSIONAL';
+
+      // Hash the password for storage in teamMembers collection
+      const hashedPassword = await PasswordUtil.hash(temporaryPassword);
       
+      const teamMemberCollectionData = {
+        id: firebaseUserRecord.uid,
+        email: request.email,
+        firstName: request.firstName,
+        lastName: request.lastName,
+        name: `${request.firstName} ${request.lastName}`,
+        role: 'ADMIN', // Set as ADMIN for proper dashboard access
+        licenseType: licenseType,
+        status: 'ACTIVE',
+        organizationId: request.organizationId,
+        department: request.department,
+        firebaseUid: firebaseUserRecord.uid,
+        password: hashedPassword, // Store hashed password
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: request.createdBy
+      };
+      
+      // Create teamMembers collection document
+      const { getFirestore } = await import('firebase-admin/firestore');
+      const db = getFirestore();
+      await db.collection('teamMembers').doc(firebaseUserRecord.uid).set(teamMemberCollectionData);
+      
+      logger.info('Team member document created in teamMembers collection', { 
+        teamMemberId: firebaseUserRecord.uid,
+        email: request.email 
+      });
+
+      // Create organization membership record
+      const orgMemberData = {
+        id: `${firebaseUserRecord.uid}_${request.organizationId}`,
+        email: request.email,
+        name: `${request.firstName} ${request.lastName}`,
+        role: 'ADMIN', // Set as ADMIN for proper access
+        status: 'ACTIVE',
+        organizationId: request.organizationId,
+        teamMemberId: firebaseUserRecord.uid,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      await db.collection('orgMembers').doc(orgMemberData.id).set(orgMemberData);
+      
+      logger.info('Organization membership created', { 
+        orgMemberId: orgMemberData.id,
+        email: request.email,
+        organizationId: request.organizationId
+      });
+
+      // Set Firebase custom claims for proper role recognition
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth();
+      await auth.setCustomUserClaims(firebaseUserRecord.uid, {
+        role: 'ADMIN',
+        teamMemberRole: 'ADMIN',
+        isAdmin: true,
+        teamMemberId: firebaseUserRecord.uid,
+        organizationId: request.organizationId
+      });
+      
+      logger.info('Firebase custom claims set', { 
+        firebaseUid: firebaseUserRecord.uid,
+        email: request.email 
+      });
+      
+      // Update the user record with team member data
       const teamMemberUpdate = {
         role: 'TEAM_MEMBER',
         organizationId: request.organizationId,
@@ -115,7 +169,6 @@ export class TeamMemberAutoRegistrationService {
         updatedAt: new Date()
       };
       
-      // Update the user record with team member data
       await teamMemberRef.update(teamMemberUpdate);
       
       logger.info('User updated with team member data', { 

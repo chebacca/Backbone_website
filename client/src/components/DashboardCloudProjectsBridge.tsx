@@ -1507,6 +1507,48 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                     >
                                                         {!project.isArchived ? 'Archive' : 'Restore'}
                                                     </Button>
+                                                    <Button
+                                                        size="small"
+                                                        variant="outlined"
+                                                        color="error"
+                                                        onClick={async () => {
+                                                            try {
+                                                                const confirmDelete = window.confirm(
+                                                                    `Are you sure you want to permanently delete "${project.name}"? This action cannot be undone and will remove all project data, datasets, and team member assignments.`
+                                                                );
+                                                                
+                                                                if (confirmDelete) {
+                                                                    setLoading(true);
+                                                                    const success = await cloudProjectIntegration.deleteProject(project.id);
+                                                                    
+                                                                    if (success) {
+                                                                        console.log(`✅ [DashboardCloudProjectsBridge] Project "${project.name}" deleted successfully`);
+                                                                        await loadProjects(); // Refresh the project list
+                                                                        setError(null);
+                                                                    } else {
+                                                                        setError(`Failed to delete project "${project.name}". Please try again.`);
+                                                                    }
+                                                                }
+                                                            } catch (e) {
+                                                                console.error('Failed to delete project:', e);
+                                                                setError(`Failed to delete project "${project.name}": ${e instanceof Error ? e.message : 'Unknown error'}`);
+                                                            } finally {
+                                                                setLoading(false);
+                                                            }
+                                                        }}
+                                                        sx={{ 
+                                                            minWidth: 'auto',
+                                                            borderColor: 'error.main',
+                                                            color: 'error.main',
+                                                            '&:hover': {
+                                                                borderColor: 'error.dark',
+                                                                backgroundColor: 'error.main',
+                                                                color: 'white'
+                                                            }
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </Button>
                                                 </Box>
                                             </TableCell>
                                         </TableRow>

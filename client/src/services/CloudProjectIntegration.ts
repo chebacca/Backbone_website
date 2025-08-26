@@ -149,6 +149,13 @@ class CloudProjectIntegrationService {
     return await this.serviceFactory.getProjectService().restoreProject(projectId);
   }
 
+  /**
+   * Permanently delete a project
+   */
+  public async deleteProject(projectId: string): Promise<boolean> {
+    return await this.serviceFactory.getProjectService().deleteProject(projectId);
+  }
+
   // DATASET METHODS
 
   /**

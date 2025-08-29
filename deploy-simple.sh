@@ -104,8 +104,8 @@ print_success "All builds completed successfully"
 # Deploy to Firebase (core services only)
 print_status "Deploying to Firebase (core services)..."
 
-print_status "Deploying hosting..."
-firebase deploy --only hosting
+print_status "Deploying hosting to main target (backbone-logic with API routing)..."
+firebase deploy --only hosting:main
 print_success "Hosting deployed"
 
 print_status "Deploying functions..."

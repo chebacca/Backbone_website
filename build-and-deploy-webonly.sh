@@ -232,8 +232,8 @@ deploy_to_firebase() {
     print_success "Using Firebase project: $FIREBASE_PROJECT"
     
     # Deploy hosting
-    print_status "Deploying hosting..."
-    firebase deploy --only hosting
+    echo "🚀 Deploying to Firebase (main target with API routing)..."
+    firebase deploy --only hosting:main
     
     # Deploy functions
     print_status "Deploying functions..."

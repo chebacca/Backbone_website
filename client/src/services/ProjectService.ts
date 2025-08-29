@@ -195,24 +195,76 @@ export class ProjectService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // Try to use Firebase Auth
+      // Get current user and their organization ID
       const currentUser = this.firestoreAdapter.getCurrentUser();
       
-      // If Firebase Auth is not available, use a hardcoded organization ID for enterprise.user
-      const organizationId = '24H6zaiCUycuT8ukx9Jz'; // Known enterprise organization ID
-      console.log('✅ [ProjectService] Using organization ID:', organizationId);
+      if (!currentUser) {
+        console.log('❌ [ProjectService] No authenticated user found');
+        return [];
+      }
+      
+      // Get user's organization ID from Firestore
+      let organizationId: string | null = null;
+      
+      try {
+        // Try to get user document by Firebase UID
+        const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+        if (userDoc && userDoc.organizationId) {
+          organizationId = userDoc.organizationId;
+          console.log('✅ [ProjectService] Found organization ID from user document:', organizationId);
+        } else {
+          // Try to find user by email
+          const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+            { field: 'email', operator: '==', value: currentUser.email }
+          ]);
+          
+          if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+            organizationId = userByEmail[0].organizationId;
+            console.log('✅ [ProjectService] Found organization ID from user email query:', organizationId);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [ProjectService] Error getting user organization:', error);
+      }
+      
+      if (!organizationId) {
+        console.log('❌ [ProjectService] No organization ID found for user');
+        return [];
+      }
       
       // Get projects for this organization
-      const projects = await this.firestoreAdapter.queryDocuments<CloudProject>('projects', [
-        { field: 'organizationId', operator: '==', value: organizationId }
-      ]);
-      
-      // Sort by lastAccessedAt in memory to avoid Firestore index requirements
-      return projects.sort((a, b) => {
-        const dateA = a.lastAccessedAt ? new Date(a.lastAccessedAt).getTime() : 0;
-        const dateB = b.lastAccessedAt ? new Date(b.lastAccessedAt).getTime() : 0;
-        return dateB - dateA; // Descending order (newest first)
-      });
+      try {
+        const projects = await this.firestoreAdapter.queryDocuments<CloudProject>('projects', [
+          { field: 'organizationId', operator: '==', value: organizationId }
+        ]);
+        
+        console.log(`✅ [ProjectService] Found ${projects.length} projects for organization: ${organizationId}`);
+        console.log('🔍 [ProjectService] Raw projects from Firestore:', projects);
+        
+        // Sort by lastAccessedAt in memory to avoid Firestore index requirements
+        const sortedProjects = projects.sort((a, b) => {
+          const dateA = a.lastAccessedAt ? new Date(a.lastAccessedAt).getTime() : 0;
+          const dateB = b.lastAccessedAt ? new Date(b.lastAccessedAt).getTime() : 0;
+          return dateB - dateA; // Descending order (newest first)
+        });
+        
+        console.log('🔍 [ProjectService] Sorted projects:', sortedProjects);
+        return sortedProjects;
+      } catch (queryError: any) {
+        // Handle missing index error gracefully
+        if (queryError.message && queryError.message.includes('requires an index')) {
+          console.warn('⚠️ [ProjectService] Missing Firestore index detected. Projects query requires composite index.');
+          console.warn('📋 Required index: organizationId (Ascending) + createdAt (Ascending) + __name__ (Ascending)');
+          console.warn('🔗 Create index at: https://console.firebase.google.com/v1/r/project/backbone-logic/firestore/indexes');
+          console.warn('📝 Note: Index creation can take several minutes. Returning empty array for now.');
+          
+          // Return empty array while index is being built
+          return [];
+        }
+        
+        // Re-throw other errors
+        throw queryError;
+      }
     } catch (error) {
       this.handleError(error, 'getProjectsFromFirestore');
       return [];

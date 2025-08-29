@@ -1,0 +1,340 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================================================
+    // TEMPORARY FIX FOR STREAMLINED ARCHITECTURE
+    // ============================================================================
+    // Updated rules to allow access to actual organization IDs
+    // This allows the UnifiedDataService to work with existing data
+    // ============================================================================
+    
+    // ============================================================================
+    // HELPER FUNCTIONS
+    // ============================================================================
+    
+    // Authentication check
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user owns the document (userId field matches)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if user can access organization data (more permissive for now)
+    function canAccessOrgData() {
+      return isAuthenticated();
+    }
+    
+    // Check if organization ID is valid (allow common org IDs)
+    function isValidOrgId(orgId) {
+      return orgId == 'default-org' || 
+             orgId == 'example-corp-org' || 
+             orgId == 'basic-org' || 
+             orgId == 'pro-org' || 
+             orgId == 'enterprise-org' ||
+             orgId == 'accounting-org';
+    }
+    
+    // ============================================================================
+    // CORE COLLECTIONS - UPDATED FOR STREAMLINED ARCHITECTURE
+    // ============================================================================
+    
+    // Users - Core user data
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && (
+        isOwner(userId) || 
+        request.auth.token.email == resource.data.email ||
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Organizations - Core organizational data
+    match /organizations/{orgId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(orgId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Team Members - Dashboard team member data
+    match /teamMembers/{memberId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Organization Members - Team member management
+    match /orgMembers/{memberId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(resource.data.orgId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.orgId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Organization Members - Alternative collection name
+    match /org_members/{memberId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Licenses - License management
+    match /licenses/{licenseId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        request.auth.token.email == resource.data.assignedToEmail ||
+        request.auth.uid == resource.data.assignedToUserId ||
+        request.auth.uid == resource.data.firebaseUid ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Projects - Project data accessible by both systems
+    match /projects/{projectId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Project Datasets - Links between projects and datasets
+    match /project_datasets/{linkId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Datasets - Dataset management
+    match /datasets/{datasetId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Subscriptions - Subscription management
+    match /subscriptions/{subscriptionId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        request.auth.uid == resource.data.firebaseUid ||
+        request.auth.token.email == resource.data.userEmail ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Payments - Payment history
+    match /payments/{paymentId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Invoices - Invoice management
+    match /invoices/{invoiceId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        request.auth.uid == resource.data.firebaseUid ||
+        request.auth.token.email == resource.data.userEmail ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Usage Analytics - Usage tracking
+    match /usageAnalytics/{analyticsId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Billing Profiles - Billing information
+    match /billingProfiles/{profileId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        request.auth.uid == resource.data.firebaseUid ||
+        request.auth.uid == resource.data.userId ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Project Team Members - Project assignments
+    match /projectTeamMembers/{assignmentId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // ============================================================================
+    // ADDITIONAL DASHBOARD COLLECTIONS
+    // ============================================================================
+    
+    // Sessions - Production sessions
+    match /sessions/{sessionId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Session Elements - Session content elements
+    match /sessionElements/{elementId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Workflows - Production workflows
+    match /workflows/{workflowId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Workflow Steps - Individual workflow steps
+    match /workflowSteps/{stepId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Timecards - Time tracking
+    match /timecards/{timecardId} {
+      allow read, write: if isAuthenticated() && (
+        isOwner(resource.data.userId) ||
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // QC Sessions - Quality control sessions
+    match /qcSessions/{qcSessionId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // QC Findings - Quality control findings
+    match /qcFindings/{findingId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Reports - Analytics and reporting
+    match /reports/{reportId} {
+      allow read, write: if isAuthenticated() && (
+        isOwner(resource.data.userId) ||
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Media Files - Media asset management
+    match /mediaFiles/{fileId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Production Tasks - Production task management
+    match /productionTasks/{taskId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Unified Workflow Instances - Unified workflow system
+    match /unifiedWorkflowInstances/{instanceId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Unified Session Steps - Unified session step management
+    match /unifiedSessionSteps/{stepId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Inventory Items - Equipment and asset inventory
+    match /inventoryItems/{itemId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // Notifications - System notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || canAccessOrgData());
+      allow create: if isAuthenticated(); // System can create notifications
+      allow update: if isAuthenticated() && (isOwner(resource.data.userId) || canAccessOrgData());
+    }
+    
+    // Project Assignments - Links team members to projects with roles
+    match /projectAssignments/{assignmentId} {
+      allow read, write: if isAuthenticated() && (
+        isValidOrgId(resource.data.organizationId) ||
+        isValidOrgId(request.resource.data.organizationId) ||
+        canAccessOrgData()
+      );
+    }
+    
+    // ============================================================================
+    // SUBCOLLECTIONS
+    // ============================================================================
+    
+    // Subcollections inherit parent permissions
+    match /{collection}/{document}/{subcollection}/{subdocument} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

@@ -64,10 +64,17 @@ export const Navigation: React.FC = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    logout();
-    handleMenuClose();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      handleMenuClose();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Still navigate away even if logout fails
+      handleMenuClose();
+      navigate('/');
+    }
   };
 
   const handleDrawerToggle = () => {

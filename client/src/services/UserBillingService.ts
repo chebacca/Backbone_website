@@ -80,37 +80,18 @@ export class UserBillingService {
 
       console.log('🔍 [UserBillingService] Getting subscription for Firebase UID:', firebaseUid);
 
-      // First, find the user document by firebaseUid
-      const usersQuery = query(
-        collection(db, COLLECTIONS.USERS),
-        where('firebaseUid', '==', firebaseUid),
-        firestoreLimit(1)
-      );
-
-      const usersSnapshot = await getDocs(usersQuery);
-      console.log(`👥 [UserBillingService] Found ${usersSnapshot.size} users with firebaseUid: ${firebaseUid}`);
-
-      if (usersSnapshot.empty) {
-        console.log('ℹ️ [UserBillingService] No user document found for firebaseUid');
-        return null;
-      }
-
-      const userDoc = usersSnapshot.docs[0];
-      const userData = userDoc.data();
-      console.log('✅ [UserBillingService] Found user document:', { id: userDoc.id, email: userData.email });
-
-      // Now find subscriptions by the user's document ID
+      // Query subscriptions directly by firebaseUid (most reliable method)
       const subscriptionsQuery = query(
         collection(db, COLLECTIONS.SUBSCRIPTIONS),
-        where('userId', '==', userDoc.id),
+        where('firebaseUid', '==', firebaseUid),
         firestoreLimit(10)
       );
 
       const subscriptionsSnapshot = await getDocs(subscriptionsQuery);
-      console.log(`📋 [UserBillingService] Found ${subscriptionsSnapshot.size} subscriptions for user ID: ${userDoc.id}`);
+      console.log(`📋 [UserBillingService] Found ${subscriptionsSnapshot.size} subscriptions for Firebase UID: ${firebaseUid}`);
 
       if (subscriptionsSnapshot.empty) {
-        console.log('ℹ️ [UserBillingService] No subscriptions found for user ID');
+        console.log('ℹ️ [UserBillingService] No subscriptions found for Firebase UID');
         return null;
       }
 
@@ -153,35 +134,18 @@ export class UserBillingService {
       const limit = options.limit || 25;
       console.log('🔍 [UserBillingService] Getting billing history for Firebase UID:', firebaseUid);
 
-      // First, find the user document by firebaseUid
-      const usersQuery = query(
-        collection(db, COLLECTIONS.USERS),
-        where('firebaseUid', '==', firebaseUid),
-        firestoreLimit(1)
-      );
-
-      const usersSnapshot = await getDocs(usersQuery);
-      if (usersSnapshot.empty) {
-        console.log('ℹ️ [UserBillingService] No user document found for firebaseUid');
-        return [];
-      }
-
-      const userDoc = usersSnapshot.docs[0];
-      const userData = userDoc.data();
-      console.log('✅ [UserBillingService] Found user document for billing history:', { id: userDoc.id, email: userData.email });
-
       const allInvoices: UserInvoice[] = [];
 
-      // Get payments from PAYMENTS collection by userId
+      // Get payments from PAYMENTS collection by firebaseUid
       try {
         let paymentsQuery = query(
           collection(db, COLLECTIONS.PAYMENTS),
-          where('userId', '==', userDoc.id),
+          where('firebaseUid', '==', firebaseUid),
           firestoreLimit(limit)
         );
 
         const paymentsSnapshot = await getDocs(paymentsQuery);
-        console.log(`💳 [UserBillingService] Found ${paymentsSnapshot.size} payments for user ID: ${userDoc.id}`);
+        console.log(`💳 [UserBillingService] Found ${paymentsSnapshot.size} payments for Firebase UID: ${firebaseUid}`);
 
         // Process payments
         for (const paymentDoc of paymentsSnapshot.docs) {
@@ -215,16 +179,16 @@ export class UserBillingService {
         console.warn('⚠️ [UserBillingService] Could not fetch payments:', error);
       }
 
-      // Also try to get invoices from INVOICES collection by userId
+      // Also try to get invoices from INVOICES collection by firebaseUid
       try {
         let invoicesQuery = query(
           collection(db, COLLECTIONS.INVOICES),
-          where('userId', '==', userDoc.id),
+          where('firebaseUid', '==', firebaseUid),
           firestoreLimit(limit)
         );
 
         const invoicesSnapshot = await getDocs(invoicesQuery);
-        console.log(`📋 [UserBillingService] Found ${invoicesSnapshot.size} invoices for user ID: ${userDoc.id}`);
+        console.log(`📋 [UserBillingService] Found ${invoicesSnapshot.size} invoices for Firebase UID: ${firebaseUid}`);
 
         // Process invoices
         for (const invoiceDoc of invoicesSnapshot.docs) {

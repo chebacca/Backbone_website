@@ -93,6 +93,18 @@ export const db = app ? getFirestore(app) : getFirestore();
 // Initialize Auth with lazy initialization
 export const auth = app ? getAuth(app) : getAuth();
 
+// Configure Firebase Auth to persist authentication state
+if (auth) {
+  // Set persistence to LOCAL to maintain auth state across page refreshes
+  import('firebase/auth').then(({ setPersistence, browserLocalPersistence }) => {
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.warn('⚠️ [Firebase] Failed to set auth persistence:', error);
+    });
+  }).catch((error) => {
+    console.warn('⚠️ [Firebase] Failed to import auth persistence:', error);
+  });
+}
+
 // Function to get properly initialized services
 export async function getInitializedServices() {
   const initializedApp = await ensureAppInitialized();
@@ -217,28 +229,99 @@ export const isEmailAuthenticated = (email: string): boolean => {
 };
 
 /**
+ * Load user data from Firestore by Firebase UID or email
+ */
+export const loadUserFromFirestore = async (firebaseUser: any) => {
+  try {
+    const { doc, getDoc, query, collection, where, getDocs } = await import('firebase/firestore');
+    
+    // Try to get user document by Firebase UID first
+    let userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+    let userData = null;
+    let userId = null;
+    
+    if (userDoc.exists()) {
+      userData = userDoc.data();
+      userId = userDoc.id;
+      console.log('✅ [Firebase] Found user by Firebase UID:', userData.email);
+    } else {
+      // Try to find user by email
+      const userQuery = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+      const userQuerySnap = await getDocs(userQuery);
+      
+      if (!userQuerySnap.empty) {
+        userData = userQuerySnap.docs[0].data();
+        userId = userQuerySnap.docs[0].id;
+        console.log('✅ [Firebase] Found user by email:', userData.email);
+      }
+    }
+    
+    if (userData && userId) {
+      // Create user object in expected format
+      return {
+        id: userId,
+        email: userData.email,
+        name: userData.name || userData.displayName || firebaseUser.displayName || userData.email.split('@')[0],
+        role: userData.role || 'USER',
+        organizationId: userData.organizationId,
+        isTeamMember: userData.isTeamMember,
+        memberRole: userData.memberRole,
+        memberStatus: userData.memberStatus,
+        firebaseUid: firebaseUser.uid,
+        // Add subscription and license data if available
+        subscription: userData.subscription,
+        licenses: userData.licenses,
+        teamMemberData: userData.teamMemberData
+      };
+    }
+    
+    // Return fallback user if no Firestore document found
+    return {
+      id: firebaseUser.uid,
+      email: firebaseUser.email || '',
+      name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+      role: 'USER' as const,
+      firebaseUid: firebaseUser.uid
+    };
+  } catch (error) {
+    console.warn('⚠️ [Firebase] Failed to load user from Firestore:', error);
+    // Return fallback user on error
+    return {
+      id: firebaseUser.uid,
+      email: firebaseUser.email || '',
+      name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+      role: 'USER' as const,
+      firebaseUid: firebaseUser.uid
+    };
+  }
+};
+
+/**
  * Try to restore Firebase Auth session for an existing user
  * This is useful when the user has a server session but needs Firebase Auth for Firestore access
  */
 export const tryRestoreFirebaseSession = async (email: string): Promise<boolean> => {
   try {
+    console.log('🔑 [Firebase] Attempting to restore Firebase Auth session for:', email);
+    
     // Check if already authenticated with the right user
     if (isEmailAuthenticated(email)) {
+      console.log('✅ [Firebase] User already authenticated with correct email');
       return true;
     }
     
     // Check if there's a different user authenticated
     if (auth.currentUser && auth.currentUser.email !== email) {
+      console.log('🔄 [Firebase] Different user authenticated, signing out first');
       const { signOut } = await import('firebase/auth');
       await signOut(auth);
     }
     
     // Try to get the password from AuthContext temp credentials
     try {
-      const authUserStr = localStorage.getItem('auth_user');
       const tempCredentials = localStorage.getItem('temp_credentials');
       
-      if (authUserStr && tempCredentials) {
+      if (tempCredentials) {
         const credentials = JSON.parse(tempCredentials);
         if (credentials.email === email && credentials.password) {
           console.log('🔑 [Firebase] Attempting to restore Firebase Auth session with stored credentials');
@@ -565,7 +648,9 @@ export class FirebaseTeamMemberService {
       };
       
       // Clean the data to remove undefined values that could cause Firestore errors
-      const cleanedData = cleanDocumentData(projectTeamMember);
+      const cleanedData = Object.fromEntries(
+        Object.entries(projectTeamMember).filter(([_, value]) => value !== undefined && value !== null)
+      );
       
       const docRef = await addDoc(collection(db, 'projectTeamMembers'), cleanedData);
       

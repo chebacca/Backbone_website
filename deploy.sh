@@ -32,8 +32,8 @@ echo "✅ Deployment assets prepared:"
 ls -la deploy/
 
 # Deploy to Firebase
-echo "🚀 Deploying to Firebase..."
-firebase deploy --only hosting
+echo "🚀 Deploying to Firebase (main target with API routing)..."
+firebase deploy --only hosting:main
 
 echo "✅ Deployment completed successfully!"
 echo "🌐 Your application should now be live at your Firebase hosting URL."

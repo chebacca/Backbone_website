@@ -6,7 +6,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING' | 'TEAM_MEMBER';
+  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING' | 'TEAM_MEMBER' | 'ENTERPRISE_ADMIN' | 'OWNER';
   subscription?: {
     plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
     status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'TRIALING';
@@ -24,6 +24,10 @@ interface User {
   organizationId?: string;
   memberRole?: string;
   memberStatus?: string;
+  // Demo user properties
+  isDemoUser?: boolean;
+  demoExpiresAt?: string;
+  demoStatus?: string;
   teamMemberData?: {
     projectAccess: Array<{
       projectId: string;
@@ -126,11 +130,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (token && userStr) {
           // Parse to ensure JSON validity; actual user state is fetched from server
-          try { JSON.parse(userStr); } catch {}
+          let userData;
+          try { 
+            userData = JSON.parse(userStr); 
+          } catch (parseError) {
+            console.warn('Failed to parse stored user data, clearing invalid data');
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            setAuthState(prev => ({ ...prev, isLoading: false }));
+            return;
+          }
           
-          // Validate token with server
+          // Set initial state immediately to prevent loading flicker
+          setAuthState({
+            user: userData,
+            isAuthenticated: true,
+            isLoading: false,
+            token,
+          });
+
+          // Validate token with server in background
           try {
+            console.log('🔑 [Auth] Validating stored token with server...');
             const validatedUser = await authService.validateToken(token);
+            
+            // Update state with validated user data
+            setAuthState({
+              user: validatedUser,
+              isAuthenticated: true,
+              isLoading: false,
+              token,
+            });
+            
+            // Update localStorage with validated data
+            localStorage.setItem('auth_user', JSON.stringify(validatedUser));
             
             // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth when restoring session
             try {
@@ -145,22 +178,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               } else if (isEmailAuthenticated(validatedUser.email)) {
                 console.log('✅ [Auth] Firebase Auth user already authenticated:', validatedUser.email);
               } else {
-                // Firebase Auth requirement removed - authentication is working fine
+                // Try to authenticate with stored credentials if available
+                const tempCredentials = localStorage.getItem('temp_credentials');
+                if (tempCredentials) {
+                  try {
+                    const { email, password } = JSON.parse(tempCredentials);
+                    const { auth } = await import('../services/firebase');
+                    const { signInWithEmailAndPassword } = await import('firebase/auth');
+                    
+                    await signInWithEmailAndPassword(auth, email, password);
+                    console.log('✅ [Auth] Firebase Auth restored with stored credentials');
+                  } catch (firebaseError) {
+                    console.warn('⚠️ [Auth] Failed to restore Firebase Auth with stored credentials:', firebaseError);
+                  }
+                }
               }
             } catch (firebaseError) {
-              // Firebase Auth requirement removed - authentication is working fine
+              console.warn('⚠️ [Auth] Firebase Auth restoration failed:', firebaseError);
+              // Continue with authentication since server auth succeeded
             }
             
-            setAuthState({
-              user: validatedUser,
-              isAuthenticated: true,
-              isLoading: false,
-              token,
-            });
           } catch (error) {
-            // Token is invalid, clear localStorage
+            console.error('❌ [Auth] Token validation failed:', error);
+            // Token is invalid, clear localStorage and reset state
             localStorage.removeItem('auth_token');
             localStorage.removeItem('auth_user');
+            localStorage.removeItem('temp_credentials');
             setAuthState({
               user: null,
               isAuthenticated: false,
@@ -169,7 +212,63 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             });
           }
         } else {
+          // No stored auth data, set loading to false immediately
+          console.log('🔑 [Auth] No stored auth data, setting loading to false');
           setAuthState(prev => ({ ...prev, isLoading: false }));
+          
+          // Optionally check if Firebase Auth has a user (but don't block on it)
+          try {
+            const { auth } = await import('../services/firebase');
+            const { onAuthStateChanged } = await import('firebase/auth');
+            
+            // Listen for Firebase Auth state changes (non-blocking)
+            const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+              if (firebaseUser) {
+                console.log('🔑 [Auth] Firebase Auth user detected during initialization:', firebaseUser.email);
+                
+                // Load user profile directly from Firestore using helper function
+                try {
+                  const { loadUserFromFirestore } = await import('../services/firebase');
+                  const userProfile = await loadUserFromFirestore(firebaseUser);
+                  
+                  setAuthState({
+                    user: userProfile,
+                    isAuthenticated: true,
+                    isLoading: false,
+                    token: null, // No API token needed in web-only mode
+                  });
+                  
+                  // Also update localStorage to persist the user data
+                  localStorage.setItem('auth_user', JSON.stringify(userProfile));
+                  
+                  console.log('✅ [Auth] Updated auth state with Firestore user data during init:', userProfile.email);
+                } catch (profileError) {
+                  console.warn('⚠️ [Auth] Failed to get user profile from Firestore during init:', profileError);
+                  // Create fallback user
+                  const fallbackUser = {
+                    id: firebaseUser.uid,
+                    email: firebaseUser.email || '',
+                    name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                    role: 'USER' as const,
+                    firebaseUid: firebaseUser.uid
+                  };
+                  
+                  setAuthState({
+                    user: fallbackUser,
+                    isAuthenticated: true,
+                    isLoading: false,
+                    token: null,
+                  });
+                }
+              }
+            });
+            
+            // Cleanup listener
+            return () => unsubscribe();
+          } catch (firebaseError) {
+            console.warn('⚠️ [Auth] Firebase Auth check failed:', firebaseError);
+            // Already set loading to false above, so no need to do it again
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -184,6 +283,111 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     initializeAuth();
   }, []);
+
+  // Listen for Firebase Auth state changes to keep local state in sync
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    
+    const setupFirebaseAuthListener = async () => {
+      try {
+        const { auth } = await import('../services/firebase');
+        const { onAuthStateChanged } = await import('firebase/auth');
+        
+        unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+          if (firebaseUser) {
+            console.log('🔑 [Auth] Firebase Auth user detected, updating local state:', firebaseUser.email);
+            
+            // Clear UnifiedDataService cache when user changes
+            try {
+              const { unifiedDataService } = await import('../services/UnifiedDataService');
+              unifiedDataService.clearUserCache(firebaseUser.uid);
+              console.log('🧹 [Auth] Cleared UnifiedDataService cache for new user');
+            } catch (cacheError) {
+              console.warn('⚠️ [Auth] Failed to clear UnifiedDataService cache:', cacheError);
+            }
+            
+            // If we don't have a user in local state, try to load from Firestore
+            if (!authState.user || !authState.isAuthenticated) {
+              try {
+                console.log('🔍 [Auth] Loading user data from Firestore for:', firebaseUser.email);
+                const { loadUserFromFirestore } = await import('../services/firebase');
+                const userProfile = await loadUserFromFirestore(firebaseUser);
+                
+                // Update auth state with complete user data
+                setAuthState(prev => ({
+                  ...prev,
+                  user: userProfile,
+                  isAuthenticated: true,
+                  isLoading: false,
+                }));
+                
+                // Also update localStorage to persist the user data
+                localStorage.setItem('auth_user', JSON.stringify(userProfile));
+                
+                console.log('✅ [Auth] Updated auth state with complete Firestore user data:', userProfile.email);
+              } catch (firestoreError) {
+                console.warn('⚠️ [Auth] Failed to load user data from Firestore:', firestoreError);
+                // Create fallback user
+                const fallbackUser = {
+                  id: firebaseUser.uid,
+                  email: firebaseUser.email || '',
+                  name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                  role: 'USER' as const,
+                  firebaseUid: firebaseUser.uid
+                };
+                
+                setAuthState(prev => ({
+                  ...prev,
+                  user: fallbackUser,
+                  isAuthenticated: true,
+                  isLoading: false,
+                }));
+              }
+            } else {
+              // Just update the Firebase UID if we already have user data
+              setAuthState(prev => ({
+                ...prev,
+                user: prev.user ? { ...prev.user, firebaseUid: firebaseUser.uid } : prev.user,
+                isAuthenticated: true,
+              }));
+            }
+          } else if (!firebaseUser && authState.isAuthenticated) {
+            console.log('🔑 [Auth] Firebase Auth user signed out, updating local state');
+            // Update local state if Firebase Auth user is gone but local state still shows authenticated
+            setAuthState(prev => ({
+              ...prev,
+              isAuthenticated: false,
+              user: null,
+            }));
+            
+            // Clear localStorage
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            localStorage.removeItem('temp_credentials');
+            
+            // Clear UnifiedDataService cache when user signs out
+            try {
+              const { unifiedDataService } = await import('../services/UnifiedDataService');
+              unifiedDataService.clearAllCache();
+              console.log('🧹 [Auth] Cleared all UnifiedDataService cache on sign out');
+            } catch (cacheError) {
+              console.warn('⚠️ [Auth] Failed to clear UnifiedDataService cache on sign out:', cacheError);
+            }
+          }
+        });
+      } catch (error) {
+        console.warn('⚠️ [Auth] Failed to setup Firebase Auth listener:', error);
+      }
+    };
+    
+    setupFirebaseAuthListener();
+    
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [authState.isAuthenticated]);
 
   const login = async (email: string, password: string): Promise<User> => {
     setLoading(true);
@@ -200,9 +404,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       localStorage.setItem('auth_user', JSON.stringify(response.user));
 
-      // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth for Firestore access
+      // 🔥 CRITICAL FIX: Try to authenticate with Firebase Auth, but don't fail if user doesn't exist
       try {
-        console.log('🔑 [Auth] Authenticating with Firebase Auth for email/password user...');
+        console.log('🔑 [Auth] Attempting Firebase Auth authentication for email/password user...');
         const { auth } = await import('../services/firebase');
         const { signInWithEmailAndPassword } = await import('firebase/auth');
         
@@ -215,10 +419,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           response.user.firebaseUid = firebaseUid;
           console.log('🔗 [Auth] Stored Firebase UID for email/password user:', firebaseUid);
         }
-      } catch (firebaseError) {
-        console.error('❌ [Auth] Failed to authenticate with Firebase Auth for email/password user:', firebaseError);
-        console.warn('⚠️ [Auth] Firestore access will be limited without Firebase Auth');
+      } catch (firebaseError: any) {
+        // Handle specific Firebase Auth errors gracefully
+        if (firebaseError.code === 'auth/user-not-found') {
+          console.log('ℹ️ [Auth] User not found in Firebase Auth - this is expected for some users');
+          console.log('ℹ️ [Auth] User will still have access to backend API but limited Firestore access');
+        } else if (firebaseError.code === 'auth/invalid-credential') {
+          console.log('ℹ️ [Auth] Invalid credentials for Firebase Auth - user may not have Firebase Auth account');
+          console.log('ℹ️ [Auth] User will still have access to backend API but limited Firestore access');
+        } else if (firebaseError.code === 'auth/wrong-password') {
+          console.log('ℹ️ [Auth] Wrong password for Firebase Auth - user may not have Firebase Auth account');
+          console.log('ℹ️ [Auth] User will still have access to backend API but limited Firestore access');
+        } else {
+          console.error('❌ [Auth] Unexpected Firebase Auth error:', firebaseError.code, firebaseError.message);
+          console.warn('⚠️ [Auth] Firestore access will be limited without Firebase Auth');
+        }
         // Continue with login since server auth succeeded
+      }
+
+      // Clear UnifiedDataService cache for new login
+      try {
+        const { unifiedDataService } = await import('../services/UnifiedDataService');
+        unifiedDataService.clearAllCache();
+        console.log('🧹 [Auth] Cleared UnifiedDataService cache for new login');
+      } catch (cacheError) {
+        console.warn('⚠️ [Auth] Failed to clear UnifiedDataService cache for new login:', cacheError);
       }
 
       setAuthState({
@@ -226,7 +451,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isAuthenticated: true,
         isLoading: false,
         token: response.token,
-        // Store temporary credentials for Firebase Auth
+        // Store temporary credentials for Firebase Auth restoration
         tempCredentials: { email, password }
       });
 
@@ -390,7 +615,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const logout = (): void => {
+  const logout = async (): Promise<void> => {
+    // Clear UnifiedDataService cache on logout
+    try {
+      const { unifiedDataService } = await import('../services/UnifiedDataService');
+      unifiedDataService.clearAllCache();
+      console.log('🧹 [Auth] Cleared UnifiedDataService cache on logout');
+    } catch (cacheError) {
+      console.warn('⚠️ [Auth] Failed to clear UnifiedDataService cache on logout:', cacheError);
+    }
+
     // Clear localStorage
     localStorage.removeItem('auth_token');
     localStorage.removeItem('refresh_token');
@@ -437,10 +671,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         ...prev,
         user,
       }));
+
+      // Clear UnifiedDataService cache when user data is refreshed
+      try {
+        const { unifiedDataService } = await import('../services/UnifiedDataService');
+        unifiedDataService.clearUserCache(user.id);
+        console.log('🧹 [Auth] Cleared UnifiedDataService cache for refreshed user');
+      } catch (cacheError) {
+        console.warn('⚠️ [Auth] Failed to clear UnifiedDataService cache for refreshed user:', cacheError);
+      }
     } catch (error) {
       console.error('Failed to refresh user:', error);
       // If refresh fails, logout user
-      logout();
+      await logout();
     }
   };
 

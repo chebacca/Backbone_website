@@ -41,69 +41,12 @@ const app: Application = express();
 // Trust proxy (required when behind Firebase Hosting/Cloud Run for correct IPs)
 app.set('trust proxy', true);
 
-// Security middleware
+// Security middleware - Disable CSP here since Firebase Hosting handles it
 app.use(helmet({
   // Enable HSTS in production
   hsts: config.isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'", "data:", "blob:"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:", "https://m.stripe.network", "https://q.stripe.com"],
-      scriptSrc: [
-        "'self'",
-        "'unsafe-inline'",
-        "'unsafe-eval'",
-        "'wasm-unsafe-eval'",
-        "https://js.stripe.com",
-        "https://m.stripe.network",
-        "https://accounts.google.com",
-        "https://appleid.cdn-apple.com",
-        "https://apis.google.com",
-        "https://www.gstatic.com",
-        "https://cdn.socket.io",
-        "https://maps.googleapis.com",
-        "https://maps.google.com",
-        "https://cdn.jsdelivr.net",
-        "https://unpkg.com"
-      ],
-      connectSrc: [
-        "'self'",
-        "https://api.stripe.com",
-        "https://js.stripe.com",
-        "https://m.stripe.network",
-        "https://q.stripe.com",
-        "https://accounts.google.com",
-        "https://appleid.apple.com",
-        "https://*.firebaseapp.com",
-        "https://*.googleapis.com",
-        "https://us-central1-backbone-logic.cloudfunctions.net",
-        "https://backbone-logic.web.app",
-        "https://apis.google.com",
-        "https://www.gstatic.com",
-        "https://maps.googleapis.com",
-        "https://maps.google.com",
-        "https://cdn.jsdelivr.net",
-        "https://unpkg.com",
-        "https://rpc.cosmos.directory",
-        "https://rest.cosmos.directory",
-        "https://lcd-juno.itastakers.com",
-        "https://rpc-juno.itastakers.com"
-      ],
-      frameSrc: [
-        "'self'",
-        "https://js.stripe.com",
-        "https://m.stripe.network",
-        "https://accounts.google.com"
-      ],
-      frameAncestors: ["'self'"],
-      workerSrc: ["'self'", "blob:", "data:"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
-    },
-  },
+  contentSecurityPolicy: false, // Let Firebase Hosting handle CSP to avoid conflicts
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
 // CORS

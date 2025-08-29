@@ -307,9 +307,42 @@ export class TeamMemberService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // If Firebase Auth is not available, use a hardcoded organization ID for enterprise.user
-      const organizationId = '24H6zaiCUycuT8ukx9Jz'; // Known enterprise organization ID
-      console.log('✅ [TeamMemberService] Using organization ID:', organizationId);
+      // Get current user and their organization ID
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      
+      if (!currentUser) {
+        console.log('❌ [TeamMemberService] No authenticated user found');
+        return [];
+      }
+      
+      // Get user's organization ID from Firestore
+      let organizationId: string | null = null;
+      
+      try {
+        // Try to get user document by Firebase UID
+        const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+        if (userDoc && userDoc.organizationId) {
+          organizationId = userDoc.organizationId;
+          console.log('✅ [TeamMemberService] Found organization ID from user document:', organizationId);
+        } else {
+          // Try to find user by email
+          const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+            { field: 'email', operator: '==', value: currentUser.email }
+          ]);
+          
+          if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+            organizationId = userByEmail[0].organizationId;
+            console.log('✅ [TeamMemberService] Found organization ID from user email query:', organizationId);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [TeamMemberService] Error getting user organization:', error);
+      }
+      
+      if (!organizationId) {
+        console.log('❌ [TeamMemberService] No organization ID found for user');
+        return [];
+      }
 
       console.log('🏢 [TeamMemberService] Fetching team members for organization:', organizationId);
 

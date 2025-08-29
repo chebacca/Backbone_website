@@ -123,15 +123,31 @@ const createApiInstance = (): AxiosInstance => {
         url.includes('/auth/register');
 
       if (isAuthEndpoint) {
-        tokenStorage.clearAll();
-        window.location.href = '/login';
+        // Don't redirect immediately for auth endpoints, let the component handle it
+        return Promise.reject(error);
+      }
+
+      // Check if this is a profile/validation request during initialization
+      const isProfileRequest = url.includes('/auth/me') || url.includes('/auth/profile');
+      
+      if (isProfileRequest && !tokenStorage.getAccessToken()) {
+        // This is likely during page refresh when no token exists yet
+        // Don't redirect, just reject the error
         return Promise.reject(error);
       }
 
       if (originalRequest._retry) {
-        // Already retried once, force logout
-        tokenStorage.clearAll();
-        window.location.href = '/login';
+        // Already retried once, check if we should redirect
+        // Only redirect if we're not in the middle of authentication initialization
+        if (tokenStorage.getAccessToken()) {
+          tokenStorage.clearAll();
+          // Use a more graceful redirect that doesn't break the current flow
+          setTimeout(() => {
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          }, 100);
+        }
         return Promise.reject(error);
       }
 
@@ -161,8 +177,16 @@ const createApiInstance = (): AxiosInstance => {
 
       if (!newTokens?.accessToken) {
         processQueue(null);
-        tokenStorage.clearAll();
-        window.location.href = '/login';
+        // Only clear tokens and redirect if we actually had tokens to begin with
+        if (tokenStorage.getAccessToken()) {
+          tokenStorage.clearAll();
+          // Use a more graceful redirect
+          setTimeout(() => {
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          }, 100);
+        }
         return Promise.reject(error);
       }
 

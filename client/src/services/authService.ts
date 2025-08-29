@@ -2,7 +2,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING' | 'TEAM_MEMBER';
+  role: 'USER' | 'ADMIN' | 'SUPERADMIN' | 'ACCOUNTING' | 'TEAM_MEMBER' | 'ENTERPRISE_ADMIN' | 'OWNER';
   subscription?: {
     plan: 'BASIC' | 'PRO' | 'ENTERPRISE';
     status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'TRIALING';
@@ -20,6 +20,10 @@ export interface User {
   organizationId?: string;
   memberRole?: string;
   memberStatus?: string;
+  // Demo user properties
+  isDemoUser?: boolean;
+  demoExpiresAt?: string;
+  demoStatus?: string;
   // Firebase Authentication integration
   firebaseUid?: string;
 }

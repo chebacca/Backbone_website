@@ -43,10 +43,14 @@ const DashboardLayout = React.lazy(() => import('@/components/layout/DashboardLa
 const DashboardOverview = React.lazy(() => import('@/pages/dashboard/DashboardOverview'));
 const DashboardCloudProjectsBridge = React.lazy(() => import('@/components/DashboardCloudProjectsBridge'));
 const LicensesPage = React.lazy(() => import('@/pages/dashboard/LicensesPage'));
+
 const AnalyticsPage = React.lazy(() => import('@/pages/dashboard/AnalyticsPage'));
 const BillingPage = React.lazy(() => import('@/pages/dashboard/BillingPage'));
+const StreamlinedBillingPage = React.lazy(() => import('@/pages/dashboard/StreamlinedBillingPage'));
 const SettingsPage = React.lazy(() => import('@/pages/dashboard/SettingsPage'));
 const TeamPage = React.lazy(() => import('@/pages/dashboard/TeamPage'));
+// Removed StreamlinedTeamManagement import
+const TestStreamlinedHooks = React.lazy(() => import('@/components/TestStreamlinedHooks'));
 const DownloadsPage = React.lazy(() => import('@/pages/dashboard/DownloadsPage'));
 const DocumentationPage = React.lazy(() => import('@/pages/dashboard/DocumentationPage'));
 const SupportPage = React.lazy(() => import('@/pages/dashboard/SupportPage'));
@@ -208,8 +212,9 @@ function App() {
                 <Route path="analytics" element={<AnalyticsPage />} />
                 <Route
                   path="billing"
-                  element={<BillingPage />}
+                  element={<StreamlinedBillingPage />}
                 />
+                {/* Use the original TeamPage, not StreamlinedTeamManagement */}
                 <Route path="team" element={<TeamPage />} />
                 <Route path="downloads" element={<DownloadsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
@@ -218,6 +223,7 @@ function App() {
                 <Route path="documentation" element={<DocumentationPage />} />
                 <Route path="support" element={<SupportPage />} />
                 <Route path="startup" element={<StartupWorkflow />} />
+                <Route path="test-streamlined" element={<TestStreamlinedHooks />} />
                 <Route path="organization" element={<div>Organization (Coming Soon)</div>} />
                 <Route path="security" element={<div>Security Center (Coming Soon)</div>} />
                 <Route path="compliance" element={<div>Compliance (Coming Soon)</div>} />

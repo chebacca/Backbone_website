@@ -1,18 +1,189 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ============================================================================
-    // SIMPLIFIED SECURITY RULES - AUTHENTICATED USERS ONLY
-    // ============================================================================
-    // This resolves the "Missing or insufficient permissions" errors
-    // App-level security will handle more granular permissions
     
-    // Allow authenticated users to read/write all collections
-    // This is a temporary solution to get the app working
-    // TODO: Implement more restrictive rules once the app is stable
+    // Helper functions for security
+    function isAuthenticated() {
+      return request.auth != null;
+    }
     
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function belongsToOrganization(organizationId) {
+      return isAuthenticated() && 
+        (getUserData().organizationId == organizationId);
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isOrgAdmin(organizationId) {
+      return belongsToOrganization(organizationId) && 
+        (getUserData().role == 'ENTERPRISE_ADMIN' || getUserData().role == 'ADMIN');
+    }
+    
+    // Users collection - users can only access their own data
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    // Organizations collection - only organization members can access
+    match /organizations/{organizationId} {
+      allow read: if belongsToOrganization(organizationId);
+      allow write: if isOrgAdmin(organizationId);
+    }
+    
+    // DATASETS - CRITICAL: Organization-scoped access only
+    match /datasets/{datasetId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow create: if isAuthenticated() && 
+        belongsToOrganization(request.resource.data.organizationId) &&
+        request.resource.data.organizationId == getUserData().organizationId;
+      allow update: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId) &&
+        resource.data.organizationId == request.resource.data.organizationId;
+      allow delete: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId) &&
+        (resource.data.ownerId == request.auth.uid || isOrgAdmin(resource.data.organizationId));
+    }
+    
+    // Projects - organization-scoped access
+    match /projects/{projectId} {
+      allow read: if isAuthenticated() && 
+        (belongsToOrganization(resource.data.organizationId) || 
+         resource.data.ownerId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+        request.resource.data.ownerId == request.auth.uid &&
+        belongsToOrganization(request.resource.data.organizationId);
+      allow update: if isAuthenticated() && 
+        (resource.data.ownerId == request.auth.uid || 
+         belongsToOrganization(resource.data.organizationId));
+      allow delete: if isAuthenticated() && 
+        resource.data.ownerId == request.auth.uid;
+    }
+    
+    // Project-Dataset links - must match project and dataset organization
+    match /project_datasets/{linkId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow create: if isAuthenticated() && 
+        belongsToOrganization(request.resource.data.organizationId) &&
+        request.resource.data.organizationId == getUserData().organizationId;
+      allow update: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow delete: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+    }
+    
+    // Team members - organization-scoped access
+    match /team_members/{memberId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow create: if isAuthenticated() && 
+        belongsToOrganization(request.resource.data.organizationId) &&
+        isOrgAdmin(request.resource.data.organizationId);
+      allow update: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId) &&
+        isOrgAdmin(resource.data.organizationId);
+      allow delete: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId) &&
+        isOrgAdmin(resource.data.organizationId);
+    }
+    
+    // Project team member assignments - project-scoped access
+    match /project_team_members/{assignmentId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow create: if isAuthenticated() && 
+        belongsToOrganization(request.resource.data.organizationId);
+      allow update: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow delete: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+    }
+    
+    // Licenses - user and organization scoped
+    match /licenses/{licenseId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.assignedToUserId == request.auth.uid || 
+         belongsToOrganization(resource.data.organizationId));
+      allow create: if isAuthenticated() && 
+        belongsToOrganization(request.resource.data.organizationId) &&
+        isOrgAdmin(request.resource.data.organizationId);
+      allow update: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId) &&
+        isOrgAdmin(resource.data.organizationId);
+      allow delete: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId) &&
+        isOrgAdmin(resource.data.organizationId);
+    }
+    
+    // Subscriptions - user-scoped access
+    match /subscriptions/{subscriptionId} {
+      allow read, write: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Payments - user-scoped access
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Sessions - user and project scoped
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || 
+         belongsToOrganization(resource.data.organizationId));
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Media files - project-scoped access
+    match /media/{mediaId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow create: if isAuthenticated() && 
+        belongsToOrganization(request.resource.data.organizationId);
+      allow update: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow delete: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+    }
+    
+    // Reports - organization-scoped access
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow create: if isAuthenticated() && 
+        belongsToOrganization(request.resource.data.organizationId);
+      allow update: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow delete: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+    }
+    
+    // Audit logs - organization-scoped access (read-only for most users)
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      allow create: if isAuthenticated(); // System can create audit logs
+    }
+    
+    // Default deny rule - explicitly deny access to any other collections
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

@@ -177,12 +177,40 @@ export class DatasetService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // If Firebase Auth is not available, use a hardcoded organization ID for enterprise.user
-      const organizationId = '24H6zaiCUycuT8ukx9Jz'; // Known enterprise organization ID
-      console.log('✅ [DatasetService] Using organization ID:', organizationId);
+      // Get current user and their organization ID
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      
+      if (!currentUser) {
+        console.log('❌ [DatasetService] No authenticated user found');
+        return [];
+      }
+      
+      // Get user's organization ID from Firestore
+      let organizationId: string | null = null;
+      
+      try {
+        // Try to get user document by Firebase UID
+        const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+        if (userDoc && userDoc.organizationId) {
+          organizationId = userDoc.organizationId;
+          console.log('✅ [DatasetService] Found organization ID from user document:', organizationId);
+        } else {
+          // Try to find user by email
+          const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+            { field: 'email', operator: '==', value: currentUser.email }
+          ]);
+          
+          if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+            organizationId = userByEmail[0].organizationId;
+            console.log('✅ [DatasetService] Found organization ID from user email query:', organizationId);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [DatasetService] Error getting user organization:', error);
+      }
       
       if (!organizationId) {
-        console.warn('⚠️ [DatasetService] No organization ID found for current user');
+        console.log('❌ [DatasetService] No organization ID found for user');
         return [];
       }
 
@@ -258,12 +286,40 @@ export class DatasetService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // If Firebase Auth is not available, use a hardcoded organization ID for enterprise.user
-      const organizationId = '24H6zaiCUycuT8ukx9Jz'; // Known enterprise organization ID
-      console.log('✅ [DatasetService] Using organization ID:', organizationId);
+      // Get current user and their organization ID
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      
+      if (!currentUser) {
+        console.log('❌ [DatasetService] No authenticated user found');
+        return [];
+      }
+      
+      // Get user's organization ID from Firestore
+      let organizationId: string | null = null;
+      
+      try {
+        // Try to get user document by Firebase UID
+        const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+        if (userDoc && userDoc.organizationId) {
+          organizationId = userDoc.organizationId;
+          console.log('✅ [DatasetService] Found organization ID from user document:', organizationId);
+        } else {
+          // Try to find user by email
+          const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+            { field: 'email', operator: '==', value: currentUser.email }
+          ]);
+          
+          if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+            organizationId = userByEmail[0].organizationId;
+            console.log('✅ [DatasetService] Found organization ID from user email query:', organizationId);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [DatasetService] Error getting user organization:', error);
+      }
       
       if (!organizationId) {
-        console.warn('⚠️ [DatasetService] No organization ID found for current user');
+        console.log('❌ [DatasetService] No organization ID found for user');
         return [];
       }
 
@@ -276,11 +332,11 @@ export class DatasetService extends BaseService {
         value: any;
       }> = [];
       
-      // Add organization filter
+      // Add organization filter - SECURITY: Always use current user's organizationId, never allow override
       queryConditions.push({
         field: 'organizationId',
         operator: '==',
-        value: params?.organizationId || organizationId
+        value: organizationId // Only use current user's organizationId for security
       });
       
       const datasets = await this.firestoreAdapter.queryDocuments<CloudDataset>('datasets', queryConditions);
@@ -338,16 +394,37 @@ export class DatasetService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // If Firebase Auth is not available, use a hardcoded organization ID for enterprise.user
+      // Get organization ID from input or current user
       let organizationId = input.organizationId;
       if (!organizationId) {
-        organizationId = '24H6zaiCUycuT8ukx9Jz'; // Known enterprise organization ID
+        const currentUser = this.firestoreAdapter.getCurrentUser();
+        if (currentUser) {
+          try {
+            // Try to get user document by Firebase UID
+            const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+            if (userDoc && userDoc.organizationId) {
+              organizationId = userDoc.organizationId;
+            } else {
+              // Try to find user by email
+              const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+                { field: 'email', operator: '==', value: currentUser.email }
+              ]);
+              
+              if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+                organizationId = userByEmail[0].organizationId;
+              }
+            }
+          } catch (error) {
+            console.warn('⚠️ [DatasetService] Error getting user organization for dataset creation:', error);
+          }
+        }
+        
+        if (!organizationId) {
+          console.warn('⚠️ [DatasetService] No organization ID found for dataset creation');
+          return null;
+        }
+        
         console.log('✅ [DatasetService] Using organization ID for dataset creation:', organizationId);
-      }
-      
-      if (!organizationId) {
-        console.warn('⚠️ [DatasetService] No organization ID found for dataset creation');
-        return null;
       }
       
       // Prepare dataset data
@@ -378,9 +455,43 @@ export class DatasetService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
+      // Get current user to get organization ID for security rules
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      if (!currentUser) {
+        console.warn('⚠️ [DatasetService] No authenticated user found');
+        return [];
+      }
+
+      // Get user's organization ID from Firestore
+      let organizationId: string | null = null;
+      try {
+        const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+        if (userDoc && userDoc.organizationId) {
+          organizationId = userDoc.organizationId;
+        } else {
+          // Try to find user by email
+          const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+            { field: 'email', operator: '==', value: currentUser.email }
+          ]);
+          
+          if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+            organizationId = userByEmail[0].organizationId;
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [DatasetService] Error getting user organization:', error);
+      }
+
+      if (!organizationId) {
+        console.warn('⚠️ [DatasetService] No organization ID found for user');
+        return [];
+      }
+
       // First, get the project-dataset links from the project_datasets collection
+      // Include organizationId to satisfy Firestore security rules
       const projectDatasetLinks = await this.firestoreAdapter.queryDocuments('project_datasets', [
-        { field: 'projectId', operator: '==', value: projectId }
+        { field: 'projectId', operator: '==', value: projectId },
+        { field: 'organizationId', operator: '==', value: organizationId }
       ]);
 
       if (projectDatasetLinks.length === 0) {
@@ -424,19 +535,78 @@ export class DatasetService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // Check if the dataset exists
+      // Get current user's organization ID for validation
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      let userOrganizationId: string | null = null;
+      
+      if (currentUser) {
+        try {
+          const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+          if (userDoc && userDoc.organizationId) {
+            userOrganizationId = userDoc.organizationId;
+          } else {
+            const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+              { field: 'email', operator: '==', value: currentUser.email }
+            ]);
+            
+            if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+              userOrganizationId = userByEmail[0].organizationId;
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [DatasetService] Error getting user organization for validation:', error);
+        }
+      }
+      
+      if (!userOrganizationId) {
+        console.warn('⚠️ [DatasetService] No organization ID found for current user');
+        return false;
+      }
+
+      // Check if the dataset exists and belongs to user's organization
       const dataset = await this.firestoreAdapter.getDocumentById<CloudDataset>('datasets', datasetId);
       
       if (!dataset) {
         console.warn(`⚠️ [DatasetService] Dataset not found: ${datasetId}`);
+        
+        // Debug: List all available datasets to help identify the issue
+        try {
+          const allDatasets = await this.firestoreAdapter.queryDocuments<CloudDataset>('datasets', [
+            { field: 'organizationId', operator: '==', value: userOrganizationId }
+          ]);
+          console.log(`🔍 [DatasetService] Available datasets in user's organization (${userOrganizationId}):`, allDatasets);
+          console.log(`🔍 [DatasetService] Available dataset IDs:`, allDatasets.map(ds => ds.id));
+          console.log(`🔍 [DatasetService] Requested dataset ID: "${datasetId}" (type: ${typeof datasetId})`);
+          
+          // Check each dataset individually for exact match
+          allDatasets.forEach((ds, index) => {
+            const matches = ds.id === datasetId;
+            console.log(`🔍 [DatasetService] Dataset ${index}: ID="${ds.id}", Name="${ds.name}", Matches=${matches}`);
+          });
+        } catch (debugError) {
+          console.warn('⚠️ [DatasetService] Could not fetch datasets for debugging:', debugError);
+        }
+        
+        return false;
+      }
+      
+      // SECURITY: Verify dataset belongs to user's organization
+      if (dataset.organizationId !== userOrganizationId) {
+        console.error(`🚨 [DatasetService] SECURITY VIOLATION: User tried to access dataset from different organization. User org: ${userOrganizationId}, Dataset org: ${dataset.organizationId}`);
         return false;
       }
 
-      // Check if the project exists
+      // Check if the project exists and belongs to user's organization
       const project = await this.firestoreAdapter.getDocumentById<any>('projects', projectId);
       
       if (!project) {
         console.warn(`⚠️ [DatasetService] Project not found: ${projectId}`);
+        return false;
+      }
+      
+      // SECURITY: Verify project belongs to user's organization
+      if (project.organizationId !== userOrganizationId) {
+        console.error(`🚨 [DatasetService] SECURITY VIOLATION: User tried to assign dataset to project from different organization. User org: ${userOrganizationId}, Project org: ${project.organizationId}`);
         return false;
       }
       
@@ -453,11 +623,15 @@ export class DatasetService extends BaseService {
         return false;
       }
 
+      // Reuse the current user and organizationId from above validation
+      let linkOrganizationId = userOrganizationId;
+
       // Create a link in the project_datasets collection (following server-side pattern)
       const projectDatasetLink = {
         projectId: projectId,
         datasetId: datasetId,
-        addedByUserId: dataset.ownerId || 'system',
+        organizationId: linkOrganizationId, // SECURITY: Always use validated user organization ID
+        addedByUserId: currentUser?.uid || 'system',
         addedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -529,11 +703,40 @@ export class DatasetService extends BaseService {
         return false;
       }
 
+      // Get current user's organization ID for the query
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      let organizationId: string | null = null;
+      
+      if (currentUser) {
+        try {
+          const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+          if (userDoc && userDoc.organizationId) {
+            organizationId = userDoc.organizationId;
+          } else {
+            const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+              { field: 'email', operator: '==', value: currentUser.email }
+            ]);
+            
+            if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+              organizationId = userByEmail[0].organizationId;
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [DatasetService] Error getting user organization:', error);
+        }
+      }
+
+      if (!organizationId) {
+        console.warn('⚠️ [DatasetService] No organization ID found for user');
+        return false;
+      }
+
       // Remove the link from the project_datasets collection
-      // First, find the link document
+      // First, find the link document (include organizationId for security rules)
       const links = await this.firestoreAdapter.queryDocuments('project_datasets', [
         { field: 'projectId', operator: '==', value: projectId },
-        { field: 'datasetId', operator: '==', value: datasetId }
+        { field: 'datasetId', operator: '==', value: datasetId },
+        { field: 'organizationId', operator: '==', value: organizationId }
       ]);
 
       if (links.length > 0) {
@@ -569,4 +772,311 @@ export class DatasetService extends BaseService {
       return false;
     }
   }
+
+  /**
+   * Update a dataset
+   */
+  public async updateDataset(datasetId: string, updates: Partial<CloudDataset>): Promise<CloudDataset | null> {
+    try {
+      console.log(`🔄 [DatasetService] Updating dataset: ${datasetId}`, updates);
+      
+      if (this.isWebOnlyMode()) {
+        return await this.updateDatasetInFirestore(datasetId, updates);
+      }
+      
+      try {
+        const response = await this.apiRequest(`datasets/${datasetId}`, 'PATCH', updates);
+        return response.data;
+      } catch (error) {
+        console.warn('⚠️ [DatasetService] API request failed, falling back to Firestore');
+        return await this.updateDatasetInFirestore(datasetId, updates);
+      }
+    } catch (error) {
+      this.handleError(error, `updateDataset(${datasetId})`);
+      return null;
+    }
+  }
+
+  /**
+   * Update a dataset in Firestore
+   */
+  private async updateDatasetInFirestore(datasetId: string, updates: Partial<CloudDataset>): Promise<CloudDataset | null> {
+    try {
+      console.log(`🔄 [DatasetService] Updating dataset in Firestore: ${datasetId}`, updates);
+      
+      await this.firestoreAdapter.initialize();
+      
+      // Get current user's organization ID for validation
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      let userOrganizationId: string | null = null;
+      
+      if (currentUser) {
+        try {
+          const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+          if (userDoc && userDoc.organizationId) {
+            userOrganizationId = userDoc.organizationId;
+          } else {
+            const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+              { field: 'email', operator: '==', value: currentUser.email }
+            ]);
+            
+            if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+              userOrganizationId = userByEmail[0].organizationId;
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [DatasetService] Error getting user organization:', error);
+        }
+      }
+
+      if (!userOrganizationId) {
+        console.warn('⚠️ [DatasetService] No organization ID found for user');
+        return null;
+      }
+
+      // Check if the dataset exists and belongs to user's organization
+      const existingDataset = await this.firestoreAdapter.getDocumentById<CloudDataset>('datasets', datasetId);
+      
+      if (!existingDataset) {
+        console.warn(`⚠️ [DatasetService] Dataset not found: ${datasetId}`);
+        return null;
+      }
+      
+      // SECURITY: Verify dataset belongs to user's organization
+      if (existingDataset.organizationId !== userOrganizationId) {
+        console.error(`🚨 [DatasetService] SECURITY VIOLATION: User tried to update dataset from different organization. User org: ${userOrganizationId}, Dataset org: ${existingDataset.organizationId}`);
+        return null;
+      }
+
+      // Prepare update data
+      const updateData = {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+        // Ensure organizationId cannot be changed
+        organizationId: existingDataset.organizationId
+      };
+
+      // Remove undefined values and id field
+      const cleanedUpdateData = Object.fromEntries(
+        Object.entries(updateData).filter(([key, value]) => value !== undefined && key !== 'id')
+      );
+
+      // Update the dataset
+      const success = await this.firestoreAdapter.updateDocument<CloudDataset>('datasets', datasetId, cleanedUpdateData);
+      
+      if (success) {
+        // Return the updated dataset
+        const updatedDataset = await this.firestoreAdapter.getDocumentById<CloudDataset>('datasets', datasetId);
+        console.log(`✅ [DatasetService] Dataset successfully updated in Firestore: ${datasetId}`);
+        return updatedDataset;
+      }
+      
+      console.warn(`⚠️ [DatasetService] Failed to update dataset in Firestore: ${datasetId}`);
+      return null;
+    } catch (error) {
+      this.handleError(error, `updateDatasetInFirestore(${datasetId})`);
+      return null;
+    }
+  }
+
+  /**
+   * Delete a dataset permanently
+   */
+  public async deleteDataset(datasetId: string): Promise<boolean> {
+    try {
+      console.log(`🗑️ [DatasetService] Deleting dataset: ${datasetId}`);
+      
+      if (this.isWebOnlyMode()) {
+        return await this.deleteDatasetFromFirestore(datasetId);
+      }
+      
+      try {
+        await this.apiRequest(`datasets/${datasetId}`, 'DELETE');
+        return true;
+      } catch (error) {
+        console.warn('⚠️ [DatasetService] API request failed, falling back to Firestore');
+        return await this.deleteDatasetFromFirestore(datasetId);
+      }
+    } catch (error) {
+      this.handleError(error, `deleteDataset(${datasetId})`);
+      return false;
+    }
+  }
+
+  /**
+   * Delete a dataset from Firestore
+   */
+  private async deleteDatasetFromFirestore(datasetId: string): Promise<boolean> {
+    try {
+      console.log(`🗑️ [DatasetService] Deleting dataset from Firestore: ${datasetId}`);
+      
+      await this.firestoreAdapter.initialize();
+      
+      // Get current user's organization ID for validation
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      let userOrganizationId: string | null = null;
+      
+      if (currentUser) {
+        try {
+          const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+          if (userDoc && userDoc.organizationId) {
+            userOrganizationId = userDoc.organizationId;
+          } else {
+            const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+              { field: 'email', operator: '==', value: currentUser.email }
+            ]);
+            
+            if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+              userOrganizationId = userByEmail[0].organizationId;
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [DatasetService] Error getting user organization:', error);
+        }
+      }
+
+      if (!userOrganizationId) {
+        console.warn('⚠️ [DatasetService] No organization ID found for user');
+        return false;
+      }
+
+      // Check if the dataset exists and belongs to user's organization
+      const dataset = await this.firestoreAdapter.getDocumentById<CloudDataset>('datasets', datasetId);
+      
+      if (!dataset) {
+        console.warn(`⚠️ [DatasetService] Dataset not found: ${datasetId}`);
+        return false;
+      }
+      
+      // SECURITY: Verify dataset belongs to user's organization
+      if (dataset.organizationId !== userOrganizationId) {
+        console.error(`🚨 [DatasetService] SECURITY VIOLATION: User tried to delete dataset from different organization. User org: ${userOrganizationId}, Dataset org: ${dataset.organizationId}`);
+        return false;
+      }
+
+      // Clean up project-dataset links first
+      const projectDatasetLinks = await this.firestoreAdapter.queryDocuments('project_datasets', [
+        { field: 'datasetId', operator: '==', value: datasetId },
+        { field: 'organizationId', operator: '==', value: userOrganizationId }
+      ]);
+
+      // Delete all project-dataset links
+      for (const link of projectDatasetLinks) {
+        await this.firestoreAdapter.deleteDocument('project_datasets', link.id);
+      }
+
+      // Remove dataset from any projects that reference it
+      if (dataset.projectIds && dataset.projectIds.length > 0) {
+        for (const projectId of dataset.projectIds) {
+          try {
+            const project = await this.firestoreAdapter.getDocumentById<any>('projects', projectId);
+            if (project && project.organizationId === userOrganizationId) {
+              // Update project to remove dataset reference
+              await this.firestoreAdapter.updateDocumentWithArrayOps<any>('projects', projectId, {
+                datasetIds: FirestoreAdapter.arrayRemove(datasetId),
+                updatedAt: new Date().toISOString()
+              });
+            }
+          } catch (error) {
+            console.warn(`⚠️ [DatasetService] Failed to update project ${projectId} during dataset deletion:`, error);
+          }
+        }
+      }
+
+      // Finally, delete the dataset document
+      const success = await this.firestoreAdapter.deleteDocument('datasets', datasetId);
+      
+      if (success) {
+        console.log(`✅ [DatasetService] Dataset successfully deleted from Firestore: ${datasetId}`);
+        return true;
+      }
+      
+      console.warn(`⚠️ [DatasetService] Failed to delete dataset from Firestore: ${datasetId}`);
+      return false;
+    } catch (error) {
+      this.handleError(error, `deleteDatasetFromFirestore(${datasetId})`);
+      return false;
+    }
+  }
+
+  /**
+   * Clean up corrupted datasets by organization
+   */
+  public async cleanupCorruptedDatasets(): Promise<{ cleaned: number; errors: string[] }> {
+    try {
+      console.log('🧹 [DatasetService] Starting cleanup of corrupted datasets');
+      
+      await this.firestoreAdapter.initialize();
+      
+      // Get current user's organization ID
+      const currentUser = this.firestoreAdapter.getCurrentUser();
+      let userOrganizationId: string | null = null;
+      
+      if (currentUser) {
+        try {
+          const userDoc = await this.firestoreAdapter.getDocumentById('users', currentUser.uid);
+          if (userDoc && userDoc.organizationId) {
+            userOrganizationId = userDoc.organizationId;
+          } else {
+            const userByEmail = await this.firestoreAdapter.queryDocuments('users', [
+              { field: 'email', operator: '==', value: currentUser.email }
+            ]);
+            
+            if (userByEmail.length > 0 && userByEmail[0].organizationId) {
+              userOrganizationId = userByEmail[0].organizationId;
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [DatasetService] Error getting user organization:', error);
+        }
+      }
+
+      if (!userOrganizationId) {
+        throw new Error('No organization ID found for user');
+      }
+
+      // Get all datasets for the organization
+      const allDatasets = await this.firestoreAdapter.queryDocuments<CloudDataset>('datasets', [
+        { field: 'organizationId', operator: '==', value: userOrganizationId }
+      ]);
+
+      const corruptedDatasets = allDatasets.filter(dataset => {
+        // Define criteria for corrupted datasets
+        return (
+          !dataset.name || 
+          !dataset.id || 
+          dataset.id === 'dataset-001' || 
+          dataset.id === 'dataset-002' ||
+          typeof dataset.id !== 'string' ||
+          dataset.id.trim() === ''
+        );
+      });
+
+      console.log(`🔍 [DatasetService] Found ${corruptedDatasets.length} corrupted datasets to clean up`);
+
+      const errors: string[] = [];
+      let cleaned = 0;
+
+      for (const dataset of corruptedDatasets) {
+        try {
+          const success = await this.deleteDatasetFromFirestore(dataset.id);
+          if (success) {
+            cleaned++;
+            console.log(`✅ [DatasetService] Cleaned up corrupted dataset: ${dataset.id}`);
+          } else {
+            errors.push(`Failed to delete dataset: ${dataset.id}`);
+          }
+        } catch (error) {
+          errors.push(`Error deleting dataset ${dataset.id}: ${error}`);
+        }
+      }
+
+      console.log(`🧹 [DatasetService] Cleanup completed. Cleaned: ${cleaned}, Errors: ${errors.length}`);
+      return { cleaned, errors };
+    } catch (error) {
+      this.handleError(error, 'cleanupCorruptedDatasets()');
+      return { cleaned: 0, errors: [error.toString()] };
+    }
+  }
+
 }

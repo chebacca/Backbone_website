@@ -74,17 +74,20 @@ export class UserSynchronizationService {
       const now = new Date();
       const demoExpiresAt = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days
 
-      // STEP 3: Create Firebase Auth user
+      // STEP 3: Create Firebase Auth user with automatic email verification
       try {
         firebaseUserRecord = await getAuth().createUser({
           email: request.email,
           password: request.password,
           displayName: request.name || `${request.firstName} ${request.lastName}`,
-          emailVerified: false,
+          emailVerified: false, // Firebase will handle verification automatically
           disabled: false,
         });
 
-        logger.info('Firebase Auth demo user created', {
+        // Send Firebase Auth verification email automatically
+        await getAuth().generateEmailVerificationLink(request.email);
+
+        logger.info('Firebase Auth demo user created with verification email sent', {
           firebaseUid: firebaseUserRecord.uid,
           email: request.email
         });
@@ -228,17 +231,20 @@ export class UserSynchronizationService {
         };
       }
 
-      // STEP 3: Create Firebase Auth user first
+      // STEP 3: Create Firebase Auth user with automatic email verification
       try {
         firebaseUserRecord = await getAuth().createUser({
           email: request.email,
           password: request.password,
           displayName: request.name,
-          emailVerified: false, // Keep false for security
+          emailVerified: false, // Firebase will handle verification automatically
           disabled: false,
         });
 
-        logger.info('Firebase Auth user created successfully', {
+        // Send Firebase Auth verification email automatically
+        await getAuth().generateEmailVerificationLink(request.email);
+
+        logger.info('Firebase Auth user created successfully with verification email sent', {
           firebaseUid: firebaseUserRecord.uid,
           email: request.email
         });

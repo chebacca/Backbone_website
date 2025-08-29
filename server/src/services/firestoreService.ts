@@ -511,12 +511,18 @@ export class FirestoreService {
 
   async getOrganizationsForMemberUser(userId: string): Promise<FirestoreOrganization[]> {
     const memberSnap = await db.collection('org_members').where('userId', '==', userId).where('status', '==', 'ACTIVE').get();
-    const orgIds = memberSnap.docs.map(d => (d.data() as FirestoreOrgMember).orgId);
+    const orgIds = memberSnap.docs.map(d => {
+      const data = d.data();
+      // Handle both orgId and organizationId fields for backward compatibility
+      return data.orgId || data.organizationId;
+    }).filter(id => id); // Filter out null/undefined values
     if (orgIds.length === 0) return [];
     const results: FirestoreOrganization[] = [];
     for (const orgId of orgIds) {
-      const org = await this.getOrganizationById(orgId);
-      if (org) results.push(org);
+      if (orgId) { // Additional safety check
+        const org = await this.getOrganizationById(orgId);
+        if (org) results.push(org);
+      }
     }
     return results;
   }
@@ -2225,7 +2231,7 @@ export class FirestoreService {
 
   async getOrgMembershipsByUserId(userId: string): Promise<any[]> {
     try {
-      const memberQuery = await db.collection('org_members').where('userId', '==', userId).get();
+      const memberQuery = await db.collection('orgMembers').where('userId', '==', userId).get();
       if (memberQuery.empty) {
         return [];
       }

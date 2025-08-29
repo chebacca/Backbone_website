@@ -198,6 +198,27 @@ class CloudProjectIntegrationService {
     await this.serviceFactory.getDatasetService().unassignDatasetFromProject(projectId, datasetId);
   }
 
+  /**
+   * Update a dataset
+   */
+  public async updateDataset(datasetId: string, updates: Partial<CloudDataset>): Promise<CloudDataset | null> {
+    return await this.serviceFactory.getDatasetService().updateDataset(datasetId, updates);
+  }
+
+  /**
+   * Delete a dataset permanently
+   */
+  public async deleteDataset(datasetId: string): Promise<boolean> {
+    return await this.serviceFactory.getDatasetService().deleteDataset(datasetId);
+  }
+
+  /**
+   * Clean up corrupted datasets
+   */
+  public async cleanupCorruptedDatasets(): Promise<{ cleaned: number; errors: string[] }> {
+    return await this.serviceFactory.getDatasetService().cleanupCorruptedDatasets();
+  }
+
   // TEAM MEMBER METHODS
 
   /**

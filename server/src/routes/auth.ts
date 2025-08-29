@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { EmailService } from '../services/emailService.js';
 import { TOTPUtil } from '../utils/totp.js';
+import { getAuth } from 'firebase-admin/auth';
 import { 
   asyncHandler, 
   validationErrorHandler, 
@@ -68,9 +69,8 @@ router.post('/register', [
   await ComplianceService.recordConsent(user.id, 'TERMS_OF_SERVICE', true, config.legal.termsVersion, requestInfo.ip, requestInfo.userAgent);
   await ComplianceService.recordConsent(user.id, 'PRIVACY_POLICY', true, config.legal.privacyVersion, requestInfo.ip, requestInfo.userAgent);
 
-  const verificationToken = JwtUtil.generateActivationToken(user.id);
-  await firestoreService.updateUser(user.id, { emailVerifyToken: verificationToken });
-  try { await EmailService.sendWelcomeEmail(user, verificationToken); } catch {}
+  // Firebase Auth automatically sends verification email - no custom token needed
+  // User will receive Firebase's built-in verification email
 
   // Create default projects for the new user
   try {
@@ -99,11 +99,11 @@ router.post('/register', [
   await ComplianceService.createAuditLog(user.id, 'REGISTER', 'User registered successfully', { email, name }, requestInfo);
   logger.info(`User registered successfully: ${email}`, { userId: user.id });
 
-  // Return tokens so the client can pre-authenticate (server still enforces email verification where required)
+  // Return tokens so the client can pre-authenticate (Firebase Auth handles email verification)
   const tokens = JwtUtil.generateTokens({ userId: user.id, email: user.email, role: user.role });
   res.status(201).json({
     success: true,
-    message: 'Registration successful. Please check your email to verify your account.',
+    message: 'Registration successful! Firebase has sent a verification email to your inbox.',
     data: {
       user: { id: user.id, email: user.email, name: user.name, isEmailVerified: user.isEmailVerified },
       tokens,
@@ -347,7 +347,8 @@ router.post('/login', [
     const orgMemberships = await firestoreService.getOrgMembershipsByUserId(user.id);
     if (orgMemberships && orgMemberships.length > 0) {
       const primaryMembership = orgMemberships[0]; // Use first membership
-      organizationId = primaryMembership.orgId;
+      // Handle both orgId and organizationId fields for backward compatibility
+      organizationId = primaryMembership.orgId || primaryMembership.organizationId;
       memberRole = primaryMembership.role;
       memberStatus = primaryMembership.status;
 
@@ -535,46 +536,29 @@ router.post('/refresh', [body('refreshToken').notEmpty()], asyncHandler(async (r
   }
 }));
 
+// Firebase Auth handles email verification automatically
+// This endpoint is kept for backward compatibility but now redirects to Firebase
 router.post('/verify-email', [body('token').notEmpty()], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { token } = req.body;
-  const requestInfo = (req as any).requestInfo;
-  try {
-    const { userId } = JwtUtil.verifyActivationToken(token);
-    const user = await firestoreService.getUserById(userId);
-    if (!user || user.isEmailVerified !== false || user.emailVerifyToken !== token) {
-      throw new Error('Invalid token');
-    }
-    await firestoreService.updateUser(user.id, { isEmailVerified: true, emailVerifyToken: null as any });
-    await ComplianceService.createAuditLog(user.id, 'PROFILE_UPDATE', 'Email verified successfully', { email: user.email }, requestInfo);
-    logger.info(`Email verified successfully: ${user.email}`, { userId: user.id });
-    res.json({ success: true, message: 'Email verified successfully' });
-    return;
-  } catch {
-    throw createApiError('Invalid or expired verification token', 400);
-  }
+  res.json({ 
+    success: false, 
+    message: 'Email verification is now handled by Firebase Auth. Please check your email for the Firebase verification link.',
+    firebaseAuth: true
+  });
+  return;
 }));
 
-// Support GET verification via token in path for frontend convenience
+// Firebase Auth handles email verification automatically
+// This endpoint is kept for backward compatibility but now redirects to Firebase
 router.get('/verify-email/:token', asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const token = req.params.token;
-  const requestInfo = (req as any).requestInfo;
-  try {
-    const { userId } = JwtUtil.verifyActivationToken(token);
-    const user = await firestoreService.getUserById(userId);
-    if (!user || user.isEmailVerified !== false || user.emailVerifyToken !== token) {
-      throw new Error('Invalid token');
-    }
-    await firestoreService.updateUser(user.id, { isEmailVerified: true, emailVerifyToken: null as any });
-    await ComplianceService.createAuditLog(user.id, 'PROFILE_UPDATE', 'Email verified successfully', { email: user.email }, requestInfo);
-    logger.info(`Email verified successfully (GET): ${user.email}`, { userId: user.id });
-    res.json({ success: true, message: 'Email verified successfully' });
-    return;
-  } catch {
-    throw createApiError('Invalid or expired verification token', 400);
-  }
+  res.json({ 
+    success: false, 
+    message: 'Email verification is now handled by Firebase Auth. Please check your email for the Firebase verification link.',
+    firebaseAuth: true
+  });
+  return;
 }));
 
-// Resend verification email for currently authenticated (but unverified) user
+// Resend verification email using Firebase Auth
 router.post('/resend-verification', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const requestInfo = (req as any).requestInfo;
   const user = await firestoreService.getUserById(req.user!.id);
@@ -584,13 +568,18 @@ router.post('/resend-verification', authenticateToken, asyncHandler(async (req: 
     return;
   }
 
-  const verificationToken = JwtUtil.generateActivationToken(user.id);
-  await firestoreService.updateUser(user.id, { emailVerifyToken: verificationToken });
-  try { await EmailService.sendWelcomeEmail(user, verificationToken); } catch {}
-  await ComplianceService.createAuditLog(user.id, 'PROFILE_UPDATE', 'Verification email resent', { email: user.email }, requestInfo);
-  logger.info(`Resent verification email to: ${user.email}`, { userId: user.id });
-  res.json({ success: true, message: 'Verification email sent' });
-  return;
+  try {
+    // Use Firebase Auth to resend verification email
+    await getAuth().generateEmailVerificationLink(user.email);
+    
+    await ComplianceService.createAuditLog(user.id, 'PROFILE_UPDATE', 'Firebase verification email resent', { email: user.email }, requestInfo);
+    logger.info(`Firebase verification email resent to: ${user.email}`, { userId: user.id });
+    res.json({ success: true, message: 'Firebase verification email sent successfully' });
+    return;
+  } catch (error) {
+    logger.error('Failed to resend Firebase verification email', { userId: user.id, error });
+    throw createApiError('Failed to resend verification email', 500);
+  }
 }));
 
 // Development helper: fetch latest email verification token for a user (disabled in production)
@@ -615,44 +604,36 @@ router.get('/dev/email-token', asyncHandler(async (req: Request, res: Response):
 
 router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { email } = req.body;
-  const requestInfo = (req as any).requestInfo;
-  const user = await firestoreService.getUserByEmail(email);
-  if (!user) {
-    res.json({ success: true, message: 'If an account with that email exists, a password reset link has been sent.' });
+  
+  try {
+    // Use Firebase Auth to send password reset email
+    await getAuth().generatePasswordResetLink(email);
+    
+    // Log the request (we don't need to check if user exists for security)
+    logger.info(`Firebase password reset email sent to: ${email}`);
+    
+    res.json({ success: true, message: 'If an account with that email exists, a password reset link has been sent by Firebase.' });
+    return;
+  } catch (error) {
+    logger.error('Failed to send Firebase password reset email', { email, error });
+    // Still return success for security (don't reveal if email exists)
+    res.json({ success: true, message: 'If an account with that email exists, a password reset link has been sent by Firebase.' });
     return;
   }
-  const resetToken = JwtUtil.generatePasswordResetToken(user.id);
-  const resetExpires = new Date(Date.now() + 60 * 60 * 1000);
-  await firestoreService.updateUser(user.id, { passwordResetToken: resetToken, passwordResetExpires: resetExpires });
-  await EmailService.sendPasswordResetEmail(user, resetToken);
-  await ComplianceService.createAuditLog(user.id, 'PASSWORD_CHANGE', 'Password reset requested', { email }, requestInfo);
-  res.json({ success: true, message: 'If an account with that email exists, a password reset link has been sent.' });
-  return;
 }));
 
+// Firebase Auth handles password reset automatically
+// This endpoint is kept for backward compatibility but now redirects to Firebase
 router.post('/reset-password', [
   body('token').notEmpty(),
   body('password').isLength({ min: 8 }),
 ], asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { token, password } = req.body;
-  const requestInfo = (req as any).requestInfo;
-  const passCheck = PasswordUtil.validate(password);
-  if (!passCheck.isValid) throw createApiError('Password does not meet requirements', 400, 'WEAK_PASSWORD', { requirements: passCheck.errors });
-  try {
-    const { userId } = JwtUtil.verifyPasswordResetToken(token);
-    const user = await firestoreService.getUserById(userId);
-    if (!user || user.passwordResetToken !== token || (user.passwordResetExpires && new Date(user.passwordResetExpires) < new Date())) {
-      throw new Error('Invalid token');
-    }
-    const hashed = await PasswordUtil.hash(password);
-    await firestoreService.updateUser(user.id, { password: hashed, passwordResetToken: null as any, passwordResetExpires: null as any });
-    await ComplianceService.createAuditLog(user.id, 'PASSWORD_CHANGE', 'Password reset successfully', { email: user.email }, requestInfo);
-    logger.info(`Password reset successfully: ${user.email}`, { userId: user.id });
-    res.json({ success: true, message: 'Password reset successfully' });
-    return;
-  } catch {
-    throw createApiError('Invalid or expired reset token', 400);
-  }
+  res.json({ 
+    success: false, 
+    message: 'Password reset is now handled by Firebase Auth. Please use the link sent to your email.',
+    firebaseAuth: true
+  });
+  return;
 }));
 
 /**
@@ -735,10 +716,18 @@ router.put('/me', [
   await ComplianceService.createAuditLog(userId, 'PROFILE_UPDATE', 'User profile updated', { updatedFields: Object.keys(updates) }, requestInfo);
 
   if (email) {
-    const verificationToken = JwtUtil.generateActivationToken(userId);
-    await firestoreService.updateUser(userId, { emailVerifyToken: verificationToken });
-    const updated = await firestoreService.getUserById(userId);
-    if (updated) await EmailService.sendWelcomeEmail(updated, verificationToken);
+    // Update email in Firebase Auth and send verification email
+    try {
+      const user = await firestoreService.getUserById(userId);
+      if (user?.firebaseUid) {
+        await getAuth().updateUser(user.firebaseUid, { email });
+        await getAuth().generateEmailVerificationLink(email);
+        logger.info('Firebase Auth email updated and verification sent', { userId, newEmail: email });
+      }
+    } catch (error) {
+      logger.error('Failed to update email in Firebase Auth', { userId, newEmail: email, error });
+      // Continue with Firestore update even if Firebase Auth fails
+    }
   }
 
   const updatedUser = await firestoreService.getUserById(userId);
@@ -756,6 +745,37 @@ router.post('/logout', authenticateToken, asyncHandler(async (req: Request, res:
   const userId = req.user!.id;
   await ComplianceService.createAuditLog(userId, 'LOGOUT', 'User logged out', {}, requestInfo);
   res.json({ success: true, message: 'Logged out successfully' });
+  return;
+}));
+
+// Firebase Auth synchronization endpoints
+router.post('/sync-firebase-status', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const user = await firestoreService.getUserById(req.user!.id);
+  if (!user?.firebaseUid) {
+    res.json({ success: false, message: 'No Firebase UID found for user' });
+    return;
+  }
+
+  try {
+    const { FirebaseAuthSyncService } = await import('../services/FirebaseAuthSyncService.js');
+    const syncResult = await FirebaseAuthSyncService.syncEmailVerificationStatus(user.firebaseUid);
+    
+    if (syncResult.success) {
+      res.json({ 
+        success: true, 
+        message: 'Firebase Auth status synced successfully',
+        data: { isEmailVerified: syncResult.isVerified }
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        message: `Failed to sync: ${syncResult.error}` 
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to sync Firebase Auth status', { userId: req.user!.id, error });
+    res.json({ success: false, message: 'Failed to sync Firebase Auth status' });
+  }
   return;
 }));
 

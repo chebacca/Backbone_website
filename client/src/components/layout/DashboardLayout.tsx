@@ -138,9 +138,15 @@ export const DashboardLayout: React.FC = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    logout();
-    handleProfileMenuClose();
+  const handleLogout = async () => {
+    try {
+      await logout();
+      handleProfileMenuClose();
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Still close the menu even if logout fails
+      handleProfileMenuClose();
+    }
   };
 
   const isEnterprise = String(user?.subscription?.plan || '').toUpperCase() === 'ENTERPRISE';

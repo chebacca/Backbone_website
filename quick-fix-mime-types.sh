@@ -54,9 +54,9 @@ EOF
 
 echo "✅ _headers file created"
 
-# Deploy to Firebase
-echo "🚀 Deploying to Firebase..."
-firebase deploy --only hosting
+# Deploy the fix
+echo "🚀 Deploying MIME type fix to Firebase..."
+firebase deploy --only hosting:main
 
 echo "✅ Deployment complete!"
 echo ""

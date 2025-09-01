@@ -15,6 +15,9 @@ import {
   validateSubscriptionOwnership,
   requireEnterpriseAdminStrict 
 } from '../middleware/auth.js';
+import { SubscriptionSeedingService } from '../services/subscriptionSeedingService.js';
+import { LicenseService } from '../services/licenseService.js';
+import { logger } from '../utils/logger.js';
 
 const router: Router = Router();
 

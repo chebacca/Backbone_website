@@ -70,7 +70,7 @@ export class LicenseKeyUtil {
         return {
           ...baseFeatures,
           maxProjects: 10,
-          maxUsers: 1,
+          maxUsers: 10, // Updated to match MPC library: Basic = 10 seats
           cloudStorage: false,
           advancedFeatures: false,
           prioritySupport: false,
@@ -80,7 +80,7 @@ export class LicenseKeyUtil {
         return {
           ...baseFeatures,
           maxProjects: 100,
-          maxUsers: 50,
+          maxUsers: 50, // Updated to match MPC library: Pro = 50 seats
           cloudStorage: true,
           advancedFeatures: true,
           prioritySupport: true,
@@ -93,7 +93,7 @@ export class LicenseKeyUtil {
         return {
           ...baseFeatures,
           maxProjects: -1, // unlimited
-          maxUsers: 250, // up to 250 per license
+          maxUsers: 250, // Updated to match MPC library: Enterprise = 250 seats
           cloudStorage: true,
           advancedFeatures: true,
           prioritySupport: true,

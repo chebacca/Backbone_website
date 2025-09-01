@@ -7,7 +7,41 @@ export type SubscriptionTier = 'BASIC' | 'PRO' | 'ENTERPRISE';
 
 export class LicenseService {
   /**
-   * Generate licenses for a subscription
+   * Get the standard license count for each tier based on MPC library recommendations
+   * Basic: 10 seats, Pro: 50 seats, Enterprise: 250 seats
+   */
+  static getLicenseCountForTier(tier: SubscriptionTier): number {
+    switch (tier) {
+      case 'BASIC':
+        return 10;
+      case 'PRO':
+        return 50;
+      case 'ENTERPRISE':
+        return 250;
+      default:
+        return 10; // Default to Basic
+    }
+  }
+
+  /**
+   * Get the initial license count for new subscriptions (seeded licenses)
+   * This provides a starting point for new accounts
+   */
+  static getInitialLicenseCountForTier(tier: SubscriptionTier): number {
+    switch (tier) {
+      case 'BASIC':
+        return 3; // Start with 3 licenses, can expand to 10
+      case 'PRO':
+        return 15; // Start with 15 licenses, can expand to 50
+      case 'ENTERPRISE':
+        return 50; // Start with 50 licenses, can expand to 250
+      default:
+        return 3; // Default to Basic
+    }
+  }
+
+  /**
+   * Generate licenses for a subscription with proper tier-based limits
    */
   static async generateLicenses(
     userId: string,
@@ -19,7 +53,13 @@ export class LicenseService {
     organizationId?: string
   ) {
     try {
-      logger.info(`Generating ${seatCount} licenses for subscription ${subscriptionId}`);
+      // Validate seat count against tier limits
+      const maxSeats = this.getLicenseCountForTier(tier);
+      if (seatCount > maxSeats) {
+        throw new Error(`Seat count ${seatCount} exceeds maximum allowed for ${tier} tier (${maxSeats} seats)`);
+      }
+
+      logger.info(`Generating ${seatCount} licenses for subscription ${subscriptionId} (${tier} tier, max: ${maxSeats})`);
 
       const licenses: any[] = [];
 
@@ -67,6 +107,8 @@ export class LicenseService {
           subscriptionId,
           licenseCount: seatCount,
           licenseIds: licenses.map(l => l.id),
+          tier,
+          maxSeats,
         }
       );
 

@@ -5,6 +5,7 @@ import { config } from '../config/index.js';
 import { ComplianceService } from './complianceService.js';
 import { EmailService } from './emailService.js';
 import { LicenseService } from './licenseService.js';
+import { SubscriptionSeedingService } from './subscriptionSeedingService.js';
 export type SubscriptionTier = 'BASIC' | 'PRO' | 'ENTERPRISE';
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'PROCESSING';
 
@@ -39,6 +40,17 @@ export class PaymentService {
 
       if (!user) {
         throw new Error('User not found');
+      }
+
+      // 1b. Validate seat count against tier limits
+      const maxSeats = LicenseService.getLicenseCountForTier(subscriptionData.tier);
+      if (subscriptionData.seats > maxSeats) {
+        throw new Error(`Seat count ${subscriptionData.seats} exceeds maximum allowed for ${subscriptionData.tier} tier (${maxSeats} seats)`);
+      }
+
+      // 1c. Validate minimum seat requirements for Enterprise
+      if (subscriptionData.tier === 'ENTERPRISE' && subscriptionData.seats < 10) {
+        throw new Error('Enterprise tier requires minimum 10 seats');
       }
 
       // 2. Validate billing address
@@ -267,14 +279,22 @@ export class PaymentService {
       // 2. Update subscription status
       await db.updateSubscription(subscription.id, { status: 'ACTIVE' });
 
-      // 3. For PRO/ENTERPRISE: do not mass-issue licenses here; licenses are issued JIT on member invite/accept
+      // 3. For PRO/ENTERPRISE: Generate initial seeded licenses for new accounts
       //    For BASIC: maintain current behavior
       let licenses: any[] = [];
       const tierUpper = String(subscription.tier).toUpperCase();
       if (tierUpper === 'ENTERPRISE' || tierUpper === 'PRO') {
-        // No immediate license creation; audit only
-        licenses = [];
+        // Use the new subscription seeding service for proper license allocation
+        const seedingResult = await SubscriptionSeedingService.seedNewSubscription(
+          user.id,
+          subscription.id,
+          subscription.tier,
+          subscription.organizationId
+        );
+        licenses = seedingResult.licenses;
+        logger.info(`Seeded ${subscription.tier} subscription with ${licenses.length} initial licenses`);
       } else {
+        // Basic tier: generate licenses up to the requested seat count
         licenses = await LicenseService.generateLicenses(
           user.id,
           subscription.id,

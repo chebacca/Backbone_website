@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { PaymentService } from '../services/paymentService.js';
 import { ComplianceService } from '../services/complianceService.js';
+import { LicenseService } from '../services/licenseService.js';
 import { 
   asyncHandler, 
   validationErrorHandler, 
@@ -69,6 +70,12 @@ router.post('/create-subscription', [
   // Enterprise tier validation
   if (tier === 'ENTERPRISE' && seats < 10) {
     throw createApiError('Enterprise tier requires minimum 10 seats', 400);
+  }
+
+  // Validate seat count against tier limits
+  const maxSeats = LicenseService.getLicenseCountForTier(tier);
+  if (seats > maxSeats) {
+    throw createApiError(`Seat count ${seats} exceeds maximum allowed for ${tier} tier (${maxSeats} seats)`, 400);
   }
 
   const result = await PaymentService.createSubscription(

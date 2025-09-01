@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { JwtUtil } from '../utils/jwt.js';
 import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
+import { getAuth } from 'firebase-admin/auth';
 
 // Extend Request interface to include user
 declare global {
@@ -16,6 +17,60 @@ declare global {
     }
   }
 }
+
+/**
+ * Middleware to authenticate Firebase ID tokens
+ */
+export const authenticateFirebaseToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
+
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        error: 'Access token required',
+      });
+      return;
+    }
+
+    // Verify Firebase ID token
+    const decodedToken = await getAuth().verifyIdToken(token);
+    
+    // 🔧 FIXED: Get user from Firestore using Firebase UID lookup (not document ID)
+    // First try to find user by firebaseUid field
+    let user = await firestoreService.getUserByFirebaseUid(decodedToken.uid);
+    
+    // Fallback: try to find by email if no firebaseUid match
+    if (!user && decodedToken.email) {
+      user = await firestoreService.getUserByEmail(decodedToken.email);
+    }
+
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        error: 'User not found',
+      });
+      return;
+    }
+
+    // Add user to request object
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      name: user.name || '',
+    };
+
+    next();
+  } catch (error) {
+    logger.error('Firebase token authentication failed', error);
+    res.status(401).json({
+      success: false,
+      error: 'Invalid or expired token',
+    });
+  }
+};
 
 /**
  * Middleware to authenticate JWT tokens

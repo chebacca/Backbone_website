@@ -66,6 +66,7 @@ import {
   useOrganizationContext, 
   useUserProjects 
 } from '@/hooks/useStreamlinedData';
+import { useBillingSummary } from '@/hooks/usePaymentData';
 import MetricCard from '@/components/common/MetricCard';
 
 // ============================================================================
@@ -175,10 +176,21 @@ const getStatusIcon = (status: string) => {
 const BillingPage: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   
-  // 🚀 STREAMLINED: Use only UnifiedDataService - no fallbacks
+  // 🚀 STREAMLINED: Use UnifiedDataService with payment data
   const { data: currentUser, loading: userLoading, error: userError } = useCurrentUser();
   const { data: orgContext, loading: orgLoading, error: orgError } = useOrganizationContext();
   const { data: projects, loading: projectsLoading, error: projectsError } = useUserProjects();
+  
+  // 💰 BILLING DATA: Use comprehensive billing summary
+  const {
+    subscription,
+    invoices,
+    payments,
+    metrics,
+    loading: billingLoading,
+    error: billingError,
+    refetch: refetchBilling
+  } = useBillingSummary();
 
   const [addPaymentDialogOpen, setAddPaymentDialogOpen] = useState(false);
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false);
@@ -187,64 +199,19 @@ const BillingPage: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   // Combined loading and error states
-  const isLoading = userLoading || orgLoading || projectsLoading;
-  const hasError = userError || orgError || projectsError;
+  const isLoading = userLoading || orgLoading || projectsLoading || billingLoading;
+  const hasError = userError || orgError || projectsError || billingError;
 
-  // 🧮 COMPUTED BILLING DATA: Calculate from real subscription data
+  // 🧮 COMPUTED BILLING DATA: Use real billing data from hooks
   const billingData = useMemo(() => {
-    if (!currentUser || !orgContext) {
-      return {
-        subscription: null,
-        invoices: [],
-        paymentMethods: mockPaymentMethods,
-        nextPaymentAmount: 0,
-        daysUntilRenewal: 0,
-      };
-    }
-
-    const subscription = orgContext.subscription;
-    if (!subscription) {
-      return {
-        subscription: null,
-        invoices: [],
-        paymentMethods: mockPaymentMethods,
-        nextPaymentAmount: 0,
-        daysUntilRenewal: 0,
-      };
-    }
-
-    // Calculate days until renewal
-    let daysUntilRenewal = 0;
-    if (subscription.currentPeriodEnd) {
-      const renewalDate = new Date(subscription.currentPeriodEnd);
-      const today = new Date();
-      const diffTime = renewalDate.getTime() - today.getTime();
-      daysUntilRenewal = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    }
-
-    // Generate mock invoices based on subscription
-    const invoices: Invoice[] = Array.from({ length: 6 }, (_, i) => {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      return {
-        id: `inv_${i + 1}`,
-        number: `INV-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(i + 1).padStart(3, '0')}`,
-        date: date.toISOString(),
-        amount: subscription.plan.pricePerSeat || 99,
-        status: i === 0 ? 'pending' : 'paid',
-        description: `${subscription.plan?.tier || 'PRO'} Plan - ${subscription.plan.seats || 1} seat(s)`,
-        currency: 'USD',
-      };
-    });
-
     return {
       subscription,
-      invoices,
-      paymentMethods: mockPaymentMethods,
-      nextPaymentAmount: (subscription.plan.pricePerSeat * subscription.plan.seats) || 0,
-      daysUntilRenewal,
+      invoices: invoices || [],
+      paymentMethods: mockPaymentMethods, // TODO: Replace with real payment methods
+      nextPaymentAmount: metrics.monthlyTotal,
+      daysUntilRenewal: metrics.daysUntilRenewal,
     };
-  }, [currentUser, orgContext]);
+  }, [subscription, invoices, metrics]);
 
   const handleAddPaymentMethod = () => {
     enqueueSnackbar('Payment method added successfully', { variant: 'success' });
@@ -405,7 +372,7 @@ const BillingPage: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
             title="Total Seats"
-            value={billingData.subscription.plan.seats || 1}
+            value={metrics.totalSeats}
             icon={<AccountBalance />}
             color="secondary"
           />
@@ -422,7 +389,7 @@ const BillingPage: React.FC = () => {
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
             title="Active Invoices"
-            value={billingData.invoices.filter(inv => inv.status === 'paid' || inv.status === 'pending').length}
+            value={metrics.activeInvoices}
             icon={<ReceiptLong />}
             color="success"
           />
@@ -442,14 +409,14 @@ const BillingPage: React.FC = () => {
             <Grid item xs={12} md={8}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Chip
-                  label={billingData.subscription.plan?.tier || 'PRO'}
+                  label={billingData.subscription?.tier || 'PRO'}
                   color="primary"
                   sx={{ fontWeight: 600, fontSize: '1rem', px: 2, py: 1 }}
                 />
                 <Chip
-                  icon={getStatusIcon(billingData.subscription.status || 'active')}
-                  label={(billingData.subscription.status || 'ACTIVE').toUpperCase()}
-                  color={getStatusColor(billingData.subscription.status || 'active') as any}
+                  icon={getStatusIcon(billingData.subscription?.status || 'active')}
+                  label={(billingData.subscription?.status || 'ACTIVE').toUpperCase()}
+                  color={getStatusColor(billingData.subscription?.status || 'active') as any}
                   sx={{ fontWeight: 500 }}
                 />
               </Box>
@@ -459,11 +426,11 @@ const BillingPage: React.FC = () => {
               </Typography>
               
               <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                {billingData.subscription.plan.seats || 1} seats • Next payment in {billingData.daysUntilRenewal} days
+                {metrics.totalSeats} seats • Next payment in {billingData.daysUntilRenewal} days
               </Typography>
               
               <Typography variant="body2" color="text.secondary">
-                Current period: {new Date(billingData.subscription.currentPeriodStart || Date.now()).toLocaleDateString()} - {new Date(billingData.subscription.currentPeriodEnd || Date.now()).toLocaleDateString()}
+                Current period: {billingData.subscription?.currentPeriodStart ? new Date(billingData.subscription.currentPeriodStart).toLocaleDateString() : 'N/A'} - {billingData.subscription?.currentPeriodEnd ? new Date(billingData.subscription.currentPeriodEnd).toLocaleDateString() : 'N/A'}
               </Typography>
             </Grid>
             
@@ -476,7 +443,7 @@ const BillingPage: React.FC = () => {
                   {formatCurrency(billingData.nextPaymentAmount)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  on {new Date(billingData.subscription.currentPeriodEnd || Date.now()).toLocaleDateString()}
+                  on {billingData.subscription?.currentPeriodEnd ? new Date(billingData.subscription.currentPeriodEnd).toLocaleDateString() : 'N/A'}
                 </Typography>
               </Box>
             </Grid>

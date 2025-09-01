@@ -41,6 +41,7 @@ const getFirebaseConfig = () => {
     apiKey: envApiKey || "AIzaSyDFnIzSYCdPsDDdvP1lympVxEeUn0AQhWs",
     authDomain: "backbone-logic.firebaseapp.com",
     projectId: "backbone-logic",
+    databaseURL: "https://backbone-logic-default-rtdb.firebaseio.com",
     storageBucket: "backbone-logic.firebasestorage.app",
     messagingSenderId: "749245129278",
     appId: "1:749245129278:web:dfa5647101ea160a3b276f",
@@ -50,19 +51,55 @@ const getFirebaseConfig = () => {
 
 const firebaseConfig = getFirebaseConfig();
 
-// Initialize Firebase app
+// Initialize Firebase app with race condition handling
 let app: FirebaseApp | undefined;
-try {
-  app = initializeApp(firebaseConfig);
-  console.log('🔥 [Firebase] App initialized successfully');
-} catch (error) {
-  // App might already be initialized
-  console.log('ℹ️ [Firebase] App already initialized or error:', error);
+
+// 🔧 CRITICAL FIX: Check if Firebase is already initialized globally first
+if (typeof window !== 'undefined' && (window as any).firebaseApp) {
+  console.log('🔥 [Firebase] Using globally initialized Firebase app');
+  app = (window as any).firebaseApp;
+} else {
+  // Check existing apps first to avoid duplicate initialization
+  const existingApps = getApps();
+  if (existingApps.length > 0) {
+    app = existingApps[0];
+    console.log('🔥 [Firebase] Using existing Firebase app:', app.name);
+    // Store globally for consistency
+    if (typeof window !== 'undefined') {
+      (window as any).firebaseApp = app;
+    }
+  } else {
+    // Initialize new app
+    try {
+      app = initializeApp(firebaseConfig);
+      console.log('🔥 [Firebase] App initialized successfully');
+      
+      // Store globally for consistency
+      if (typeof window !== 'undefined') {
+        (window as any).firebaseApp = app;
+      }
+    } catch (error) {
+      console.error('❌ [Firebase] Failed to initialize app:', error);
+      // Try to get existing app if initialization failed due to duplicate
+      const fallbackApps = getApps();
+      if (fallbackApps.length > 0) {
+        app = fallbackApps[0];
+        console.log('🔥 [Firebase] Using fallback existing app:', app.name);
+      }
+    }
+  }
 }
 
 // Function to ensure app is properly initialized
 async function ensureAppInitialized(): Promise<FirebaseApp> {
   if (app) return app;
+  
+  // 🔧 CRITICAL FIX: Check global Firebase app first
+  if (typeof window !== 'undefined' && (window as any).firebaseApp) {
+    app = (window as any).firebaseApp;
+    console.log('✅ [Firebase] Found global app instance');
+    return app as FirebaseApp;
+  }
   
   try {
     const { getApps } = await import('firebase/app');
@@ -70,6 +107,12 @@ async function ensureAppInitialized(): Promise<FirebaseApp> {
     if (apps.length > 0) {
       app = apps[0];
       console.log('✅ [Firebase] Using existing app instance');
+      
+      // Store globally for consistency
+      if (typeof window !== 'undefined') {
+        (window as any).firebaseApp = app;
+      }
+      
       return app;
     }
   } catch (importError) {
@@ -80,6 +123,12 @@ async function ensureAppInitialized(): Promise<FirebaseApp> {
   try {
     app = initializeApp(firebaseConfig, 'fallback');
     console.log('✅ [Firebase] Created fallback app instance');
+    
+    // Store globally for consistency
+    if (typeof window !== 'undefined') {
+      (window as any).firebaseApp = app;
+    }
+    
     return app;
   } catch (fallbackError) {
     console.error('❌ [Firebase] Failed to create fallback app:', fallbackError);

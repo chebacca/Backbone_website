@@ -18,6 +18,7 @@ import {
   getDocs, 
   addDoc, 
   updateDoc, 
+  setDoc,
   deleteDoc,
   query, 
   where, 
@@ -27,6 +28,7 @@ import {
   arrayRemove,
   Timestamp 
 } from 'firebase/firestore';
+import { firestoreCollectionManager, COLLECTIONS } from './FirestoreCollectionManager';
 
 // ============================================================================
 // STREAMLINED TYPE DEFINITIONS
@@ -308,6 +310,12 @@ class UnifiedDataService {
     this.initializeFirebase();
   }
 
+  private getApiBaseUrl(): string {
+    // 🔥 PRODUCTION MODE: Use Cloud Run API endpoint
+    console.log('[UnifiedDataService] PRODUCTION MODE: Using Cloud Run API endpoint');
+    return 'https://api-oup5qxogca-uc.a.run.app/api';
+  }
+
   private async initializeFirebase() {
     try {
       console.log('🔧 [UnifiedDataService] Initializing Firebase...');
@@ -346,6 +354,26 @@ class UnifiedDataService {
         resolve(!!user);
       });
     });
+  }
+
+  /**
+   * Get the current user's Firebase ID token for API authentication
+   */
+  private async getAuthToken(): Promise<string> {
+    if (!this.auth?.currentUser) {
+      throw new Error('No authenticated user found');
+    }
+    
+    try {
+      const token = await this.auth.currentUser.getIdToken();
+      if (!token) {
+        throw new Error('Failed to get ID token from Firebase Auth');
+      }
+      return token;
+    } catch (error) {
+      console.error('❌ [UnifiedDataService] Error getting auth token:', error);
+      throw new Error('Failed to get authentication token');
+    }
   }
 
   // ============================================================================
@@ -583,6 +611,16 @@ class UnifiedDataService {
   // PROJECT OPERATIONS
   // ============================================================================
   
+  // Helper function to safely convert Firestore timestamps to dates
+  private safeToDate(value: any): Date {
+    if (!value) return new Date();
+    if (value instanceof Date) return value;
+    if (typeof value.toDate === 'function') return value.toDate();
+    if (typeof value === 'string') return new Date(value);
+    if (typeof value === 'number') return new Date(value);
+    return new Date();
+  }
+
   async getProjectsForUser(): Promise<StreamlinedProject[]> {
     const user = await this.getCurrentUser();
     if (!user) return [];
@@ -601,12 +639,13 @@ class UnifiedDataService {
       const snapshot = await getDocs(projectsQuery);
       const projects = snapshot.docs.map(doc => {
         const data = doc.data();
+        console.log('🔍 [UnifiedDataService] Processing project data:', { id: doc.id, data });
         return {
           ...data,
           id: doc.id,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-          lastAccessedAt: data.lastAccessedAt?.toDate() || new Date()
+          createdAt: this.safeToDate(data.createdAt),
+          updatedAt: this.safeToDate(data.updatedAt),
+          lastAccessedAt: this.safeToDate(data.lastAccessedAt)
         } as StreamlinedProject;
       });
       
@@ -675,21 +714,47 @@ class UnifiedDataService {
       const user = userDoc.data() as StreamlinedUser;
       const currentUser = await this.getCurrentUser();
       
-      // Create team assignment
+      // Create team assignment with proper validation
       const teamAssignment = {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        role,
+        userId: user.id || '',
+        email: user.email || '',
+        name: user.name || 'Unknown User',
+        role: role || 'MEMBER',
         assignedAt: new Date(),
         assignedBy: currentUser?.email || 'system'
       };
 
-      // Update project with new team assignment
-      await updateDoc(doc(this.db, 'projects', projectId), {
-        teamAssignments: arrayUnion(teamAssignment),
-        updatedAt: new Date()
+      // Validate that no undefined values exist
+      const validatedAssignment = Object.fromEntries(
+        Object.entries(teamAssignment).filter(([_, value]) => value !== undefined && value !== null)
+      );
+
+      console.log('🔍 [UnifiedDataService] Team assignment data:', {
+        original: teamAssignment,
+        validated: validatedAssignment,
+        projectId,
+        userId
       });
+
+      // Get current project to ensure teamAssignments field exists
+      const projectDoc = await getDoc(doc(this.db, 'projects', projectId));
+      if (!projectDoc.exists()) throw new Error('Project not found');
+      
+      const projectData = projectDoc.data();
+      const existingTeamAssignments = projectData.teamAssignments || [];
+      
+      console.log('🔍 [UnifiedDataService] Project data:', {
+        projectId,
+        hasTeamAssignments: !!projectData.teamAssignments,
+        existingCount: existingTeamAssignments.length
+      });
+      
+      // Update project with new team assignment
+      // Use setDoc with merge to ensure teamAssignments field exists
+      await setDoc(doc(this.db, 'projects', projectId), {
+        teamAssignments: arrayUnion(validatedAssignment),
+        updatedAt: new Date()
+      }, { merge: true });
 
       // Update user's assigned projects
       await updateDoc(doc(this.db, 'users', userId), {
@@ -833,9 +898,14 @@ class UnifiedDataService {
       return [];
     }
 
+    console.log('🔍 [UnifiedDataService] Fetching licenses for organization:', user.organization.id);
+
     const cacheKey = `org-licenses-${user.organization.id}`;
     const cached = this.getFromCache<StreamlinedLicense[]>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      console.log('📋 [UnifiedDataService] Returning cached licenses:', cached.length);
+      return cached;
+    }
 
     try {
       // Query licenses by organizationId to match actual data structure
@@ -846,6 +916,8 @@ class UnifiedDataService {
       );
 
       const snapshot = await getDocs(licensesQuery);
+      console.log('📊 [UnifiedDataService] Found', snapshot.docs.length, 'license documents');
+      
       const licenses = snapshot.docs.map(doc => {
         const data = doc.data();
         
@@ -857,26 +929,40 @@ class UnifiedDataService {
           tier: data.tier || 'BASIC',
           status: data.status || 'PENDING',
           
-          // Map organization data from top-level organizationId
-          organization: {
+          // Map organization data from embedded object or fallback to top-level
+          organization: data.organization ? {
+            id: data.organization.id,
+            name: data.organization.name,
+            tier: data.organization.tier
+          } : {
             id: data.organizationId || '',
             name: data.organizationName || 'Unknown Organization',
             tier: data.tier || 'BASIC'
           },
           
           // Map assignment data if exists
-          assignedTo: data.userId ? {
-            userId: data.userId,
-            name: data.userName || data.userEmail || 'Unknown User',
-            email: data.userEmail || '',
+          assignedTo: data.assignedTo ? {
+            userId: data.assignedTo.userId,
+            name: data.assignedTo.name || data.assignedToName || 'Unknown User',
+            email: data.assignedTo.email || data.assignedToEmail || '',
+            assignedAt: data.assignedTo.assignedAt?.toDate() || data.activatedAt?.toDate() || new Date()
+          } : (data.assignedToUserId ? {
+            userId: data.assignedToUserId,
+            name: data.assignedToName || data.assignedToEmail || 'Unknown User',
+            email: data.assignedToEmail || '',
             assignedAt: data.activatedAt?.toDate() || new Date()
-          } : undefined,
+          } : undefined),
           
-          // Map usage data
-          usage: {
+          // Map usage data from embedded object or defaults
+          usage: data.usage ? {
+            apiCalls: data.usage.apiCalls || 0,
+            dataTransfer: data.usage.dataTransfer || 0,
+            deviceCount: data.usage.deviceCount || 1,
+            maxDevices: data.usage.maxDevices || (data.tier === 'ENTERPRISE' ? 10 : data.tier === 'PROFESSIONAL' ? 5 : 2)
+          } : {
             apiCalls: data.usageCount || 0,
-            dataTransfer: 0, // Not in seeded data
-            deviceCount: 1, // Default
+            dataTransfer: 0,
+            deviceCount: 1,
             maxDevices: data.tier === 'ENTERPRISE' ? 10 : data.tier === 'PROFESSIONAL' ? 5 : 2
           },
           
@@ -889,6 +975,7 @@ class UnifiedDataService {
         } as StreamlinedLicense;
       });
       
+      console.log('✅ [UnifiedDataService] Processed', licenses.length, 'licenses for organization');
       this.setCache(cacheKey, licenses);
       return licenses;
     } catch (error) {
@@ -902,20 +989,58 @@ class UnifiedDataService {
       const user = await this.getCurrentUser();
       if (!user) throw new Error('No authenticated user');
 
-      const newLicense: Omit<StreamlinedLicense, 'id'> = {
-        ...licenseData,
+      // 🔧 FIX: Create license data in the format expected by the query
+      // Store both nested organization object AND flat organizationId for compatibility
+      const firestoreData = {
+        // Core license fields
+        key: licenseData.key,
+        name: licenseData.name,
+        tier: licenseData.tier,
+        status: licenseData.status,
+        
+        // Flat organization fields (for querying)
+        organizationId: licenseData.organization.id,
+        organizationName: licenseData.organization.name,
+        
+        // Usage data
+        usageCount: licenseData.usage?.apiCalls || 0,
+        
+        // Assignment data (if any)
+        userId: licenseData.assignedTo?.userId || null,
+        userName: licenseData.assignedTo?.name || null,
+        userEmail: licenseData.assignedTo?.email || null,
+        activatedAt: licenseData.assignedTo?.assignedAt || null,
+        
+        // Dates
+        expiresAt: licenseData.expiresAt,
+        lastUsed: null,
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        
+        // Keep nested organization for compatibility
+        organization: licenseData.organization,
+        usage: licenseData.usage
       };
 
-      const docRef = await addDoc(collection(this.db, 'licenses'), newLicense);
+      console.log('🎫 [UnifiedDataService] Creating license with Firestore data:', firestoreData);
+      const docRef = await addDoc(collection(this.db, 'licenses'), firestoreData);
       
-      // Clear related caches
+      // 🔧 ENHANCED CACHE CLEARING: Clear all license-related caches
       this.clearCacheByPattern('org-licenses-');
+      this.clearCacheByPattern('user-');
+      this.clearCacheByPattern('organization-');
+      console.log('🧹 [UnifiedDataService] Cleared license-related caches');
+      
+      console.log('✅ [UnifiedDataService] License created with ID:', docRef.id);
+      
+      // 🔄 Force refresh license data to ensure it appears immediately
+      setTimeout(() => {
+        this.forceRefreshLicenses().catch(console.error);
+      }, 100);
       
       return docRef.id;
     } catch (error) {
-      console.error('Error creating license:', error);
+      console.error('❌ [UnifiedDataService] Error creating license:', error);
       throw error;
     }
   }
@@ -939,43 +1064,197 @@ class UnifiedDataService {
 
   async assignLicense(licenseId: string, userId: string): Promise<void> {
     try {
+      console.log('🎫 [UnifiedDataService] Assigning license', licenseId, 'to user', userId);
+      
       // Get user info
       const userDoc = await getDoc(doc(this.db, 'users', userId));
       if (!userDoc.exists()) throw new Error('User not found');
       
       const userData = userDoc.data();
       
-      // Update license with assignment
+      // Get license info
+      const licenseDoc = await getDoc(doc(this.db, 'licenses', licenseId));
+      if (!licenseDoc.exists()) throw new Error('License not found');
+      
+      const licenseData = licenseDoc.data();
+      
+      console.log('🔍 [UnifiedDataService] User data:', { id: userId, email: userData.email, name: userData.name });
+      console.log('🔍 [UnifiedDataService] License data:', { id: licenseId, key: licenseData.key, tier: licenseData.tier });
+      
+      // 🚀 ENHANCED: Update ALL collections for complete license coordination
+      
+      // 1. Update license with assignment (marks license as taken from org pool)
       await updateDoc(doc(this.db, 'licenses', licenseId), {
         assignedTo: {
           userId: userId,
-          name: userData.name || userData.email,
+          name: userData.name || userData.firstName + ' ' + userData.lastName || userData.email,
           email: userData.email,
           assignedAt: new Date()
         },
-        status: 'ACTIVE',
+        status: 'ACTIVE', // Changes from PENDING to ACTIVE
+        updatedAt: new Date()
+      });
+      
+      // 2. Update user record with license assignment
+      await updateDoc(doc(this.db, 'users', userId), {
+        licenseAssignment: {
+          licenseId: licenseId,
+          licenseKey: licenseData.key,
+          licenseType: licenseData.tier,
+          assignedAt: new Date()
+        },
         updatedAt: new Date()
       });
 
-      // Clear caches
+      // 3. Update team member record with license assignment (for TeamPage coordination)
+      try {
+        const teamMemberQuery = query(
+          collection(this.db, COLLECTIONS.TEAM_MEMBERS),
+          where('userId', '==', userId),
+          limit(1)
+        );
+        const teamMemberDocs = await getDocs(teamMemberQuery);
+        
+        if (!teamMemberDocs.empty) {
+          const teamMemberDoc = teamMemberDocs.docs[0];
+          await updateDoc(teamMemberDoc.ref, {
+            licenseAssignment: {
+              licenseId: licenseId,
+              licenseKey: licenseData.key,
+              licenseType: licenseData.tier,
+              assignedAt: new Date()
+            },
+            updatedAt: new Date()
+          });
+          console.log('✅ [UnifiedDataService] Updated teamMembers collection with license assignment');
+        }
+      } catch (teamMemberError) {
+        console.warn('⚠️ [UnifiedDataService] Failed to update teamMembers collection:', teamMemberError);
+        // Don't fail the license assignment if team member update fails
+      }
+
+      // 4. Update org member record with license assignment (for organization coordination)
+      try {
+        const orgMemberQuery = query(
+          collection(this.db, COLLECTIONS.ORG_MEMBERS),
+          where('userId', '==', userId),
+          limit(1)
+        );
+        const orgMemberDocs = await getDocs(orgMemberQuery);
+        
+        if (!orgMemberDocs.empty) {
+          const orgMemberDoc = orgMemberDocs.docs[0];
+          await updateDoc(orgMemberDoc.ref, {
+            licenseAssignment: {
+              licenseId: licenseId,
+              licenseKey: licenseData.key,
+              licenseType: licenseData.tier,
+              assignedAt: new Date()
+            },
+            updatedAt: new Date()
+          });
+          console.log('✅ [UnifiedDataService] Updated orgMembers collection with license assignment');
+        }
+      } catch (orgMemberError) {
+        console.warn('⚠️ [UnifiedDataService] Failed to update orgMembers collection:', orgMemberError);
+        // Don't fail the license assignment if org member update fails
+      }
+
+      console.log('✅ [UnifiedDataService] License assignment completed - all collections updated');
+
+      // Clear caches for both licenses and team members
       this.clearCacheByPattern('org-licenses-');
+      this.clearCacheByPattern('org-team-members-');
+      this.clearCacheByPattern('org-users-');
     } catch (error) {
-      console.error('Error assigning license:', error);
+      console.error('❌ [UnifiedDataService] Error assigning license:', error);
       throw error;
     }
   }
 
   async unassignLicense(licenseId: string): Promise<void> {
     try {
+      console.log('🎫 [UnifiedDataService] Unassigning license', licenseId);
+      
+      // Get license info to find the assigned user
+      const licenseDoc = await getDoc(doc(this.db, 'licenses', licenseId));
+      if (!licenseDoc.exists()) throw new Error('License not found');
+      
+      const licenseData = licenseDoc.data();
+      const assignedUserId = licenseData.assignedTo?.userId;
+      
+      // 🚀 ENHANCED: Update ALL collections to release license back to org pool
+      
+      // 1. Update license to remove assignment (returns to org pool as PENDING)
       await updateDoc(doc(this.db, 'licenses', licenseId), {
         assignedTo: null,
+        status: 'PENDING', // Reset to PENDING status - available for assignment
         updatedAt: new Date()
       });
+      
+      // 2. Update user record to remove license assignment
+      if (assignedUserId) {
+        await updateDoc(doc(this.db, 'users', assignedUserId), {
+          licenseAssignment: null,
+          updatedAt: new Date()
+        });
+        console.log('✅ [UnifiedDataService] Removed license assignment from user record', assignedUserId);
+      }
 
-      // Clear caches
+      // 3. Update team member record to remove license assignment
+      if (assignedUserId) {
+        try {
+          const teamMemberQuery = query(
+            collection(this.db, COLLECTIONS.TEAM_MEMBERS),
+            where('userId', '==', assignedUserId),
+            limit(1)
+          );
+          const teamMemberDocs = await getDocs(teamMemberQuery);
+          
+          if (!teamMemberDocs.empty) {
+            const teamMemberDoc = teamMemberDocs.docs[0];
+            await updateDoc(teamMemberDoc.ref, {
+              licenseAssignment: null,
+              updatedAt: new Date()
+            });
+            console.log('✅ [UnifiedDataService] Removed license assignment from teamMembers collection');
+          }
+        } catch (teamMemberError) {
+          console.warn('⚠️ [UnifiedDataService] Failed to update teamMembers collection:', teamMemberError);
+        }
+      }
+
+      // 4. Update org member record to remove license assignment
+      if (assignedUserId) {
+        try {
+          const orgMemberQuery = query(
+            collection(this.db, COLLECTIONS.ORG_MEMBERS),
+            where('userId', '==', assignedUserId),
+            limit(1)
+          );
+          const orgMemberDocs = await getDocs(orgMemberQuery);
+          
+          if (!orgMemberDocs.empty) {
+            const orgMemberDoc = orgMemberDocs.docs[0];
+            await updateDoc(orgMemberDoc.ref, {
+              licenseAssignment: null,
+              updatedAt: new Date()
+            });
+            console.log('✅ [UnifiedDataService] Removed license assignment from orgMembers collection');
+          }
+        } catch (orgMemberError) {
+          console.warn('⚠️ [UnifiedDataService] Failed to update orgMembers collection:', orgMemberError);
+        }
+      }
+
+      console.log('✅ [UnifiedDataService] License unassignment completed - license returned to org pool');
+
+      // Clear caches for both licenses and team members
       this.clearCacheByPattern('org-licenses-');
+      this.clearCacheByPattern('org-team-members-');
+      this.clearCacheByPattern('org-users-');
     } catch (error) {
-      console.error('Error unassigning license:', error);
+      console.error('❌ [UnifiedDataService] Error unassigning license:', error);
       throw error;
     }
   }
@@ -983,6 +1262,8 @@ class UnifiedDataService {
   // ============================================================================
   // TEAM MEMBER OPERATIONS
   // ============================================================================
+
+
   
   async getTeamMembersForOrganization(): Promise<StreamlinedTeamMember[]> {
     const user = await this.getCurrentUser();
@@ -993,63 +1274,457 @@ class UnifiedDataService {
     if (cached) return cached;
 
     try {
-      // Query team members by organizationId to match actual data structure
-      const teamQuery = query(
-        collection(this.db, 'teamMembers'),
-        where('organizationId', '==', user.organization.id),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(teamQuery);
-      const teamMembers = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          id: doc.id,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-          joinedAt: data.joinedAt?.toDate() || new Date(),
-          lastActive: data.lastActive?.toDate(),
-          licenseAssignment: data.licenseAssignment ? {
-            ...data.licenseAssignment,
-            assignedAt: data.licenseAssignment.assignedAt?.toDate() || new Date()
-          } : undefined
-        } as StreamlinedTeamMember;
-      });
+      console.log('🔍 [UnifiedDataService] Fetching team members for organization:', user.organization.id);
       
-      this.setCache(cacheKey, teamMembers);
-      return teamMembers;
+      // 🚀 COMPREHENSIVE: Fetch from all relevant collections and merge
+      // 🔧 FIX: Use email as the key for deduplication since same person has same email across collections
+      const allUsers = new Map<string, StreamlinedTeamMember>();
+
+      // 1. Try users collection - includes account owners and some team members
+      console.log('🔍 [UnifiedDataService] Trying users collection...');
+      try {
+        const usersResult = await firestoreCollectionManager.queryDocumentsWithFallback(
+          'users',
+          [{ field: 'organizationId', operator: '==', value: user.organization.id }],
+          'createdAt',
+          'desc'
+        );
+        console.log(`📊 [UnifiedDataService] Found ${usersResult.documents.length} users in users collection`);
+        
+        for (const userDoc of usersResult.documents) {
+          const userData = userDoc;
+          
+          // Skip if this is the current user (to avoid duplication)
+          if (userData.id === user.id) continue;
+          
+          const teamMember: StreamlinedTeamMember = {
+            id: userData.id,
+            firstName: userData.firstName || userData.name?.split(' ')[0] || userData.email.split('@')[0],
+            lastName: userData.lastName || userData.name?.split(' ')[1] || '',
+            email: userData.email,
+            role: userData.role || 'member',
+            status: userData.status === 'active' ? 'active' : 'pending',
+            organization: {
+              id: userData.organizationId || user.organization.id,
+              name: user.organization.name,
+              tier: user.organization.tier
+            },
+            licenseAssignment: userData.licenseAssignment ? {
+              licenseId: userData.licenseAssignment.licenseId,
+              licenseKey: userData.licenseAssignment.licenseKey,
+              licenseType: userData.licenseAssignment.licenseType,
+              assignedAt: userData.licenseAssignment.assignedAt
+            } : undefined,
+            department: userData.department || 'General',
+            assignedProjects: userData.assignedProjects || [],
+            avatar: userData.avatar,
+            joinedAt: userData.createdAt || new Date(),
+            lastActive: userData.lastActive,
+            invitedBy: userData.invitedBy || user.id,
+            createdAt: userData.createdAt || new Date(),
+            updatedAt: userData.updatedAt || new Date()
+          };
+          
+          // 🔧 FIX: Use email as key to prevent duplicates across collections
+          allUsers.set(userData.email, teamMember);
+        }
+      } catch (error) {
+        console.warn('⚠️ [UnifiedDataService] Users collection query failed:', error);
+      }
+
+      // 2. Try teamMembers collection - dedicated team member records
+      console.log('🔍 [UnifiedDataService] Trying teamMembers collection...');
+      try {
+        const teamMembersResult = await firestoreCollectionManager.queryDocumentsWithFallback(
+          'teamMembers',
+          [{ field: 'organizationId', operator: '==', value: user.organization.id }],
+          'createdAt',
+          'desc'
+        );
+        console.log(`📊 [UnifiedDataService] Found ${teamMembersResult.documents.length} team members in teamMembers collection`);
+        
+        for (const tmDoc of teamMembersResult.documents) {
+          const tmData = tmDoc;
+          
+          // Skip inactive team members
+          if (tmData.status === 'removed' || tmData.status === 'suspended') continue;
+          
+          const teamMember: StreamlinedTeamMember = {
+            id: tmData.id,
+            firstName: tmData.firstName || tmData.name?.split(' ')[0] || tmData.email.split('@')[0],
+            lastName: tmData.lastName || tmData.name?.split(' ')[1] || '',
+            email: tmData.email,
+            role: tmData.role || 'member',
+            status: tmData.status || 'active',
+            organization: {
+              id: tmData.organizationId || user.organization.id,
+              name: user.organization.name,
+              tier: user.organization.tier
+            },
+            licenseAssignment: tmData.licenseAssignment ? {
+              licenseId: tmData.licenseAssignment.licenseId,
+              licenseKey: tmData.licenseAssignment.licenseKey,
+              licenseType: tmData.licenseAssignment.licenseType,
+              assignedAt: tmData.licenseAssignment.assignedAt
+            } : undefined,
+            department: tmData.department || 'General',
+            assignedProjects: tmData.assignedProjects || [],
+            avatar: tmData.avatar,
+            joinedAt: tmData.joinedAt || tmData.createdAt || new Date(),
+            lastActive: tmData.lastActive,
+            invitedBy: tmData.invitedBy || user.id,
+            createdAt: tmData.createdAt || new Date(),
+            updatedAt: tmData.updatedAt || new Date()
+          };
+          
+          // 🔧 FIX: Use email as key to prevent duplicates across collections
+          // If we already have this user, merge the data (teamMembers might have more complete info)
+          const existingUser = allUsers.get(tmData.email);
+          if (existingUser) {
+            // Merge data, preferring teamMembers collection data
+            existingUser.role = tmData.role || existingUser.role;
+            existingUser.status = tmData.status || existingUser.status;
+            existingUser.department = tmData.department || existingUser.department;
+            existingUser.licenseAssignment = tmData.licenseAssignment || existingUser.licenseAssignment;
+            allUsers.set(tmData.email, existingUser);
+          } else {
+            allUsers.set(tmData.email, teamMember);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [UnifiedDataService] TeamMembers collection query failed:', error);
+      }
+
+      // 3. Try orgMembers collection - organization membership records
+      console.log('🔍 [UnifiedDataService] Trying orgMembers collection...');
+      try {
+        const orgMembersResult = await firestoreCollectionManager.queryDocumentsWithFallback(
+          'orgMembers',
+          [{ field: 'orgId', operator: '==', value: user.organization.id }],
+          'createdAt',
+          'desc'
+        );
+        console.log(`📊 [UnifiedDataService] Found ${orgMembersResult.documents.length} org members in orgMembers collection`);
+        
+        for (const omDoc of orgMembersResult.documents) {
+          const omData = omDoc;
+          
+          // Skip inactive members
+          if (omData.status === 'removed' || omData.status === 'suspended') continue;
+          
+          // 🔧 FIX: Use email as key to prevent duplicates across collections
+          // If we already have this user, enhance the data
+          const existingUser = allUsers.get(omData.email);
+          if (existingUser) {
+            // Enhance existing data with org member info
+            existingUser.role = omData.role || existingUser.role;
+            existingUser.status = omData.status || existingUser.status;
+            existingUser.department = omData.department || existingUser.department;
+            existingUser.joinedAt = omData.joinedAt || existingUser.joinedAt;
+            allUsers.set(omData.email, existingUser);
+          } else {
+            // Create new team member from org member data
+            const teamMember: StreamlinedTeamMember = {
+              id: omData.userId,
+              firstName: omData.firstName || omData.name?.split(' ')[0] || omData.email?.split('@')[0] || 'Unknown',
+              lastName: omData.lastName || omData.name?.split(' ')[1] || '',
+              email: omData.email || omData.userEmail || '',
+              role: omData.role || 'member',
+              status: omData.status || 'active',
+              organization: {
+                id: omData.orgId || user.organization.id,
+                name: user.organization.name,
+                tier: user.organization.tier
+              },
+              licenseAssignment: undefined, // Will be enhanced if license data exists
+              department: omData.department || 'General',
+              assignedProjects: [],
+              avatar: omData.avatar,
+              joinedAt: omData.joinedAt || omData.createdAt || new Date(),
+              lastActive: omData.lastActive,
+              invitedBy: omData.invitedBy || user.id,
+              createdAt: omData.createdAt || new Date(),
+              updatedAt: omData.updatedAt || new Date()
+            };
+            
+            allUsers.set(omData.email || omData.userEmail || '', teamMember);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [UnifiedDataService] OrgMembers collection query failed:', error);
+      }
+
+      // 4. Try org_members collection (alternative naming)
+      console.log('🔍 [UnifiedDataService] Trying org_members collection...');
+      try {
+        const orgMembersAltResult = await firestoreCollectionManager.queryDocumentsWithFallback(
+          'org_members',
+          [{ field: 'orgId', operator: '==', value: user.organization.id }],
+          'createdAt',
+          'desc'
+        );
+        console.log(`📊 [UnifiedDataService] Found ${orgMembersAltResult.documents.length} org members in org_members collection`);
+        
+        for (const omDoc of orgMembersAltResult.documents) {
+          const omData = omDoc;
+          
+          // Skip inactive members
+          if (omData.status === 'removed' || omData.status === 'suspended') continue;
+          
+          // 🔧 FIX: Use email as key to prevent duplicates across collections
+          // If we don't already have this user, add them
+          const userEmail = omData.email || omData.userEmail || '';
+          if (userEmail && !allUsers.has(userEmail)) {
+            const teamMember: StreamlinedTeamMember = {
+              id: omData.userId,
+              firstName: omData.firstName || omData.name?.split(' ')[0] || userEmail.split('@')[0] || 'Unknown',
+              lastName: omData.lastName || omData.name?.split(' ')[1] || '',
+              email: userEmail,
+              role: omData.role || 'member',
+              status: omData.status || 'active',
+              organization: {
+                id: omData.orgId || user.organization.id,
+                name: user.organization.name,
+                tier: user.organization.tier
+              },
+              licenseAssignment: undefined,
+              department: omData.department || 'General',
+              assignedProjects: [],
+              avatar: omData.avatar,
+              joinedAt: omData.joinedAt || omData.createdAt || new Date(),
+              lastActive: omData.lastActive,
+              invitedBy: omData.invitedBy || user.id,
+              createdAt: omData.createdAt || new Date(),
+              updatedAt: omData.updatedAt || new Date()
+            };
+            
+            allUsers.set(userEmail, teamMember);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [UnifiedDataService] org_members collection query failed:', error);
+      }
+
+      const uniqueUsers = Array.from(allUsers.values());
+      console.log(`✅ [UnifiedDataService] Successfully fetched ${uniqueUsers.length} unique team members for organization: ${user.organization.id}`);
+      
+      // Cache the results
+      this.setCache(cacheKey, uniqueUsers);
+      return uniqueUsers;
+      
     } catch (error) {
-      console.error('Error fetching team members:', error);
+      console.error('❌ [UnifiedDataService] Failed to fetch team members:', error);
       return [];
     }
   }
 
-  async inviteTeamMember(memberData: Omit<StreamlinedTeamMember, 'id' | 'createdAt' | 'updatedAt' | 'joinedAt'>): Promise<string> {
+  async inviteTeamMember(memberData: Omit<StreamlinedTeamMember, 'id' | 'createdAt' | 'updatedAt' | 'joinedAt'> & { 
+    temporaryPassword?: string; 
+    position?: string; 
+    phone?: string; 
+  }): Promise<string> {
+    
+    console.log('🚀 [UnifiedDataService] Creating team member via backend API:', memberData.email);
+    
     try {
       const user = await this.getCurrentUser();
       if (!user) throw new Error('No authenticated user');
 
-      const newMember: Omit<StreamlinedTeamMember, 'id'> = {
-        ...memberData,
-        status: 'pending',
-        invitedBy: user.email,
-        joinedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date()
+      // 🔧 FIXED: Use proper backend API for team member creation
+      // This ensures Firebase Auth user creation and proper data consistency
+      const createTeamMemberPayload = {
+        email: memberData.email,
+        firstName: memberData.firstName,
+        lastName: memberData.lastName,
+        department: memberData.department || '',
+        licenseType: 'PROFESSIONAL', // Default license type
+        organizationId: memberData.organization.id,
+        sendWelcomeEmail: true,
+        temporaryPassword: memberData.temporaryPassword || this.generateSecurePassword()
       };
 
-      const docRef = await addDoc(collection(this.db, 'team_members'), newMember);
+      console.log('📤 [UnifiedDataService] Sending team member creation request to backend API...');
+
+      // Use the proper backend API endpoint that handles Firebase Auth + Firestore
+      const token = await this.auth.currentUser?.getIdToken();
+      const response = await fetch(`${this.getApiBaseUrl()}/team-members/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(createTeamMemberPayload)
+      });
       
-      // Clear related caches
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to create team member');
+      }
+
+      const createdTeamMember = data.data.teamMember;
+      console.log('✅ [UnifiedDataService] Team member created successfully via backend API:', createdTeamMember.id);
+
+      // Clear related caches to ensure fresh data is loaded
       this.clearCacheByPattern('org-team-members-');
       this.clearCacheByPattern('org-users-');
+      this.clearCacheByPattern('org-members-');
+      this.clearCacheByPattern('user-profiles-');
       
-      return docRef.id;
+      return createdTeamMember.id; // Return the team member ID
     } catch (error) {
-      console.error('Error inviting team member:', error);
+      console.error('❌ [UnifiedDataService] Error creating team member via backend API:', error);
       throw error;
     }
+  }
+
+  /**
+   * Ensure team member is properly set up for project assignments
+   * This method checks and creates any missing collection records needed for project coordination
+   */
+  async ensureTeamMemberProjectReadiness(userId: string): Promise<{
+    success: boolean;
+    collectionsCreated: string[];
+    collectionsFound: string[];
+    errors: string[];
+  }> {
+    const result = {
+      success: true,
+      collectionsCreated: [] as string[],
+      collectionsFound: [] as string[],
+      errors: [] as string[]
+    };
+
+    try {
+      console.log('🔍 [UnifiedDataService] Checking team member project readiness for userId:', userId);
+
+      // Get the user record first
+      const userDoc = await getDoc(doc(this.db, COLLECTIONS.USERS, userId));
+      if (!userDoc.exists()) {
+        result.errors.push('User record not found');
+        result.success = false;
+        return result;
+      }
+
+      const userData = userDoc.data();
+      console.log('📋 [UnifiedDataService] Found user data:', userData);
+
+      // Check for required collections and create missing ones
+      const requiredCollections = [
+        {
+          name: 'teamMembers',
+          collection: COLLECTIONS.TEAM_MEMBERS,
+          createData: () => ({
+            userId: userId,
+            email: userData.email,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            name: `${userData.firstName} ${userData.lastName}`,
+            role: userData.role || 'member',
+            status: userData.status || 'active',
+            organizationId: userData.organizationId,
+            orgId: userData.organizationId, // Support both field names
+            department: userData.department || '',
+            isActive: true,
+            firebaseUid: userData.firebaseUid || '',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+        },
+        {
+          name: 'orgMembers',
+          collection: COLLECTIONS.ORG_MEMBERS,
+          createData: () => ({
+            organizationId: userData.organizationId,
+            orgId: userData.organizationId, // Support both field names
+            userId: userId,
+            email: userData.email,
+            name: `${userData.firstName} ${userData.lastName}`,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            role: userData.role || 'member',
+            status: userData.status || 'active',
+            seatReserved: true,
+            department: userData.department || '',
+            invitedByUserId: 'system',
+            invitedAt: new Date(),
+            joinedAt: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+        },
+        {
+          name: 'userProfiles',
+          collection: COLLECTIONS.USER_PROFILES,
+          createData: () => ({
+            userId: userId,
+            email: userData.email,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            displayName: `${userData.firstName} ${userData.lastName}`,
+            avatar: userData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.firstName + ' ' + userData.lastName)}&background=667eea&color=fff`,
+            department: userData.department || '',
+            position: '',
+            phone: '',
+            organizationId: userData.organizationId,
+            role: userData.role || 'member',
+            status: userData.status || 'active',
+            bio: '',
+            preferences: {},
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+        }
+      ];
+
+      // Check each required collection
+      for (const collectionConfig of requiredCollections) {
+        try {
+          // Check if record exists
+          const existingQuery = query(
+            collection(this.db, collectionConfig.collection),
+            where('userId', '==', userId),
+            limit(1)
+          );
+          const existingDocs = await getDocs(existingQuery);
+
+          if (existingDocs.empty) {
+            // Create missing record
+            console.log(`📝 [UnifiedDataService] Creating missing ${collectionConfig.name} record for user ${userId}`);
+            const docRef = await addDoc(collection(this.db, collectionConfig.collection), collectionConfig.createData());
+            result.collectionsCreated.push(`${collectionConfig.name} (${docRef.id})`);
+            console.log(`✅ [UnifiedDataService] Created ${collectionConfig.name} record: ${docRef.id}`);
+          } else {
+            result.collectionsFound.push(collectionConfig.name);
+            console.log(`✅ [UnifiedDataService] Found existing ${collectionConfig.name} record`);
+          }
+        } catch (error: any) {
+          const errorMsg = `Failed to check/create ${collectionConfig.name}: ${error.message}`;
+          result.errors.push(errorMsg);
+          console.error(`❌ [UnifiedDataService] ${errorMsg}`, error);
+        }
+      }
+
+      console.log('📊 [UnifiedDataService] Team member project readiness check complete:', result);
+      return result;
+
+    } catch (error: any) {
+      console.error('❌ [UnifiedDataService] Failed to ensure team member project readiness:', error);
+      result.errors.push(`General error: ${error.message}`);
+      result.success = false;
+      return result;
+    }
+  }
+
+  // Helper method for password generation
+  private generateSecurePassword(): string {
+    const length = 12;
+    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let password = "";
+    for (let i = 0; i < length; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    return password;
   }
 
   async updateTeamMember(memberId: string, updates: Partial<StreamlinedTeamMember>): Promise<void> {
@@ -1059,7 +1734,8 @@ class UnifiedDataService {
         updatedAt: new Date()
       };
 
-      await updateDoc(doc(this.db, 'team_members', memberId), updateData);
+      // Team members are stored in the 'users' collection, not 'team_members'
+      await updateDoc(doc(this.db, 'users', memberId), updateData);
       
       // Clear related caches
       this.clearCacheByPattern('org-team-members-');
@@ -1070,25 +1746,100 @@ class UnifiedDataService {
     }
   }
 
-  async removeTeamMember(memberId: string): Promise<void> {
+  async changeTeamMemberPassword(memberId: string, newPassword: string): Promise<void> {
     try {
-      await updateDoc(doc(this.db, 'team_members', memberId), {
-        status: 'removed',
-        updatedAt: new Date()
+      console.log('🔐 [UnifiedDataService] Changing password for member:', memberId);
+      
+      // Use the API service to change the password
+      const response = await fetch(`/api/team-members/${memberId}/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await this.getAuthToken()}`
+        },
+        body: JSON.stringify({ newPassword })
       });
 
-      // Clear caches
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to change password: ${response.status}`);
+      }
+
+      console.log('✅ [UnifiedDataService] Password changed successfully');
+    } catch (error) {
+      console.error('❌ [UnifiedDataService] Error changing password:', error);
+      throw error;
+    }
+  }
+
+  async removeTeamMember(memberId: string, organizationId?: string): Promise<void> {
+    try {
+      console.log('👤 [UnifiedDataService] Starting comprehensive team member removal:', memberId);
+      
+      // Get team member info before removal
+      const memberDoc = await getDoc(doc(this.db, 'users', memberId));
+      if (!memberDoc.exists()) {
+        // Try teamMembers collection as fallback
+        const teamMemberDoc = await getDoc(doc(this.db, 'teamMembers', memberId));
+        if (!teamMemberDoc.exists()) {
+          throw new Error('Team member not found');
+        }
+      }
+      
+      const memberData = memberDoc.exists() ? memberDoc.data() : null;
+      const orgId = organizationId || memberData?.organizationId;
+      
+      if (!orgId) {
+        throw new Error('Organization ID is required for team member removal');
+      }
+
+      console.log('🔍 [UnifiedDataService] Team member organization:', orgId);
+
+      // 🔧 FIXED: Use Firebase ID token for authentication (not JWT from api service)
+      const token = await this.getAuthToken();
+      
+      // Call the backend API for comprehensive cleanup using Firebase ID token
+      const response = await fetch(`${window.location.origin}/api/team-members/remove-completely`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          teamMemberId: memberId,
+          organizationId: orgId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      console.log('✅ [UnifiedDataService] Team member removal completed:', {
+        cleanedCollections: result.cleanedCollections,
+        licenseRestored: result.licenseRestored,
+        firebaseUserDeleted: result.firebaseUserDeleted
+      });
+
+      // Clear all relevant caches
       this.clearCacheByPattern('org-team-members-');
       this.clearCacheByPattern('org-users-');
+      this.clearCacheByPattern('org-licenses-');
+      this.clearCacheByPattern('org-members-');
+      this.clearCacheByPattern('project-team-members-');
+      
+      console.log('✅ [UnifiedDataService] Team member completely removed with full cleanup');
     } catch (error) {
-      console.error('Error removing team member:', error);
+      console.error('❌ [UnifiedDataService] Error removing team member:', error);
       throw error;
     }
   }
 
   async assignLicenseToTeamMember(memberId: string, licenseId: string, licenseKey: string, licenseType: string): Promise<void> {
     try {
-      await updateDoc(doc(this.db, 'team_members', memberId), {
+      await updateDoc(doc(this.db, 'users', memberId), {
         licenseAssignment: {
           licenseId,
           licenseKey,
@@ -1180,6 +1931,19 @@ class UnifiedDataService {
 
   public clearAllCache(): void {
     this.cache.clear();
+    console.log('🧹 [UnifiedDataService] All cache cleared');
+  }
+
+  // 🔧 NEW: Force refresh all license data
+  async forceRefreshLicenses(): Promise<void> {
+    console.log('🔄 [UnifiedDataService] Force refreshing license data...');
+    this.clearCacheByPattern('org-licenses-');
+    this.clearCacheByPattern('user-');
+    this.clearCacheByPattern('organization-');
+    
+    // Force a fresh fetch
+    await this.getLicensesForOrganization();
+    console.log('✅ [UnifiedDataService] License data force refreshed');
   }
 
   /**
@@ -1195,6 +1959,251 @@ class UnifiedDataService {
     } else {
       // Clear all cache
       this.clearAllCache();
+    }
+  }
+
+  // ============================================================================
+  // COLLECTION NAME RESOLUTION UTILITIES
+  // ============================================================================
+
+  /**
+   * Get the appropriate collection name with fallback support
+   * This method helps transition from legacy snake_case to standardized camelCase
+   */
+  private async getCollectionName(primaryName: keyof typeof COLLECTIONS): Promise<string> {
+    const primaryCollectionName = COLLECTIONS[primaryName];
+    
+    try {
+      // Try to access the primary collection
+      const testQuery = query(collection(this.db, primaryCollectionName), limit(1));
+      await getDocs(testQuery);
+      console.log(`✅ [UnifiedDataService] Using primary collection: ${primaryCollectionName}`);
+      return primaryCollectionName;
+    } catch (error) {
+      // If primary fails, try legacy naming if available
+      const legacyKey = `${primaryName}_LEGACY` as keyof typeof COLLECTIONS;
+      if (COLLECTIONS[legacyKey]) {
+        const legacyCollectionName = COLLECTIONS[legacyKey];
+        try {
+          const testQuery = query(collection(this.db, legacyCollectionName), limit(1));
+          await getDocs(testQuery);
+          console.log(`⚠️ [UnifiedDataService] Falling back to legacy collection: ${legacyCollectionName}`);
+          return legacyCollectionName;
+        } catch (legacyError) {
+          console.warn(`⚠️ [UnifiedDataService] Both primary and legacy collections failed for ${primaryName}`);
+        }
+      }
+      
+      // Return primary name anyway as fallback
+      console.warn(`⚠️ [UnifiedDataService] Using primary collection name despite access issues: ${primaryCollectionName}`);
+      return primaryCollectionName;
+    }
+  }
+
+  // ============================================================================
+  // PAYMENT & PURCHASE METHODS
+  // ============================================================================
+
+  // 🛒 License Purchase Methods
+  async purchaseLicenses(purchaseData: {
+    planId: string;
+    quantity: number;
+    paymentMethodId: string;
+    billingAddress: any;
+    total: number;
+  }): Promise<{
+    subscription: any;
+    invoice: any;
+    payment: any;
+    licenses: StreamlinedLicense[];
+  }> {
+    try {
+      const user = await this.getCurrentUser();
+      if (!user) throw new Error('No authenticated user');
+
+      console.log('🛒 [UnifiedDataService] Starting license purchase:', purchaseData);
+
+      // Get auth token for API call
+      const token = await this.getAuthToken();
+      
+      const response = await fetch(`${this.getApiBaseUrl()}/licenses/purchase`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(purchaseData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Purchase failed');
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Purchase failed');
+      }
+
+      console.log('✅ [UnifiedDataService] License purchase completed:', result.data);
+
+      // Clear relevant caches to ensure fresh data
+      this.clearCacheByPattern('org-licenses-');
+      this.clearCacheByPattern('user-');
+      this.clearCacheByPattern('organization-');
+      this.clearCacheByPattern('subscription-');
+      this.clearCacheByPattern('invoice-');
+
+      // Force refresh license data
+      setTimeout(() => {
+        this.forceRefreshLicenses();
+      }, 1000);
+
+      return result.data;
+    } catch (error: any) {
+      console.error('❌ [UnifiedDataService] Error purchasing licenses:', error);
+      throw new Error(`Failed to purchase licenses: ${error.message}`);
+    }
+  }
+
+  // 📄 Invoice Methods
+  async getInvoicesForOrganization(): Promise<any[]> {
+    try {
+      const user = await this.getCurrentUser();
+      if (!user?.organization?.id) {
+        console.log('🔍 [UnifiedDataService] No organization context for invoices');
+        return [];
+      }
+
+      const cacheKey = `org-invoices-${user.organization.id}`;
+      const cached = this.getFromCache(cacheKey);
+      if (cached && Array.isArray(cached)) {
+        console.log('📋 [UnifiedDataService] Returning cached invoices');
+        return cached;
+      }
+
+      console.log('📋 [UnifiedDataService] Fetching invoices for organization:', user.organization.id);
+
+      const invoicesQuery = query(
+        collection(this.db, 'invoices'),
+        where('organizationId', '==', user.organization.id),
+        orderBy('createdAt', 'desc')
+      );
+
+      const snapshot = await getDocs(invoicesQuery);
+      const invoices = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt),
+        updatedAt: doc.data().updatedAt?.toDate?.() || new Date(doc.data().updatedAt),
+        paidAt: doc.data().paidAt?.toDate?.() || (doc.data().paidAt ? new Date(doc.data().paidAt) : null),
+        dueDate: doc.data().dueDate?.toDate?.() || new Date(doc.data().dueDate),
+      }));
+
+      this.setCache(cacheKey, invoices);
+      console.log(`✅ [UnifiedDataService] Found ${invoices.length} invoices`);
+      
+      return invoices;
+    } catch (error: any) {
+      console.error('❌ [UnifiedDataService] Error fetching invoices:', error);
+      return [];
+    }
+  }
+
+  // 💰 Payment Methods
+  async getPaymentsForOrganization(): Promise<any[]> {
+    try {
+      const user = await this.getCurrentUser();
+      if (!user?.organization?.id) {
+        console.log('🔍 [UnifiedDataService] No organization context for payments');
+        return [];
+      }
+
+      const cacheKey = `org-payments-${user.organization.id}`;
+      const cached = this.getFromCache(cacheKey);
+      if (cached && Array.isArray(cached)) {
+        console.log('💰 [UnifiedDataService] Returning cached payments');
+        return cached;
+      }
+
+      console.log('💰 [UnifiedDataService] Fetching payments for organization:', user.organization.id);
+
+      const paymentsQuery = query(
+        collection(this.db, 'payments'),
+        where('organizationId', '==', user.organization.id),
+        orderBy('createdAt', 'desc')
+      );
+
+      const snapshot = await getDocs(paymentsQuery);
+      const payments = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt),
+        updatedAt: doc.data().updatedAt?.toDate?.() || new Date(doc.data().updatedAt),
+        processedAt: doc.data().processedAt?.toDate?.() || (doc.data().processedAt ? new Date(doc.data().processedAt) : null),
+      }));
+
+      this.setCache(cacheKey, payments);
+      console.log(`✅ [UnifiedDataService] Found ${payments.length} payments`);
+      
+      return payments;
+    } catch (error: any) {
+      console.error('❌ [UnifiedDataService] Error fetching payments:', error);
+      return [];
+    }
+  }
+
+  // 📋 Subscription Methods
+  async getSubscriptionForOrganization(): Promise<any | null> {
+    try {
+      const user = await this.getCurrentUser();
+      if (!user?.organization?.id) {
+        console.log('🔍 [UnifiedDataService] No organization context for subscription');
+        return null;
+      }
+
+      const cacheKey = `org-subscription-${user.organization.id}`;
+      const cached = this.getFromCache(cacheKey);
+      if (cached) {
+        console.log('📋 [UnifiedDataService] Returning cached subscription');
+        return cached;
+      }
+
+      console.log('📋 [UnifiedDataService] Fetching subscription for organization:', user.organization.id);
+
+      const subscriptionQuery = query(
+        collection(this.db, 'subscriptions'),
+        where('organizationId', '==', user.organization.id),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+
+      const snapshot = await getDocs(subscriptionQuery);
+      
+      if (snapshot.empty) {
+        console.log('📋 [UnifiedDataService] No subscription found');
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      const subscription = {
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.() || new Date(doc.data().createdAt),
+        updatedAt: doc.data().updatedAt?.toDate?.() || new Date(doc.data().updatedAt),
+        currentPeriodStart: doc.data().currentPeriodStart?.toDate?.() || new Date(doc.data().currentPeriodStart),
+        currentPeriodEnd: doc.data().currentPeriodEnd?.toDate?.() || new Date(doc.data().currentPeriodEnd),
+        activatedAt: doc.data().activatedAt?.toDate?.() || (doc.data().activatedAt ? new Date(doc.data().activatedAt) : null),
+      };
+
+      this.setCache(cacheKey, subscription);
+      console.log('✅ [UnifiedDataService] Found subscription:', subscription.id);
+      
+      return subscription;
+    } catch (error: any) {
+      console.error('❌ [UnifiedDataService] Error fetching subscription:', error);
+      return null;
     }
   }
 

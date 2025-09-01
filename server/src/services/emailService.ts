@@ -484,6 +484,71 @@ export class EmailService {
     }
   }
 
+  /**
+   * Send subscription seeding email
+   */
+  static async sendSubscriptionSeedingEmail(user: any, data: {
+    tier: string;
+    initialLicenseCount: number;
+    maxLicenseCount: number;
+    licenses: any[];
+    subscriptionId: string;
+  }) {
+    try {
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping subscription seeding email');
+        return { success: true, messageId: null };
+      }
+
+      logger.info(`Sending subscription seeding email to ${user.email}`, {
+        userId: user.id,
+        tier: data.tier,
+        licenseCount: data.initialLicenseCount,
+      });
+
+      const emailContent = this.generateSubscriptionSeedingEmailContent({
+        userName: user.name,
+        userEmail: user.email,
+        tier: data.tier,
+        initialLicenseCount: data.initialLicenseCount,
+        maxLicenseCount: data.maxLicenseCount,
+        licenses: data.licenses,
+        subscriptionId: data.subscriptionId,
+        dashboardUrl: `${config.frontendUrl}/dashboard`,
+        accountUrl: `${config.frontendUrl}/account`,
+        supportUrl: `${config.frontendUrl}/support`,
+        companyName: config.resend.fromName,
+        companyEmail: config.resend.fromEmail,
+      });
+
+      const result = await this.sendEmail({
+        to: user.email,
+        from: config.resend.fromEmail,
+        fromName: config.resend.fromName,
+        subject: `Welcome to Dashboard v14 ${data.tier} Plan - Your Licenses Are Ready!`,
+        html: emailContent.html,
+        text: emailContent.text,
+        customArgs: {
+          userId: user.id,
+          subscriptionId: data.subscriptionId,
+          emailType: 'subscription_seeding',
+        },
+      });
+
+      if (result.success) {
+        logger.info(`Subscription seeding email sent successfully to ${user.email}`, {
+          messageId: result.messageId,
+          provider: result.provider,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to send subscription seeding email', error as any);
+      return { success: false, messageId: null, provider: 'resend_error', error };
+    }
+  }
+
   // Email content generators
 
   private static generateLicenseDeliveryEmailContent(data: any) {
@@ -1153,6 +1218,132 @@ Support: ${data.supportUrl}
 💡 Need help getting started? Our customer success team is ready to help you maximize your investment!
 
 Thank you for choosing our platform! We're excited to be part of your success story.
+
+- ${data.companyName}
+`;
+
+    return { html, text };
+  }
+
+  /**
+   * Generate subscription seeding email content
+   */
+  private static generateSubscriptionSeedingEmailContent(data: any) {
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Dashboard v14 ${data.tier} Plan</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
+        .container { max-width: 600px; margin: 0 auto; background-color: white; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; }
+        .license-card { background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .license-key { font-family: 'Courier New', monospace; font-size: 16px; font-weight: bold; color: #495057; background-color: #fff; padding: 8px; border: 2px dashed #007bff; border-radius: 4px; text-align: center; margin: 10px 0; }
+        .button { display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 10px 5px; }
+        .footer { background-color: #343a40; color: white; padding: 20px; text-align: center; font-size: 14px; }
+        .tier-badge { display: inline-block; padding: 4px 12px; background-color: #28a745; color: white; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Welcome to Dashboard v14!</h1>
+            <p>Your ${data.tier} plan is now active with ${data.initialLicenseCount} license(s)</p>
+        </div>
+        
+        <div class="content">
+            <h2>Hello ${data.userName}!</h2>
+            
+            <p>Welcome to Dashboard v14! Your <span class="tier-badge">${data.tier}</span> subscription has been successfully set up with ${data.initialLicenseCount} initial license(s).</p>
+            
+            <div style="background-color: #e7f3ff; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0;">
+                <h4>📊 Your Plan Details:</h4>
+                <ul>
+                    <li><strong>Plan:</strong> ${data.tier}</li>
+                    <li><strong>Initial Licenses:</strong> ${data.initialLicenseCount}</li>
+                    <li><strong>Maximum Licenses:</strong> ${data.maxLicenseCount}</li>
+                    <li><strong>Subscription ID:</strong> ${data.subscriptionId}</li>
+                </ul>
+            </div>
+
+            <h3>🔑 Your License Keys:</h3>
+            ${data.licenses.map((license: any, index: number) => `
+                <div class="license-card">
+                    <h4>License #${index + 1}</h4>
+                    <div class="license-key">${license.key}</div>
+                    <p><strong>Status:</strong> <span style="color: #28a745;">Active</span></p>
+                    <p><strong>Expires:</strong> ${license.expiresAt ? new Date(license.expiresAt).toLocaleDateString() : '12 months from now'}</p>
+                </div>
+            `).join('')}
+
+            <h3>🚀 Getting Started:</h3>
+            <ol style="margin: 20px 0;">
+                <li><strong>Access Your Dashboard:</strong> Start using your new licenses immediately</li>
+                <li><strong>Manage Licenses:</strong> Assign licenses to team members as needed</li>
+                <li><strong>Explore Features:</strong> Discover all the capabilities of your ${data.tier} plan</li>
+                <li><strong>Need More Seats?</strong> You can expand up to ${data.maxLicenseCount} total licenses</li>
+            </ol>
+
+            <div style="text-align: center; margin: 40px 0;">
+                <a href="${data.dashboardUrl}" class="button">🚀 Access Dashboard</a>
+                <a href="${data.accountUrl}" class="button">⚙️ Manage Account</a>
+            </div>
+
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+                <h4>💡 Need Help?</h4>
+                <p>Our support team is here to help you get the most out of Dashboard v14. Don't hesitate to reach out!</p>
+                <p><a href="${data.supportUrl}">Contact Support</a></p>
+            </div>
+
+            <p>Thank you for choosing Dashboard v14! We're excited to help you streamline your production management.</p>
+        </div>
+        
+        <div class="footer">
+            <p>Welcome aboard! 🚀</p>
+            <p>This email was sent by ${data.companyName}</p>
+            <p><a href="${data.accountUrl}">Manage Account</a> | <a href="${data.supportUrl}">Get Support</a></p>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    const text = `
+🎉 Welcome to Dashboard v14!
+
+Hello ${data.userName}!
+
+Welcome to Dashboard v14! Your ${data.tier} subscription has been successfully set up with ${data.initialLicenseCount} initial license(s).
+
+📊 YOUR PLAN DETAILS:
+- Plan: ${data.tier}
+- Initial Licenses: ${data.initialLicenseCount}
+- Maximum Licenses: ${data.maxLicenseCount}
+- Subscription ID: ${data.subscriptionId}
+
+🔑 YOUR LICENSE KEYS:
+${data.licenses.map((license: any, index: number) => `
+License #${index + 1}: ${license.key}
+Status: Active
+Expires: ${license.expiresAt ? new Date(license.expiresAt).toLocaleDateString() : '12 months from now'}
+`).join('\n')}
+
+🚀 GETTING STARTED:
+1. Access Your Dashboard - Start using your new licenses immediately
+2. Manage Licenses - Assign licenses to team members as needed
+3. Explore Features - Discover all the capabilities of your ${data.tier} plan
+4. Need More Seats? - You can expand up to ${data.maxLicenseCount} total licenses
+
+Dashboard: ${data.dashboardUrl}
+Account Settings: ${data.accountUrl}
+Support: ${data.supportUrl}
+
+💡 Need help? Our support team is here to help you get the most out of Dashboard v14!
+
+Thank you for choosing Dashboard v14! We're excited to help you streamline your production management.
 
 - ${data.companyName}
 `;

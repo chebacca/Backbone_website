@@ -12,6 +12,8 @@ export type AuditAction =
   | 'SUBSCRIPTION_CREATE'
   | 'SUBSCRIPTION_UPDATE'
   | 'SUBSCRIPTION_CANCEL'
+  | 'SUBSCRIPTION_SEEDING'
+  | 'SUBSCRIPTION_EXPANSION'
   | 'PAYMENT_PROCESS'
   | 'LICENSE_ACTIVATE'
   | 'LICENSE_DEACTIVATE'
@@ -434,6 +436,8 @@ export class ComplianceService {
       SUBSCRIPTION_CREATE: 'Financial Data',
       SUBSCRIPTION_UPDATE: 'Financial Data',
       SUBSCRIPTION_CANCEL: 'Financial Data',
+      SUBSCRIPTION_SEEDING: 'Financial Data',
+      SUBSCRIPTION_EXPANSION: 'Financial Data',
       PAYMENT_PROCESS: 'Financial Data',
       LICENSE_ACTIVATE: 'License Data',
       LICENSE_DEACTIVATE: 'License Data',
@@ -460,6 +464,8 @@ export class ComplianceService {
       SUBSCRIPTION_CREATE: 'Service Provision',
       SUBSCRIPTION_UPDATE: 'Service Provision',
       SUBSCRIPTION_CANCEL: 'Service Provision',
+      SUBSCRIPTION_SEEDING: 'Service Provision',
+      SUBSCRIPTION_EXPANSION: 'Service Provision',
       PAYMENT_PROCESS: 'Payment Processing',
       LICENSE_ACTIVATE: 'License Management',
       LICENSE_DEACTIVATE: 'License Management',
@@ -486,6 +492,8 @@ export class ComplianceService {
       SUBSCRIPTION_CREATE: 'Contract',
       SUBSCRIPTION_UPDATE: 'Contract',
       SUBSCRIPTION_CANCEL: 'Contract',
+      SUBSCRIPTION_SEEDING: 'Contract',
+      SUBSCRIPTION_EXPANSION: 'Contract',
       PAYMENT_PROCESS: 'Contract',
       LICENSE_ACTIVATE: 'Contract',
       LICENSE_DEACTIVATE: 'Contract',

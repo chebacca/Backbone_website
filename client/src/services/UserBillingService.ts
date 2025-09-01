@@ -7,7 +7,7 @@ import {
   getDoc,
   doc,
   orderBy,
-  limit as firestoreLimit,
+  limit as limit,
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
@@ -84,7 +84,7 @@ export class UserBillingService {
       const subscriptionsQuery = query(
         collection(db, COLLECTIONS.SUBSCRIPTIONS),
         where('firebaseUid', '==', firebaseUid),
-        firestoreLimit(10)
+        limit(10)
       );
 
       const subscriptionsSnapshot = await getDocs(subscriptionsQuery);
@@ -131,7 +131,7 @@ export class UserBillingService {
         throw new Error('No authenticated user');
       }
 
-      const limit = options.limit || 25;
+      const limitCount = options.limit || 25;
       console.log('🔍 [UserBillingService] Getting billing history for Firebase UID:', firebaseUid);
 
       const allInvoices: UserInvoice[] = [];
@@ -141,7 +141,7 @@ export class UserBillingService {
         let paymentsQuery = query(
           collection(db, COLLECTIONS.PAYMENTS),
           where('firebaseUid', '==', firebaseUid),
-          firestoreLimit(limit)
+          limit(limitCount)
         );
 
         const paymentsSnapshot = await getDocs(paymentsQuery);
@@ -184,7 +184,7 @@ export class UserBillingService {
         let invoicesQuery = query(
           collection(db, COLLECTIONS.INVOICES),
           where('firebaseUid', '==', firebaseUid),
-          firestoreLimit(limit)
+          limit(limitCount)
         );
 
         const invoicesSnapshot = await getDocs(invoicesQuery);

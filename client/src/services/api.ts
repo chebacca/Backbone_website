@@ -15,9 +15,11 @@ declare global {
 // Determine the base URL for API calls
 // Licensing website is ALWAYS in production mode (web-only)
 const getBaseURL = (): string => {
-  // Licensing website always uses production mode with Firebase hosting
-  // This works with Firebase hosting rewrites that route /api/* to Cloud Functions
-  return '/api';
+  // 🔥 PRODUCTION MODE: Use Cloud Run API endpoint
+  // This is a web-only Firebase project that uses Cloud Run for API calls
+  const apiUrl = 'https://api-oup5qxogca-uc.a.run.app/api';
+  console.log('[api] PRODUCTION MODE: Using Cloud Run API endpoint');
+  return apiUrl;
 };
 
 const baseURL = getBaseURL();

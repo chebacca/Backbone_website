@@ -49,7 +49,6 @@ const BillingPage = React.lazy(() => import('@/pages/dashboard/BillingPage'));
 const StreamlinedBillingPage = React.lazy(() => import('@/pages/dashboard/StreamlinedBillingPage'));
 const SettingsPage = React.lazy(() => import('@/pages/dashboard/SettingsPage'));
 const TeamPage = React.lazy(() => import('@/pages/dashboard/TeamPage'));
-// Removed StreamlinedTeamManagement import
 const TestStreamlinedHooks = React.lazy(() => import('@/components/TestStreamlinedHooks'));
 const DownloadsPage = React.lazy(() => import('@/pages/dashboard/DownloadsPage'));
 const DocumentationPage = React.lazy(() => import('@/pages/dashboard/DocumentationPage'));
@@ -214,7 +213,6 @@ function App() {
                   path="billing"
                   element={<StreamlinedBillingPage />}
                 />
-                {/* Use the original TeamPage, not StreamlinedTeamManagement */}
                 <Route path="team" element={<TeamPage />} />
                 <Route path="downloads" element={<DownloadsPage />} />
                 <Route path="settings" element={<SettingsPage />} />

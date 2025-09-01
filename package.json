@@ -33,6 +33,8 @@
     "seed:clear": "cd server && pnpm seed:clear",
     "seed:reset": "cd server && pnpm seed:reset",
     "seed:chris-mole": "cd server && pnpm seed:chris-mole",
+    "seed:licensing-structure": "cd server && node scripts/seed-licensing-structure.js",
+    "update-existing-users-licensing": "cd server && node dist/scripts/update-existing-users-licensing.js",
     "quick:build": "./build-licensing-website.sh",
     "quick:deploy": "./deploy-licensing-website.sh",
     "quick:build-deploy": "./build-and-deploy.sh",

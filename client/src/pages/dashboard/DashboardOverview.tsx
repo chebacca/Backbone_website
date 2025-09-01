@@ -55,6 +55,48 @@ import {
   orderBy, 
   limit 
 } from 'firebase/firestore';
+import MetricCard from '@/components/common/MetricCard';
+import { useOrganizationLicenses, useOrganizationTeamMembers } from '@/hooks/useStreamlinedData';
+
+// Utility function to safely convert Firestore dates
+const convertFirestoreDate = (value: any): Date | null => {
+  if (!value) return null;
+  
+  // If it's already a Date object
+  if (value instanceof Date) return value;
+  
+  // If it's a Firestore Timestamp with toDate method
+  if (value && typeof value === 'object' && typeof value.toDate === 'function') {
+    try {
+      return value.toDate();
+    } catch (error) {
+      console.warn('Failed to convert Firestore timestamp:', error);
+      return null;
+    }
+  }
+  
+  // If it's an ISO string
+  if (typeof value === 'string') {
+    try {
+      return new Date(value);
+    } catch (error) {
+      console.warn('Failed to parse date string:', error);
+      return null;
+    }
+  }
+  
+  // If it's a number (timestamp)
+  if (typeof value === 'number') {
+    try {
+      return new Date(value);
+    } catch (error) {
+      console.warn('Failed to convert timestamp number:', error);
+      return null;
+    }
+  }
+  
+  return null;
+};
 
 // ============================================================================
 // TYPES
@@ -116,6 +158,10 @@ const DashboardOverview: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   
+  // 🚀 STREAMLINED: Use organization license and team data hooks
+  const { data: licenses, loading: licensesLoading } = useOrganizationLicenses();
+  const { data: teamMembersData, loading: teamMembersLoading } = useOrganizationTeamMembers();
+  
   // State for data
   const [currentUser, setCurrentUser] = useState<DashboardUser | null>(null);
   const [organization, setOrganization] = useState<DashboardOrganization | null>(null);
@@ -126,33 +172,7 @@ const DashboardOverview: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔍 DEBUG: Add this logging to see what's happening
-  useEffect(() => {
-    console.log('🔍 [DashboardOverview] State Debug:', {
-      authLoading,
-      loading,
-      user,
-      isAuthenticated,
-      currentUser,
-      organization,
-      projects,
-      teamMembers
-    });
-  }, [authLoading, loading, user, isAuthenticated, currentUser, organization, projects, teamMembers]);
-
-  // 🔍 DEBUG: Add this logging to see what's happening
-  useEffect(() => {
-    console.log('🔍 [DashboardOverview] State Debug:', {
-      authLoading,
-      loading,
-      user,
-      isAuthenticated,
-      currentUser,
-      organization,
-      projects,
-      teamMembers
-    });
-  }, [authLoading, loading, user, isAuthenticated, currentUser, organization, projects, teamMembers]);
+  // 🔍 DEBUG: Removed duplicate debug logging for cleaner console output
 
   // ============================================================================
   // DATA FETCHING
@@ -166,12 +186,7 @@ const DashboardOverview: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        console.log('🔍 [DashboardOverview] Fetching data for user:', {
-          userId: user.id,
-          firebaseUid: user.firebaseUid,
-          organizationId: user.organizationId,
-          email: user.email
-        });
+        // Fetching data for authenticated user
 
         // Get current user data from Firestore using Firebase UID
         const firebaseUid = user.firebaseUid || user.id;
@@ -181,8 +196,8 @@ const DashboardOverview: React.FC = () => {
           setCurrentUser({
             id: userDoc.id,
             ...userData,
-            createdAt: userData.createdAt?.toDate() || new Date(),
-            updatedAt: userData.updatedAt?.toDate() || new Date(),
+            createdAt: convertFirestoreDate(userData.createdAt) || new Date(),
+            updatedAt: convertFirestoreDate(userData.updatedAt) || new Date(),
           } as DashboardUser);
         }
 
@@ -194,15 +209,15 @@ const DashboardOverview: React.FC = () => {
             setOrganization({
               id: orgDoc.id,
               ...orgData,
-              createdAt: orgData.createdAt?.toDate() || new Date(),
-              updatedAt: orgData.updatedAt?.toDate() || new Date(),
+              createdAt: convertFirestoreDate(orgData.createdAt) || new Date(),
+              updatedAt: convertFirestoreDate(orgData.updatedAt) || new Date(),
             } as DashboardOrganization);
           }
         }
 
         // Get projects for the user's organization
         if (user.organizationId) {
-          console.log('🔍 [DashboardOverview] Querying projects for organizationId:', user.organizationId);
+                      // Querying projects for organization
           try {
             const projectsQuery = query(
               collection(db, 'projects'),
@@ -215,8 +230,8 @@ const DashboardOverview: React.FC = () => {
             const projectsData = projectsSnapshot.docs.map(doc => ({
               id: doc.id,
               ...doc.data(),
-              createdAt: doc.data().createdAt?.toDate() || new Date(),
-              updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+              createdAt: convertFirestoreDate(doc.data().createdAt) || new Date(),
+              updatedAt: convertFirestoreDate(doc.data().updatedAt) || new Date(),
             } as DashboardProject));
             setProjects(projectsData);
           } catch (projectsError) {
@@ -227,7 +242,7 @@ const DashboardOverview: React.FC = () => {
 
         // Get team members for the organization
         if (user.organizationId) {
-          console.log('🔍 [DashboardOverview] Querying team members for organizationId:', user.organizationId);
+                      // Querying team members for organization
           try {
             const teamQuery = query(
               collection(db, 'teamMembers'),
@@ -239,8 +254,8 @@ const DashboardOverview: React.FC = () => {
             const teamData = teamSnapshot.docs.map(doc => ({
               id: doc.id,
               ...doc.data(),
-              createdAt: doc.data().createdAt?.toDate() || new Date(),
-              updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+              createdAt: convertFirestoreDate(doc.data().createdAt) || new Date(),
+              updatedAt: convertFirestoreDate(doc.data().updatedAt) || new Date(),
             } as DashboardUser));
             setTeamMembers(teamData);
           } catch (teamError) {
@@ -280,9 +295,9 @@ const DashboardOverview: React.FC = () => {
       };
     }
 
-    // Calculate license metrics
-    const activeLicenses = currentUser.status === 'ACTIVE' ? 1 : 0;
-    const totalLicenses = 1; // Each user has one license
+    // 🎫 Calculate license metrics from actual organization license data
+    const totalLicenses = licenses?.length || 0;
+    const activeLicenses = licenses?.filter(l => l.status === 'ACTIVE').length || 0;
     const licenseUtilization = totalLicenses > 0 ? (activeLicenses / totalLicenses) * 100 : 0;
 
     // Calculate usage metrics
@@ -295,7 +310,7 @@ const DashboardOverview: React.FC = () => {
     }, 0);
 
     // Organization metrics
-    const teamMemberCount = teamMembers.length;
+    const teamMemberCount = teamMembersData?.length || teamMembers.length;
     const projectCount = projects.length;
 
     // Plan information
@@ -317,7 +332,7 @@ const DashboardOverview: React.FC = () => {
       teamMemberCount,
       licenseUtilization,
     };
-  }, [currentUser, organization, projects, teamMembers]);
+  }, [currentUser, organization, projects, teamMembers, licenses, teamMembersData]);
 
   // User role detection
   const userRole = useMemo(() => {
@@ -455,116 +470,65 @@ const DashboardOverview: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Quick Stats Grid */}
+      {/* Analytics Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {/* Active Licenses */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" gutterBottom variant="body2">
-                    Active Licenses
-                  </Typography>
-                  <Typography variant="h4">
-                    {metrics.activeLicenses}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    of {metrics.totalLicenses} total
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'primary.main' }}>
-                  <CardMembership />
-                </Avatar>
-              </Box>
-              {metrics.totalLicenses > 0 && (
-                <Box sx={{ mt: 2 }}>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={metrics.licenseUtilization} 
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {metrics.licenseUtilization.toFixed(1)}% utilization
-                  </Typography>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
+          <MetricCard
+            title="Active Licenses"
+            value={`${metrics.activeLicenses}/${metrics.totalLicenses}`}
+            icon={<CardMembership />}
+            color="primary"
+          />
         </Grid>
-
-        {/* Projects */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" gutterBottom variant="body2">
-                    Projects
-                  </Typography>
-                  <Typography variant="h4">
-                    {metrics.projectCount}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    active projects
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'success.main' }}>
-                  <Assessment />
-                </Avatar>
-              </Box>
-            </CardContent>
-          </Card>
+          <MetricCard
+            title="Projects"
+            value={metrics.projectCount.toString()}
+            icon={<Assessment />}
+            color="success"
+          />
         </Grid>
-
-        {/* Team Members */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" gutterBottom variant="body2">
-                    Team Members
-                  </Typography>
-                  <Typography variant="h4">
-                    {metrics.teamMemberCount}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    in organization
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'info.main' }}>
-                  <People />
-                </Avatar>
-              </Box>
-            </CardContent>
-          </Card>
+          <MetricCard
+            title="Team Members"
+            value={metrics.teamMemberCount.toString()}
+            icon={<People />}
+            color="secondary"
+          />
         </Grid>
-
-        {/* Monthly Usage */}
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" gutterBottom variant="body2">
-                    Monthly Usage
-                  </Typography>
-                  <Typography variant="h4">
-                    {metrics.monthlyUsage.toLocaleString()}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    API calls
-                  </Typography>
-                </Box>
-                <Avatar sx={{ bgcolor: 'warning.main' }}>
-                  <TrendingUp />
-                </Avatar>
-              </Box>
-            </CardContent>
-          </Card>
+          <MetricCard
+            title="Monthly Usage"
+            value={metrics.monthlyUsage.toLocaleString()}
+            icon={<TrendingUp />}
+            color="warning"
+          />
         </Grid>
       </Grid>
+
+      {/* License Utilization Progress */}
+      {metrics.totalLicenses > 0 && (
+        <Card sx={{ mb: 4 }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              License Utilization
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+              <LinearProgress 
+                variant="determinate" 
+                value={metrics.licenseUtilization} 
+                sx={{ flex: 1, height: 8, borderRadius: 4 }}
+              />
+              <Typography variant="body2" sx={{ minWidth: 60 }}>
+                {metrics.licenseUtilization.toFixed(1)}%
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              {metrics.activeLicenses} of {metrics.totalLicenses} licenses are currently active
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Action Cards Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

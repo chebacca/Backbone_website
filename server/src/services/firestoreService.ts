@@ -379,6 +379,13 @@ export class FirestoreService {
     return { id: doc.id, ...doc.data() } as FirestoreUser;
   }
 
+  async getUserByFirebaseUid(firebaseUid: string): Promise<FirestoreUser | null> {
+    const snapshot = await db.collection('users').where('firebaseUid', '==', firebaseUid).limit(1).get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { id: doc.id, ...doc.data() } as FirestoreUser;
+  }
+
   async updateUser(id: string, updates: Partial<FirestoreUser>): Promise<void> {
     await db.collection('users').doc(id).update({
       ...updates,
@@ -2117,8 +2124,14 @@ export class FirestoreService {
       if (userSnap.exists) {
         const userData = userSnap.data();
         
-        // Only return if this is a team member
-        if (userData?.role === 'TEAM_MEMBER') {
+        // 🔧 FIXED: Check for team members using multiple criteria
+        const isTeamMember = userData?.isTeamMember === true || 
+                           userData?.userType === 'TEAM_MEMBER' || 
+                           userData?.role === 'TEAM_MEMBER' ||
+                           userData?.role === 'member' ||
+                           userData?.role === 'admin';
+        
+        if (isTeamMember) {
           // Generate a better display name
           let displayName = userData.name;
           if (!displayName) {

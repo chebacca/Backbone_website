@@ -2,7 +2,7 @@
  * TeamMemberService - Handles all team member-related operations
  */
 import { BaseService } from './base/BaseService';
-import { ProjectTeamMember, ServiceConfig, TeamMember, TeamMemberRole } from './models/types';
+import { ProjectTeamMember, ServiceConfig, TeamMember, TeamMemberRole, TeamMemberStatus } from './models/types';
 
 export class TeamMemberService extends BaseService {
   private static instance: TeamMemberService;
@@ -346,39 +346,83 @@ export class TeamMemberService extends BaseService {
 
       console.log('🏢 [TeamMemberService] Fetching team members for organization:', organizationId);
 
-      // Query team members for the organization with status filter
-      const teamMembers = await this.firestoreAdapter.queryDocuments<TeamMember>('teamMembers', [
-        { field: 'organizationId', operator: '==', value: organizationId }
-      ]);
+      // 🚀 ENHANCED: Use UnifiedDataService for comprehensive team member fetching
+      console.log('🔍 [TeamMemberService] Using UnifiedDataService for enhanced team member fetching...');
       
-      console.log(`🔍 [TeamMemberService] Raw team members found: ${teamMembers.length}`);
+      let activeMembers: TeamMember[] = [];
       
-      // Filter for ACTIVE team members only - exclude revoked, removed, suspended, etc.
-      const activeMembers = teamMembers.filter(member => {
-        const status = member.status?.toUpperCase?.() || member.status || 'UNKNOWN';
+      try {
+        // Import UnifiedDataService dynamically to avoid circular dependencies
+        const { unifiedDataService } = await import('./UnifiedDataService');
         
-        // Only include ACTIVE members (handle both uppercase and lowercase)
-        if (status !== 'ACTIVE' && status !== 'active') {
-          console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with status: ${status}`);
-          return false;
-        }
+        // Get all team members from the organization using the enhanced fetching logic
+        const streamlinedTeamMembers = await unifiedDataService.getTeamMembersForOrganization();
         
-        // Additional safety checks
-        if (member.isActive === false) {
-          console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with isActive: false`);
-          return false;
-        }
+        console.log(`📊 [TeamMemberService] Found ${streamlinedTeamMembers.length} team members from UnifiedDataService`);
         
-        // Check if member has been revoked or removed
-        if (member.revokedAt || member.removedAt || member.suspendedAt) {
-          console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with revocation/removal dates`);
-          return false;
-        }
+        // Convert StreamlinedTeamMember to TeamMember format
+        activeMembers = streamlinedTeamMembers
+          .filter((stm: any) => stm.status === 'active') // Only active members
+          .map((stm: any) => ({
+            id: stm.id,
+            email: stm.email,
+            firstName: stm.firstName,
+            lastName: stm.lastName,
+            name: `${stm.firstName} ${stm.lastName}`.trim() || stm.email,
+            role: stm.role as any,
+            status: TeamMemberStatus.ACTIVE, // Use proper enum value
+            department: stm.department,
+            organizationId: stm.organization.id,
+            licenseType: stm.licenseAssignment?.licenseType || 'BASIC',
+            assignedProjects: stm.assignedProjects,
+            createdAt: stm.createdAt.toISOString(),
+            updatedAt: stm.updatedAt.toISOString(),
+            // Additional fields for compatibility
+            isActive: true,
+            joinedAt: stm.joinedAt.toISOString(),
+            lastActive: stm.lastActive?.toISOString(),
+            invitedBy: stm.invitedBy,
+            avatar: stm.avatar
+          }));
         
-        return true;
-      });
-      
-      console.log(`✅ [TeamMemberService] Active team members after filtering: ${activeMembers.length}`);
+        console.log(`✅ [TeamMemberService] Converted ${activeMembers.length} active team members from UnifiedDataService`);
+      } catch (unifiedError) {
+        console.warn('⚠️ [TeamMemberService] UnifiedDataService failed, falling back to direct Firestore query:', unifiedError);
+        
+        // Fallback to original logic
+        const teamMembers = await this.firestoreAdapter.queryDocuments<TeamMember>('teamMembers', [
+          { field: 'organizationId', operator: '==', value: organizationId }
+        ]);
+        
+        console.log(`🔍 [TeamMemberService] Raw team members found: ${teamMembers.length}`);
+        
+        // Filter for ACTIVE team members only - exclude revoked, removed, suspended, etc.
+        activeMembers = teamMembers.filter(member => {
+          const status = member.status?.toUpperCase?.() || member.status || 'UNKNOWN';
+          
+          // Only include ACTIVE members (handle both uppercase and lowercase)
+          if (status !== 'ACTIVE' && status !== 'active') {
+            console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with status: ${status}`);
+            return false;
+          }
+          
+          // Additional safety checks
+          if (member.isActive === false) {
+            console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with isActive: false`);
+            return false;
+          }
+          
+          // Check if member has been revoked or removed
+          if (member.revokedAt || member.removedAt || member.suspendedAt) {
+            console.log(`⚠️ [TeamMemberService] Excluding team member ${member.email} with revocation/removal dates`);
+            return false;
+          }
+          
+          return true;
+        });
+        
+        console.log(`✅ [TeamMemberService] Active team members after filtering: ${activeMembers.length}`);
+      }
       
       // Get already assigned team members for the project (if excludeProjectId is provided)
       let assignedMemberIds: string[] = [];

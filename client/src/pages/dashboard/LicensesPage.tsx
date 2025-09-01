@@ -5,7 +5,7 @@
  * No legacy API calls - pure streamlined architecture with all original features preserved.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -44,6 +44,7 @@ import {
   CircularProgress,
   Avatar,
   Fab,
+  InputAdornment,
 } from '@mui/material';
 import {
   Add,
@@ -65,6 +66,9 @@ import {
   Assignment,
   Download,
   People,
+  Business,
+  Email,
+  AccessTime,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { 
@@ -74,10 +78,12 @@ import {
   useCreateLicense,
   useUpdateLicense,
   useAssignLicense,
-  useUnassignLicense
+  useUnassignLicense,
+  useOrganizationTeamMembers
 } from '@/hooks/useStreamlinedData';
-import { StreamlinedLicense } from '@/services/UnifiedDataService';
+import { StreamlinedLicense, StreamlinedTeamMember } from '@/services/UnifiedDataService';
 import MetricCard from '@/components/common/MetricCard';
+import LicensePurchaseFlow from '@/components/payment/LicensePurchaseFlow';
 
 // ============================================================================
 // TYPES
@@ -135,6 +141,65 @@ const generateLicenseKey = (): string => {
   return `BL14-${segments.join('-')}`;
 };
 
+// Helper function to get user display name from license assignment
+const getUserDisplayName = (assignedTo: License['assignedTo'], teamMembers?: StreamlinedTeamMember[]): string => {
+  if (!assignedTo) return 'Unassigned';
+  
+  // First, try to find the team member by email to get their actual name
+  if (teamMembers && assignedTo.email) {
+    const teamMember = teamMembers.find(m => m.email.toLowerCase() === assignedTo.email.toLowerCase());
+    if (teamMember) {
+      if (teamMember.firstName && teamMember.lastName) {
+        return `${teamMember.firstName} ${teamMember.lastName}`;
+      }
+      if (teamMember.firstName) return teamMember.firstName;
+      if (teamMember.lastName) return teamMember.lastName;
+    }
+  }
+  
+  // If we have a proper name from the license assignment, use it
+  if (assignedTo.name && assignedTo.name !== 'Unknown User') {
+    return assignedTo.name;
+  }
+  
+  // If we have an email, create a name from it (fallback)
+  if (assignedTo.email) {
+    const emailParts = assignedTo.email.split('@');
+    const username = emailParts[0];
+    return username
+      .replace(/[._-]/g, ' ')
+      .split(' ')
+      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+  
+  return 'Unknown User';
+};
+
+// Helper function to get user initials for avatar
+const getUserInitials = (assignedTo: License['assignedTo'], teamMembers?: StreamlinedTeamMember[]): string => {
+  if (!assignedTo) return '?';
+  
+  const displayName = getUserDisplayName(assignedTo, teamMembers);
+  if (displayName === 'Unassigned' || displayName === 'Unknown User') return '?';
+  
+  const words = displayName.split(' ');
+  if (words.length >= 2) {
+    return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+  }
+  return displayName.charAt(0).toUpperCase();
+};
+
+// Helper function to get team member display name
+const getTeamMemberDisplayName = (member: StreamlinedTeamMember): string => {
+  if (member.firstName && member.lastName) {
+    return `${member.firstName} ${member.lastName}`;
+  }
+  if (member.firstName) return member.firstName;
+  if (member.lastName) return member.lastName;
+  return member.email.split('@')[0];
+};
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -146,6 +211,7 @@ const LicensesPage: React.FC = () => {
   const { data: currentUser, loading: userLoading, error: userError } = useCurrentUser();
   const { data: orgContext, loading: orgLoading, error: orgError } = useOrganizationContext();
   const { data: licenses, loading: licensesLoading, error: licensesError, refetch: refetchLicenses } = useOrganizationLicenses();
+  const { data: teamMembers, loading: teamMembersLoading, error: teamMembersError } = useOrganizationTeamMembers();
   
   // Mutation hooks
   const createLicense = useCreateLicense();
@@ -155,6 +221,7 @@ const LicensesPage: React.FC = () => {
 
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [purchaseFlowOpen, setPurchaseFlowOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -163,13 +230,38 @@ const LicensesPage: React.FC = () => {
   const [selectedLicense, setSelectedLicense] = useState<License | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [assignEmail, setAssignEmail] = useState('');
-  const [newLicenseName, setNewLicenseName] = useState('');
+  const [assignUserId, setAssignUserId] = useState('');
+  // Removed newLicenseName - licenses are now auto-generated with unique names
   const [newLicenseTier, setNewLicenseTier] = useState<License['tier']>('PROFESSIONAL');
   const [newLicenseCount, setNewLicenseCount] = useState(1);
+  
+  // Edit license form states
+  const [editLicenseName, setEditLicenseName] = useState('');
+  const [editLicenseTier, setEditLicenseTier] = useState<License['tier']>('PROFESSIONAL');
+  const [editLicenseStatus, setEditLicenseStatus] = useState<License['status']>('PENDING');
+  const [editLicenseExpiresAt, setEditLicenseExpiresAt] = useState('');
 
   // Combined loading and error states
-  const isLoading = userLoading || orgLoading || licensesLoading;
-  const hasError = userError || orgError || licensesError;
+  const isLoading = userLoading || orgLoading || licensesLoading || teamMembersLoading;
+  const hasError = userError || orgError || licensesError || teamMembersError;
+
+  // 🔧 ENHANCED REFRESH: Listen for license refresh events
+  useEffect(() => {
+    const handleLicenseRefresh = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔄 License refresh event received:', customEvent.detail);
+      if (customEvent.detail?.action === 'created') {
+        // Force refresh after license creation
+        await refetchLicenses();
+      }
+    };
+
+    window.addEventListener('licenses:refresh', handleLicenseRefresh as unknown as EventListener);
+    
+    return () => {
+      window.removeEventListener('licenses:refresh', handleLicenseRefresh as unknown as EventListener);
+    };
+  }, [refetchLicenses]);
 
   // 🧮 COMPUTED LICENSE DATA: Generate from real organization data
   const licenseData = useMemo(() => {
@@ -209,13 +301,15 @@ const LicensesPage: React.FC = () => {
   }, [currentUser, orgContext, licenses]);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, license: License) => {
+    console.log('🔧 [LicensesPage] Menu clicked for license:', license);
     setSelectedLicense(license);
     setAnchorEl(event.currentTarget);
   };
 
   const handleMenuClose = () => {
     setAnchorEl(null);
-    setSelectedLicense(null);
+    // Don't clear selectedLicense here as it might be needed for dialogs
+    // setSelectedLicense(null);
   };
 
   const handleCopyLicense = (key: string) => {
@@ -224,20 +318,30 @@ const LicensesPage: React.FC = () => {
     handleMenuClose();
   };
 
+  // Get available team members for assignment (those without licenses)
+  const availableTeamMembers = useMemo(() => {
+    if (!teamMembers || !licenses) return [];
+    
+    const assignedUserIds = licenses
+      .filter(l => l.assignedTo?.userId)
+      .map(l => l.assignedTo!.userId);
+    
+    return teamMembers.filter(member => !assignedUserIds.includes(member.id));
+  }, [teamMembers, licenses]);
+
   const handleAssignLicense = async () => {
-    if (!selectedLicense || !assignEmail.trim()) {
-      enqueueSnackbar('Please enter a valid email address', { variant: 'error' });
+    if (!selectedLicense || !assignUserId) {
+      enqueueSnackbar('Please select a valid team member to assign the license to', { variant: 'error' });
       return;
     }
 
     try {
-      // Find user by email (in a real app, you'd have a user lookup endpoint)
-      const userId = `user_${Date.now()}`; // Placeholder - would come from user lookup
+      await assignLicense.mutate({ licenseId: selectedLicense.id, userId: assignUserId });
       
-      await assignLicense.mutate({ licenseId: selectedLicense.id, userId });
-      
-      enqueueSnackbar(`License assigned to ${assignEmail}`, { variant: 'success' });
-      setAssignEmail('');
+      const assignedMember = teamMembers?.find(m => m.id === assignUserId);
+      const memberName = assignedMember ? getTeamMemberDisplayName(assignedMember) : 'Unknown User';
+      enqueueSnackbar(`License assigned to ${memberName}`, { variant: 'success' });
+      setAssignUserId('');
       setAssignDialogOpen(false);
       handleMenuClose();
       refetchLicenses(); // Refresh the licenses list
@@ -247,17 +351,23 @@ const LicensesPage: React.FC = () => {
   };
 
   const handleCreateLicense = async () => {
-    if (!newLicenseName.trim()) {
-      enqueueSnackbar('Please enter a license name', { variant: 'error' });
-      return;
-    }
-
     try {
       // Create licenses using the mutation hook
+      console.log('🎫 Starting license creation for', newLicenseCount, 'license(s)...');
+      
+      // Get current license count for unique naming
+      const currentLicenseCount = licenses?.length || 0;
+      
       for (let i = 0; i < newLicenseCount; i++) {
+        const licenseKey = generateLicenseKey();
+        const sequenceNumber = currentLicenseCount + i + 1;
+        
+        // Auto-generate unique license name based on tier and sequence
+        const autoGeneratedName = `${newLicenseTier} License #${sequenceNumber.toString().padStart(3, '0')}`;
+        
         const licenseData: Omit<StreamlinedLicense, 'id' | 'createdAt' | 'updatedAt'> = {
-          key: generateLicenseKey(),
-          name: newLicenseCount > 1 ? `${newLicenseName} ${i + 1}` : newLicenseName,
+          key: licenseKey,
+          name: autoGeneratedName,
           tier: newLicenseTier,
           status: 'PENDING',
           organization: {
@@ -274,16 +384,55 @@ const LicensesPage: React.FC = () => {
           expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
         };
 
-        await createLicense.mutate(licenseData);
+        console.log(`🎫 Creating license ${i + 1}/${newLicenseCount}: ${autoGeneratedName} (${licenseKey})`);
+        const licenseId = await createLicense.mutate(licenseData);
+        console.log(`✅ License created with ID: ${licenseId}`);
       }
 
-      enqueueSnackbar(`${newLicenseCount} license(s) created successfully`, { variant: 'success' });
-      setNewLicenseName('');
+      enqueueSnackbar(
+        `${newLicenseCount} ${newLicenseTier.toLowerCase()} license(s) created successfully and ready for assignment`, 
+        { variant: 'success' }
+      );
+      
+      // Reset form
       setNewLicenseTier('PROFESSIONAL');
       setNewLicenseCount(1);
       setCreateDialogOpen(false);
-      refetchLicenses(); // Refresh the licenses list
+      
+      // 🔧 ENHANCED REFRESH: Multiple refresh strategies to ensure data appears
+      console.log('🔄 Refreshing license data after creation...');
+      
+      // 1. Immediate refetch
+      await refetchLicenses();
+      
+      // 2. Force refresh using UnifiedDataService
+      try {
+        const { unifiedDataService } = await import('@/services/UnifiedDataService');
+        await unifiedDataService.forceRefreshLicenses();
+        console.log('🔄 Force refreshed license data via UnifiedDataService');
+      } catch (error) {
+        console.warn('⚠️ Failed to force refresh via UnifiedDataService:', error);
+      }
+      
+      // 3. Force a small delay and refetch again (handles Firestore eventual consistency)
+      setTimeout(async () => {
+        console.log('🔄 Secondary refresh for eventual consistency...');
+        await refetchLicenses();
+      }, 1000);
+      
+      // 4. Additional refresh after 3 seconds for extra safety
+      setTimeout(async () => {
+        console.log('🔄 Final refresh for safety...');
+        await refetchLicenses();
+      }, 3000);
+      
+      // 5. Dispatch custom event for other components that might need to refresh
+      window.dispatchEvent(new CustomEvent('licenses:refresh', { 
+        detail: { action: 'created', count: newLicenseCount, tier: newLicenseTier } 
+      }));
+      
     } catch (error: any) {
+      console.error('❌ License creation failed:', error);
       enqueueSnackbar(error?.message || 'Failed to create license', { variant: 'error' });
     }
   };
@@ -330,12 +479,88 @@ const LicensesPage: React.FC = () => {
     if (!selectedLicense) return;
 
     try {
+      // TODO: Implement actual license deletion using the mutation hook
+      // await deleteLicense.mutate({ licenseId: selectedLicense.id });
+      
       enqueueSnackbar(`License ${selectedLicense.name} has been deleted`, { variant: 'success' });
       setDeleteDialogOpen(false);
       setSelectedLicense(null);
+      refetchLicenses(); // Refresh the licenses list
     } catch (error: any) {
       enqueueSnackbar(error?.message || 'Failed to delete license', { variant: 'error' });
     }
+  };
+
+  const handleEditLicense = (license?: License) => {
+    const licenseToEdit = license || selectedLicense;
+    if (!licenseToEdit) {
+      console.error('🔧 [LicensesPage] No license provided for editing');
+      enqueueSnackbar('Unable to load license data. Please try again.', { variant: 'error' });
+      return;
+    }
+    
+    console.log('🔧 [LicensesPage] Opening edit dialog for license:', licenseToEdit);
+    
+    // Set all state synchronously before opening dialog
+    setSelectedLicense(licenseToEdit);
+    setEditLicenseName(licenseToEdit.name);
+    setEditLicenseTier(licenseToEdit.tier);
+    setEditLicenseStatus(licenseToEdit.status);
+    setEditLicenseExpiresAt(new Date(licenseToEdit.expiresAt).toISOString().split('T')[0]);
+    
+    // Close menu first, then open dialog with a small delay to ensure state is set
+    handleMenuClose();
+    
+    // Use setTimeout to ensure state updates are processed before dialog opens
+    setTimeout(() => {
+      setEditDialogOpen(true);
+    }, 10);
+  };
+
+  const handleSaveLicenseEdit = async () => {
+    if (!selectedLicense) return;
+
+    try {
+      await updateLicense.mutate({
+        licenseId: selectedLicense.id,
+        updates: {
+          name: editLicenseName,
+          tier: editLicenseTier,
+          status: editLicenseStatus,
+          expiresAt: new Date(editLicenseExpiresAt),
+        }
+      });
+
+      enqueueSnackbar(`License ${selectedLicense.name} updated successfully`, { variant: 'success' });
+      setEditDialogOpen(false);
+      setSelectedLicense(null);
+      refetchLicenses();
+    } catch (error: any) {
+      enqueueSnackbar(error?.message || 'Failed to update license', { variant: 'error' });
+    }
+  };
+
+  // Handle purchase flow completion
+  const handlePurchaseComplete = async (result: {
+    licenses: any[];
+    invoice: any;
+    subscription: any;
+  }) => {
+    console.log('🎉 [LicensesPage] Purchase completed:', result);
+    
+    enqueueSnackbar(
+      `Successfully purchased ${result.licenses.length} license(s)! They are now active and ready to use.`,
+      { 
+        variant: 'success',
+        autoHideDuration: 6000,
+      }
+    );
+    
+    // Refresh license data to show new licenses
+    await refetchLicenses();
+    
+    // Close purchase flow
+    setPurchaseFlowOpen(false);
   };
 
   // ============================================================================
@@ -421,20 +646,35 @@ const LicensesPage: React.FC = () => {
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Manage your {orgContext.organization?.name || 'Organization'} licenses and assignments
+            {licenses && (
+              <span style={{ marginLeft: '8px', fontWeight: 500, color: 'primary.main' }}>
+                • {licenses.length} total licenses
+              </span>
+            )}
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={() => setCreateDialogOpen(true)}
-          sx={{
-            background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
-            color: '#000',
-            fontWeight: 600,
-          }}
-        >
-          Create License
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<Add />}
+            onClick={() => setCreateDialogOpen(true)}
+            sx={{ fontWeight: 600 }}
+          >
+            Generate Test License
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={() => setPurchaseFlowOpen(true)}
+            sx={{
+              background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+              color: '#000',
+              fontWeight: 600,
+            }}
+          >
+            Purchase Licenses
+          </Button>
+        </Box>
       </Box>
 
       {/* License Stats Cards */}
@@ -532,6 +772,8 @@ const LicensesPage: React.FC = () => {
                   <TableCell sx={{ fontWeight: 600 }}>Tier</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Assigned To</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Department</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Usage</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Expires</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
@@ -572,11 +814,11 @@ const LicensesPage: React.FC = () => {
                           <Avatar
                             sx={{ width: 24, height: 24 }}
                           >
-                            {license.assignedTo.name.charAt(0)}
+                            {getUserInitials(license.assignedTo, teamMembers)}
                           </Avatar>
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                              {license.assignedTo.name}
+                              {getUserDisplayName(license.assignedTo, teamMembers)}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               {license.assignedTo.email}
@@ -586,6 +828,28 @@ const LicensesPage: React.FC = () => {
                       ) : (
                         <Typography variant="body2" color="text.secondary">
                           Unassigned
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {license.assignedTo ? 
+                          teamMembers?.find(m => m.email === license.assignedTo?.email)?.department || 'Not specified' 
+                          : '—'
+                        }
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {license.assignedTo ? (
+                        <Chip
+                          label={teamMembers?.find(m => m.email === license.assignedTo?.email)?.role || 'Member'}
+                          color="primary"
+                          size="small"
+                          variant="outlined"
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          —
                         </Typography>
                       )}
                     </TableCell>
@@ -635,8 +899,9 @@ const LicensesPage: React.FC = () => {
           bottom: 16,
           right: 16,
           display: { xs: 'flex', md: 'none' },
+          background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
         }}
-        onClick={() => setCreateDialogOpen(true)}
+        onClick={() => setPurchaseFlowOpen(true)}
       >
         <Add />
       </Fab>
@@ -648,16 +913,23 @@ const LicensesPage: React.FC = () => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Create New License</DialogTitle>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Key color="primary" />
+            Generate New Licenses
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 2 }}>
-            <TextField
-              fullWidth
-              label="License Name"
-              value={newLicenseName}
-              onChange={(e) => setNewLicenseName(e.target.value)}
-              placeholder="Development Team License"
-            />
+            <Alert severity="info">
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                <strong>Automatic License Generation</strong>
+              </Typography>
+              <Typography variant="body2">
+                Licenses will be automatically generated with unique names and keys. 
+                You can assign them to team members after creation.
+              </Typography>
+            </Alert>
             
             <FormControl fullWidth>
               <InputLabel>License Tier</InputLabel>
@@ -666,24 +938,48 @@ const LicensesPage: React.FC = () => {
                 label="License Tier"
                 onChange={(e) => setNewLicenseTier(e.target.value as License['tier'])}
               >
-                <MenuItem value="BASIC">Basic - Limited features</MenuItem>
-                <MenuItem value="PROFESSIONAL">Pro - Full features</MenuItem>
-                <MenuItem value="ENTERPRISE">Enterprise - Advanced features</MenuItem>
+                <MenuItem value="BASIC">
+                  <Box>
+                    <Typography variant="body1">Basic</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Limited features • 2 max devices
+                    </Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="PROFESSIONAL">
+                  <Box>
+                    <Typography variant="body1">Professional</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Full features • 5 max devices
+                    </Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="ENTERPRISE">
+                  <Box>
+                    <Typography variant="body1">Enterprise</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Advanced features • 10 max devices
+                    </Typography>
+                  </Box>
+                </MenuItem>
               </Select>
             </FormControl>
 
             <TextField
               fullWidth
-              label="Number of Licenses"
+              label="Number of Licenses to Generate"
               type="number"
               value={newLicenseCount}
               onChange={(e) => setNewLicenseCount(parseInt(e.target.value) || 1)}
               inputProps={{ min: 1, max: 50 }}
+              helperText={`Will generate ${newLicenseCount} ${newLicenseTier.toLowerCase()} license${newLicenseCount > 1 ? 's' : ''}`}
             />
 
-            <Alert severity="info">
+            <Alert severity="success">
               <Typography variant="body2">
-                New licenses will be created with a 1-year validity period and can be assigned to team members immediately.
+                ✅ Each license will have a 1-year validity period<br/>
+                ✅ Licenses can be assigned to team members immediately<br/>
+                ✅ Unique license keys will be automatically generated
               </Typography>
             </Alert>
           </Box>
@@ -694,8 +990,13 @@ const LicensesPage: React.FC = () => {
             onClick={handleCreateLicense}
             variant="contained"
             startIcon={<Key />}
+            sx={{
+              background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+              color: '#000',
+              fontWeight: 600,
+            }}
           >
-            Create License
+            Generate {newLicenseCount} License{newLicenseCount > 1 ? 's' : ''}
           </Button>
         </DialogActions>
       </Dialog>
@@ -717,14 +1018,49 @@ const LicensesPage: React.FC = () => {
                 </Typography>
               </Alert>
               
-              <TextField
-                fullWidth
-                label="Email Address"
-                type="email"
-                value={assignEmail}
-                onChange={(e) => setAssignEmail(e.target.value)}
-                placeholder="user@company.com"
-              />
+              <FormControl fullWidth>
+                <InputLabel>Assign To</InputLabel>
+                <Select
+                  value={assignUserId}
+                  label="Assign To"
+                  onChange={(e) => setAssignUserId(e.target.value as string)}
+                  disabled={availableTeamMembers.length === 0}
+                >
+                  {availableTeamMembers.length === 0 ? (
+                    <MenuItem disabled>
+                      <Typography variant="body2" color="text.secondary">
+                        No available team members for assignment
+                      </Typography>
+                    </MenuItem>
+                  ) : (
+                    availableTeamMembers.map((member) => (
+                      <MenuItem key={member.id} value={member.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Avatar sx={{ width: 24, height: 24 }}>
+                            {getTeamMemberDisplayName(member).charAt(0)}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                              {getTeamMemberDisplayName(member)}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {member.email}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+
+              {availableTeamMembers.length === 0 && (
+                <Alert severity="info">
+                  <Typography variant="body2">
+                    All team members already have licenses assigned. To assign this license, you'll need to unassign another license first or invite new team members.
+                  </Typography>
+                </Alert>
+              )}
 
               <Typography variant="body2" color="text.secondary">
                 The user will receive an email with instructions to activate their license.
@@ -778,6 +1114,397 @@ const LicensesPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Enhanced Edit License Dialog */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setSelectedLicense(null);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Edit />
+            Edit License: {selectedLicense?.name || 'Loading...'}
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {selectedLicense ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 2 }}>
+              
+              {/* Basic License Information Section */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Key /> Basic Information
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="License Name"
+                    value={editLicenseName}
+                    onChange={(e) => setEditLicenseName(e.target.value)}
+                    placeholder="Development Team License"
+                    required
+                  />
+                  
+                  <TextField
+                    fullWidth
+                    label="License Key"
+                    value={selectedLicense.key}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Key />
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText="License key is automatically generated and cannot be changed"
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>License Tier</InputLabel>
+                    <Select
+                      value={editLicenseTier}
+                      label="License Tier"
+                      onChange={(e) => setEditLicenseTier(e.target.value as License['tier'])}
+                    >
+                      <MenuItem value="BASIC">
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>Basic</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Limited features • 2 max devices • Basic support
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="PROFESSIONAL">
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>Professional</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Full features • 5 max devices • Priority support
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="ENTERPRISE">
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>Enterprise</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Advanced features • 10 max devices • 24/7 support
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={editLicenseStatus}
+                      label="Status"
+                      onChange={(e) => setEditLicenseStatus(e.target.value as License['status'])}
+                    >
+                      <MenuItem value="PENDING">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Schedule color="warning" />
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>Pending</Typography>
+                            <Typography variant="caption" color="text.secondary">Awaiting activation</Typography>
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="ACTIVE">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CheckCircle color="success" />
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>Active</Typography>
+                            <Typography variant="caption" color="text.secondary">Fully operational</Typography>
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="SUSPENDED">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Block color="error" />
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>Suspended</Typography>
+                            <Typography variant="caption" color="text.secondary">Temporarily disabled</Typography>
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="EXPIRED">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Warning color="warning" />
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500 }}>Expired</Typography>
+                            <Typography variant="caption" color="text.secondary">Past expiration date</Typography>
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                <TextField
+                  fullWidth
+                  label="Expiration Date"
+                  type="date"
+                  value={editLicenseExpiresAt}
+                  onChange={(e) => setEditLicenseExpiresAt(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Schedule />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+
+              {/* Usage & Limits Section */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Assignment /> Usage & Limits
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Max Devices"
+                    value={selectedLicense.usage.maxDevices}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <People />
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText={`${editLicenseTier} tier limit`}
+                  />
+                  
+                  <TextField
+                    fullWidth
+                    label="Current Devices"
+                    value={selectedLicense.usage.deviceCount}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <CheckCircle />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="API Calls Used"
+                    value={selectedLicense.usage.apiCalls.toLocaleString()}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Assignment />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  
+                  <TextField
+                    fullWidth
+                    label="Data Transfer (GB)"
+                    value={selectedLicense.usage.dataTransfer}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Download />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+
+                {/* Usage Progress Bar */}
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Device Usage: {selectedLicense.usage.deviceCount} / {selectedLicense.usage.maxDevices}
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={(selectedLicense.usage.deviceCount / selectedLicense.usage.maxDevices) * 100}
+                    sx={{ height: 8, borderRadius: 4 }}
+                    color={selectedLicense.usage.deviceCount >= selectedLicense.usage.maxDevices ? 'error' : 'primary'}
+                  />
+                </Box>
+              </Box>
+
+              {/* Assignment Information Section */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PersonAdd /> Assignment Information
+                </Typography>
+                
+                {selectedLicense.assignedTo ? (
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Assigned To"
+                      value={getUserDisplayName(selectedLicense.assignedTo, teamMembers)}
+                      disabled
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Avatar sx={{ width: 20, height: 20 }}>
+                              {getUserInitials(selectedLicense.assignedTo, teamMembers)}
+                            </Avatar>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    
+                    <TextField
+                      fullWidth
+                      label="User Email"
+                      value={selectedLicense.assignedTo.email}
+                      disabled
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Email />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Box>
+                ) : (
+                  <Alert severity="info">
+                    <Typography variant="body2">
+                      This license is currently unassigned. Use the "Assign License" action to assign it to a team member.
+                    </Typography>
+                  </Alert>
+                )}
+              </Box>
+
+              {/* Organization & Metadata Section */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Business /> Organization & Metadata
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Organization"
+                    value={selectedLicense.organization?.name || 'Unknown'}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Business />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  
+                  <TextField
+                    fullWidth
+                    label="Organization Tier"
+                    value={selectedLicense.organization?.tier || 'BASIC'}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Star />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Created Date"
+                    value={selectedLicense.createdAt ? new Date(selectedLicense.createdAt).toLocaleDateString() : 'Unknown'}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Schedule />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  
+                  <TextField
+                    fullWidth
+                    label="Last Updated"
+                    value={selectedLicense.updatedAt ? new Date(selectedLicense.updatedAt).toLocaleDateString() : 'Unknown'}
+                    disabled
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AccessTime />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+              </Box>
+
+              {/* Important Notes Alert */}
+              <Alert severity="warning">
+                <Typography variant="body2" sx={{ fontWeight: 500, mb: 1 }}>
+                  ⚠️ Important Notes
+                </Typography>
+                <Typography variant="body2">
+                  • Changing the license tier will update device limits and feature access<br/>
+                  • Status changes will immediately affect the user's access to the system<br/>
+                  • Expiration date changes should be communicated to the license holder<br/>
+                  • Some fields are system-managed and cannot be edited here
+                </Typography>
+              </Alert>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+              <Box textAlign="center">
+                <CircularProgress size={40} sx={{ mb: 2 }} />
+                <Typography variant="body1" color="text.secondary">
+                  Loading license data...
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  If this persists, please try again or refresh the page.
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleSaveLicenseEdit}
+            variant="contained"
+            startIcon={<Edit />}
+            sx={{
+              background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+              color: '#000',
+              fontWeight: 600,
+            }}
+          >
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* License Actions Menu */}
       <Menu
         anchorEl={anchorEl}
@@ -794,7 +1521,7 @@ const LicensesPage: React.FC = () => {
             Assign License
           </MenuItem>
         )}
-        <MenuItem onClick={() => setEditDialogOpen(true)}>
+        <MenuItem onClick={() => selectedLicense && handleEditLicense(selectedLicense)}>
           <ListItemIcon><Edit /></ListItemIcon>
           Edit License
         </MenuItem>
@@ -816,6 +1543,15 @@ const LicensesPage: React.FC = () => {
           Delete License
         </MenuItem>
       </Menu>
+
+      {/* License Purchase Flow */}
+      <LicensePurchaseFlow
+        open={purchaseFlowOpen}
+        onClose={() => setPurchaseFlowOpen(false)}
+        initialPlan="professional"
+        initialQuantity={1}
+        onPurchaseComplete={handlePurchaseComplete}
+      />
     </Box>
   );
 };

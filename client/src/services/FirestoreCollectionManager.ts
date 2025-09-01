@@ -16,7 +16,7 @@ import {
   query, 
   where, 
   orderBy, 
-  limit as firestoreLimit,
+  limit as limit,
   writeBatch,
   onSnapshot,
   Timestamp,
@@ -27,25 +27,29 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 
-// Collection Names - Centralized definition
+// Collection Names - Centralized definition with standardized camelCase
 export const COLLECTIONS = {
   // Core User Management
   USERS: 'users',
   USER_PROFILES: 'userProfiles',
-  USER_SETTINGS: 'user_settingss', // Note: typo preserved from existing indexes
-  USER_TIME_CARDS: 'user_time_cards',
+  USER_SETTINGS: 'userSettings', // Standardized from 'user_settingss'
+  USER_SETTINGS_LEGACY: 'user_settingss', // Legacy with typo preserved
+  USER_TIME_CARDS: 'userTimeCards', // Standardized from 'user_time_cards'
+  USER_TIME_CARDS_LEGACY: 'user_time_cards', // Legacy collection
   
-  // Organization & Team Management
+  // Organization & Team Management - STANDARDIZED TO CAMELCASE
   ORGANIZATIONS: 'organizations',
-  ORG_MEMBERS: 'org_members',
-  TEAM_MEMBERS: 'teamMembers',
-  TEAM_MEMBERS_LEGACY: 'team_members', // Legacy collection
+  ORG_MEMBERS: 'orgMembers', // STANDARDIZED from 'org_members'
+  ORG_MEMBERS_LEGACY: 'org_members', // Legacy snake_case collection
+  TEAM_MEMBERS: 'teamMembers', // Already camelCase
+  TEAM_MEMBERS_LEGACY: 'team_members', // Legacy snake_case collection
   
-  // Project Management
+  // Project Management - STANDARDIZED TO CAMELCASE
   PROJECTS: 'projects',
-  PROJECT_TEAM_MEMBERS: 'projectTeamMembers',
-  PROJECT_TEAM_MEMBERS_LEGACY: 'project_team_members', // Legacy collection
-  PROJECT_PARTICIPANTS: 'project_participants',
+  PROJECT_TEAM_MEMBERS: 'projectTeamMembers', // STANDARDIZED from 'project_team_members'
+  PROJECT_TEAM_MEMBERS_LEGACY: 'project_team_members', // Legacy snake_case collection
+  PROJECT_PARTICIPANTS: 'projectParticipants', // Standardized from 'project_participants'
+  PROJECT_PARTICIPANTS_LEGACY: 'project_participants', // Legacy collection
   DATASETS: 'datasets',
   
   // Licensing & Payments
@@ -76,7 +80,25 @@ export const COLLECTIONS = {
   LICENSE_DELIVERY_LOGS: 'license_delivery_logs',
   
   // Workflow & Diagrams
-  WORKFLOW_DIAGRAMS: 'workflow_diagrams'
+  WORKFLOW_DIAGRAMS: 'workflowDiagrams', // Standardized from 'workflow_diagrams'
+  WORKFLOW_DIAGRAMS_LEGACY: 'workflow_diagrams' // Legacy collection
+} as const;
+
+// Collection mapping for transition period - handles both camelCase and snake_case
+export const COLLECTION_MAPPINGS = {
+  // Primary collections (camelCase) with fallback to legacy (snake_case)
+  orgMembers: ['orgMembers', 'org_members'],
+  teamMembers: ['teamMembers', 'team_members'], 
+  projectTeamMembers: ['projectTeamMembers', 'project_team_members'],
+  projectParticipants: ['projectParticipants', 'project_participants'],
+  userSettings: ['userSettings', 'user_settingss'], // Note: legacy has typo
+  userTimeCards: ['userTimeCards', 'user_time_cards'],
+  workflowDiagrams: ['workflowDiagrams', 'workflow_diagrams'],
+  auditLogs: ['auditLogs', 'audit_log'],
+  webhookEvents: ['webhookEvents', 'webhook_events'],
+  usageAnalytics: ['usageAnalytics', 'usage_analytics'],
+  privacyConsents: ['privacyConsents', 'privacy_consents'],
+  licenseDeliveryLogs: ['licenseDeliveryLogs', 'license_delivery_logs']
 } as const;
 
 // Type definitions for collection documents
@@ -167,10 +189,45 @@ export class FirestoreCollectionManager {
   }
   
   /**
-   * Get collection reference with proper typing
+   * Get collection reference with proper typing and fallback support
    */
   public getCollection<T = any>(collectionName: string): CollectionReference<T> {
     return collection(db, collectionName) as CollectionReference<T>;
+  }
+
+  /**
+   * Get collection with automatic fallback to legacy naming
+   * This method tries the primary (camelCase) collection first, then falls back to legacy (snake_case)
+   */
+  public async getCollectionWithFallback<T = any>(
+    primaryCollectionName: string
+  ): Promise<{ collection: CollectionReference<T>; collectionName: string; isLegacy: boolean }> {
+    const mappingKey = primaryCollectionName as keyof typeof COLLECTION_MAPPINGS;
+    const possibleNames = COLLECTION_MAPPINGS[mappingKey] || [primaryCollectionName];
+    
+    // Try each collection name in order (primary first, then legacy)
+    for (let i = 0; i < possibleNames.length; i++) {
+      const collectionName = possibleNames[i];
+      const isLegacy = i > 0; // First item is primary, rest are legacy
+      
+      try {
+        const collectionRef = this.getCollection<T>(collectionName);
+        // Test if collection is accessible by trying a small query
+        const testQuery = query(collectionRef, limit(1));
+        await getDocs(testQuery);
+        
+        console.log(`✅ [FirestoreCollectionManager] Using ${isLegacy ? 'legacy' : 'primary'} collection: '${collectionName}'`);
+        return { collection: collectionRef, collectionName, isLegacy };
+      } catch (error) {
+        console.warn(`⚠️ [FirestoreCollectionManager] Collection '${collectionName}' not accessible, trying next...`);
+        continue;
+      }
+    }
+    
+    // If no collections are accessible, return the primary collection anyway
+    const primaryCollection = this.getCollection<T>(possibleNames[0]);
+    console.warn(`⚠️ [FirestoreCollectionManager] No accessible collections found, using primary: '${possibleNames[0]}'`);
+    return { collection: primaryCollection, collectionName: possibleNames[0], isLegacy: false };
   }
   
   /**
@@ -209,7 +266,7 @@ export class FirestoreCollectionManager {
         try {
           const collectionRef = this.getCollection(collectionName);
           // Try to read from collection to ensure it's accessible
-          const testQuery = query(collectionRef, firestoreLimit(1));
+          const testQuery = query(collectionRef, limit(1));
           await getDocs(testQuery);
           console.log(`✅ [FirestoreCollectionManager] Collection '${collectionName}' is accessible`);
         } catch (error) {
@@ -360,7 +417,7 @@ export class FirestoreCollectionManager {
       
       // Apply limit
       if (limitCount) {
-        q = query(q, firestoreLimit(limitCount));
+        q = query(q, limit(limitCount));
       }
       
       const querySnapshot = await getDocs(q);
@@ -371,10 +428,100 @@ export class FirestoreCollectionManager {
       });
       
       return documents;
-    } catch (error) {
+    } catch (error: any) {
+      // If it's an index error, try a simpler query without ordering
+      if (error?.code === 'failed-precondition' && error?.message?.includes('index')) {
+        console.warn(`⚠️ [FirestoreCollectionManager] Index missing for '${collectionName}', trying simpler query...`);
+        try {
+          const collectionRef = this.getCollection<T>(collectionName);
+          let q = query(collectionRef);
+          
+          // Apply only the filters, skip ordering to avoid index requirements
+          for (const filter of filters) {
+            q = query(q, where(filter.field, filter.operator, filter.value));
+          }
+          
+          // Apply limit without ordering
+          if (limitCount) {
+            q = query(q, limit(limitCount));
+          }
+          
+          const querySnapshot = await getDocs(q);
+          const documents: T[] = [];
+          
+          querySnapshot.forEach(doc => {
+            documents.push({ id: doc.id, ...doc.data() } as T);
+          });
+          
+          // Sort in memory if ordering was requested
+          if (orderByField && documents.length > 0) {
+            documents.sort((a: any, b: any) => {
+              const aVal = a[orderByField];
+              const bVal = b[orderByField];
+              
+              if (orderDirection === 'desc') {
+                return bVal > aVal ? 1 : bVal < aVal ? -1 : 0;
+              } else {
+                return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+              }
+            });
+          }
+          
+          console.log(`✅ [FirestoreCollectionManager] Fallback query successful for '${collectionName}': ${documents.length} documents`);
+          return documents;
+        } catch (fallbackError) {
+          console.error(`❌ [FirestoreCollectionManager] Fallback query also failed for '${collectionName}':`, fallbackError);
+          throw fallbackError;
+        }
+      }
+      
       console.error(`❌ [FirestoreCollectionManager] Failed to query documents from '${collectionName}':`, error);
       throw error;
     }
+  }
+
+  /**
+   * Query documents with automatic fallback to legacy collections
+   * This method tries the primary collection first, then falls back to legacy naming
+   */
+  public async queryDocumentsWithFallback<T = any>(
+    primaryCollectionName: string,
+    filters: Array<{ field: string; operator: any; value: any }> = [],
+    orderByField?: string,
+    orderDirection: 'asc' | 'desc' = 'desc',
+    limitCount?: number
+  ): Promise<{ documents: T[]; collectionUsed: string; isLegacy: boolean }> {
+    const mappingKey = primaryCollectionName as keyof typeof COLLECTION_MAPPINGS;
+    const possibleNames = COLLECTION_MAPPINGS[mappingKey] || [primaryCollectionName];
+    
+    let lastError: any = null;
+    
+    // Try each collection name in order (primary first, then legacy)
+    for (let i = 0; i < possibleNames.length; i++) {
+      const collectionName = possibleNames[i];
+      const isLegacy = i > 0;
+      
+      try {
+        const documents = await this.queryDocuments<T>(
+          collectionName,
+          filters,
+          orderByField,
+          orderDirection,
+          limitCount
+        );
+        
+        console.log(`✅ [FirestoreCollectionManager] Successfully queried ${isLegacy ? 'legacy' : 'primary'} collection '${collectionName}': ${documents.length} documents`);
+        return { documents, collectionUsed: collectionName, isLegacy };
+      } catch (error) {
+        console.warn(`⚠️ [FirestoreCollectionManager] Failed to query '${collectionName}', trying next...`, error);
+        lastError = error;
+        continue;
+      }
+    }
+    
+    // If all collections failed, throw the last error
+    console.error(`❌ [FirestoreCollectionManager] All collection queries failed for '${primaryCollectionName}'`);
+    throw lastError || new Error(`No accessible collections found for '${primaryCollectionName}'`);
   }
   
   /**
@@ -457,7 +604,7 @@ export class FirestoreCollectionManager {
       
       // Apply limit
       if (limitCount) {
-        q = query(q, firestoreLimit(limitCount));
+        q = query(q, limit(limitCount));
       }
       
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -484,7 +631,7 @@ export class FirestoreCollectionManager {
   public async validateCollectionAccess(collectionName: string): Promise<boolean> {
     try {
       const collectionRef = this.getCollection(collectionName);
-      const testQuery = query(collectionRef, firestoreLimit(1));
+      const testQuery = query(collectionRef, limit(1));
       await getDocs(testQuery);
       return true;
     } catch (error) {

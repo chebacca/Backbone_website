@@ -653,6 +653,33 @@ export function useUpdateTeamMember(): UseMutationResult<void, { memberId: strin
 }
 
 /**
+ * Change team member password
+ */
+export function useChangeTeamMemberPassword(): UseMutationResult<void, { memberId: string; newPassword: string }> {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mutate = useCallback(async ({ memberId, newPassword }: { memberId: string; newPassword: string }) => {
+    try {
+      setLoading(true);
+      setError(null);
+      await unifiedDataService.changeTeamMemberPassword(memberId, newPassword);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to change password');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return {
+    mutate,
+    loading,
+    error
+  };
+}
+
+/**
  * Remove a team member
  */
 export function useRemoveTeamMember(): UseMutationResult<void, { memberId: string }> {

@@ -60,7 +60,8 @@ import {
     TableRow,
       Paper,
   InputAdornment,
-  TablePagination
+  TablePagination,
+  CircularProgress
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -79,15 +80,20 @@ import {
     Group as GroupIcon,
     Assessment as AssessmentIcon,
     Person as PersonIcon,
-    GroupAdd as GroupAddIcon
+    GroupAdd as GroupAddIcon,
+    Refresh as RefreshIcon,
+    Security as SecurityIcon
 } from '@mui/icons-material';
 
 import { cloudProjectIntegration } from '../services/CloudProjectIntegration';
 import { simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
 import UnifiedProjectCreationDialog from './UnifiedProjectCreationDialog';
 import DatasetCreationWizard from './DatasetCreationWizard';
-import { DatasetManagementDialog } from './DatasetManagementDialog';
+// import { DatasetManagementDialog } from './DatasetManagementDialog';
 import { ErrorBoundary } from './common/ErrorBoundary';
+import { ProjectRoleManagementDialog } from './ProjectRoleManagementDialog';
+import TeamRoleWizard from './TeamRoleWizard';
+import { projectRoleService, ProjectRole } from '../services/ProjectRoleService';
 
 interface CloudProject {
     id: string;
@@ -416,6 +422,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [projectDatasets, setProjectDatasets] = useState<any[]>([]);
   const [datasetsLoading, setDatasetsLoading] = useState(false);
   const [availableDatasets, setAvailableDatasets] = useState<any[]>([]);
+  const [organizationDatasets, setOrganizationDatasets] = useState<any[]>([]);
+  const [organizationDatasetsLoading, setOrganizationDatasetsLoading] = useState(false);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
   const [datasetBackendFilter, setDatasetBackendFilter] = useState<'all' | 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'local'>('all');
   const [datasetSearch, setDatasetSearch] = useState<string>('');
@@ -425,14 +433,20 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [showCreateDatasetWizard, setShowCreateDatasetWizard] = useState(false);
   const [datasetWizardAssignToProject, setDatasetWizardAssignToProject] = useState<string | null>(null);
-  const [showDatasetManagementDialog, setShowDatasetManagementDialog] = useState(false);
+      const [showDatasetManagementDialog, setShowDatasetManagementDialog] = useState(false);
+  
+  // Role Management State
+  const [showRoleManagementDialog, setShowRoleManagementDialog] = useState(false);
+  const [showTeamRoleWizard, setShowTeamRoleWizard] = useState(false);
 
   // Team Member Management State
   const [projectTeamMembers, setProjectTeamMembers] = useState<any[]>([]);
   const [availableTeamMembers, setAvailableTeamMembers] = useState<any[]>([]);
   const [teamMembersLoading, setTeamMembersLoading] = useState(false);
   const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<string>('');
-  const [selectedTeamMemberRole, setSelectedTeamMemberRole] = useState<'ADMIN' | 'DO_ER'>('DO_ER');
+  const [selectedTeamMemberRole, setSelectedTeamMemberRole] = useState<string>('');
+  const [availableRoles, setAvailableRoles] = useState<ProjectRole[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
   const [teamMemberSearch, setTeamMemberSearch] = useState<string>('');
   const [showAddTeamMemberDialog, setShowAddTeamMemberDialog] = useState(false);
   const [addTeamMemberLoading, setAddTeamMemberLoading] = useState(false);
@@ -579,6 +593,36 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     }
   }, [selectedProject, loadDatasetsForProject, loadTeamMembersForProject]);
 
+  // Load available roles for project when Add Team Member dialog opens
+  useEffect(() => {
+    if (selectedProject && showAddTeamMemberDialog && !rolesLoading && availableRoles.length === 0) {
+      const loadRoles = async () => {
+        try {
+          setRolesLoading(true);
+          console.log('🎭 [DashboardCloudProjectsBridge] Loading available roles for project:', selectedProject.id);
+          
+          const roles = await projectRoleService.getAvailableRoles(selectedProject.id);
+          console.log(`✅ [DashboardCloudProjectsBridge] Found ${roles?.length || 0} available roles`);
+          
+          setAvailableRoles(roles || []);
+          
+          // Set default role to DO_ER if available
+          if (roles && roles.length > 0) {
+            const defaultRole = roles.find(role => role.name === 'DO_ER') || roles[0];
+            setSelectedTeamMemberRole(defaultRole.id);
+          }
+        } catch (error) {
+          console.error('❌ [DashboardCloudProjectsBridge] Failed to load available roles:', error);
+          setAvailableRoles([]);
+        } finally {
+          setRolesLoading(false);
+        }
+      };
+      
+      loadRoles();
+    }
+  }, [selectedProject, showAddTeamMemberDialog, rolesLoading, availableRoles.length]);
+
     useEffect(() => {
         loadProjects();
         // Listen for project creation events to refresh without full page reload
@@ -654,27 +698,46 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         try {
             console.log('🔍 [DashboardCloudProjectsBridge] Loading dataset counts for all projects...');
             
-            // Load dataset counts for each project in parallel
-            const datasetCountPromises = projectList.map(async (project) => {
-                try {
-                    const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
-                    return { projectId: project.id, count: datasets.length };
-                } catch (error) {
-                    console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
-                    return { projectId: project.id, count: 0 };
-                }
-            });
-            
-            const datasetCounts = await Promise.all(datasetCountPromises);
-            
-            // Update the projectDatasetCounts state
-            const newCounts: Record<string, number> = {};
-            datasetCounts.forEach(({ projectId, count }) => {
-                newCounts[projectId] = count;
-            });
-            
-            setProjectDatasetCounts(newCounts);
-            console.log('✅ [DashboardCloudProjectsBridge] Loaded dataset counts for all projects:', newCounts);
+            // 🔧 CRITICAL FIX: Get total organization datasets instead of per-project counts
+            // This shows users how many datasets they have access to overall
+            try {
+                const allDatasets = await cloudProjectIntegration.getAllOrganizationDatasets();
+                const totalDatasetCount = allDatasets.length;
+                
+                // Set the same count for all projects to show total available datasets
+                const newCounts: Record<string, number> = {};
+                projectList.forEach(project => {
+                    newCounts[project.id] = totalDatasetCount;
+                });
+                
+                setProjectDatasetCounts(newCounts);
+                console.log(`✅ [DashboardCloudProjectsBridge] Loaded total dataset count for organization: ${totalDatasetCount}`);
+                
+            } catch (error) {
+                console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to load organization datasets, falling back to per-project counts');
+                
+                // Fallback: Load dataset counts for each project individually
+                const datasetCountPromises = projectList.map(async (project) => {
+                    try {
+                        const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
+                        return { projectId: project.id, count: datasets.length };
+                    } catch (error) {
+                        console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
+                        return { projectId: project.id, count: 0 };
+                    }
+                });
+                
+                const datasetCounts = await Promise.all(datasetCountPromises);
+                
+                // Update the projectDatasetCounts state
+                const newCounts: Record<string, number> = {};
+                datasetCounts.forEach(({ projectId, count }) => {
+                    newCounts[projectId] = count;
+                });
+                
+                setProjectDatasetCounts(newCounts);
+                console.log('✅ [DashboardCloudProjectsBridge] Loaded dataset counts for all projects (fallback):', newCounts);
+            }
             
         } catch (error) {
             console.error('❌ [DashboardCloudProjectsBridge] Failed to load dataset counts for all projects:', error);
@@ -753,6 +816,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             enableActivityLog: true,
                             // Team member specific fields
                             teamMemberRole: project.role || project.teamMemberRole || 'MEMBER',
+                            role: project.role || project.teamMemberRole || 'MEMBER', // Ensure both fields are set
                             assignedAt: project.assignedAt,
                             projectOwner: project.ownerName || 'Organization Owner',
                         };
@@ -986,6 +1050,49 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             await loadDatasetCountsForAllProjects(projects);
         }
     }, [projects, loadDatasetCountsForAllProjects]);
+
+    // Helper to load all organization datasets for the management dialog
+    const loadOrganizationDatasets = useCallback(async () => {
+        try {
+            setOrganizationDatasetsLoading(true);
+            console.log('🔍 [DashboardCloudProjectsBridge] Loading organization datasets for management dialog...');
+            
+            const allDatasets = await cloudProjectIntegration.getAllOrganizationDatasets();
+            console.log('✅ [DashboardCloudProjectsBridge] Loaded organization datasets:', allDatasets);
+            
+            // Add backend labels for display
+            const labeled = allDatasets.map((ds: any) => {
+                const getBackendLabel = (backend: string) => {
+                    switch (backend) {
+                        case 'gcs': return '(GCS)';
+                        case 's3': return '(S3)';
+                        case 'aws': return '(AWS)';
+                        case 'azure': return '(Azure)';
+                        case 'firestore':
+                        default: return '(Firestore)';
+                    }
+                };
+                return {
+                    ...ds,
+                    __label: `${ds.name} ${getBackendLabel(ds.storage?.backend)}`,
+                };
+            });
+            
+            setOrganizationDatasets(labeled);
+            
+        } catch (error) {
+            console.error('❌ [DashboardCloudProjectsBridge] Failed to load organization datasets:', error);
+        } finally {
+            setOrganizationDatasetsLoading(false);
+        }
+    }, []);
+
+    // Load organization datasets when the dataset management dialog opens
+    useEffect(() => {
+        if (showDatasetManagementDialog) {
+            loadOrganizationDatasets();
+        }
+    }, [showDatasetManagementDialog, loadOrganizationDatasets]);
 
     // 🔧 DEBUG: Add subscription validation debug function
     const debugSubscriptionStatus = useCallback(() => {
@@ -1697,9 +1804,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 {typeof projectDatasetCounts[project.id] === 'number' ? (
                                                     <Chip
                                                         size="small"
-                                                        label={`${projectDatasetCounts[project.id]} datasets`}
+                                                        label={`${projectDatasetCounts[project.id]} datasets available`}
                                                         variant="outlined"
                                                         color="secondary"
+                                                        title="Total datasets available in your organization"
                                                     />
                                                 ) : (
                                                     <Typography variant="body2" color="text.secondary">-</Typography>
@@ -2677,8 +2785,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                     <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
                                         <Button
                                             variant="contained"
-                                            startIcon={<AddIcon />}
-                                            onClick={() => setShowAddTeamMemberDialog(true)}
+                                            startIcon={<GroupIcon />}
+                                            onClick={() => setShowTeamRoleWizard(true)}
                                             sx={{
                                                 background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
                                                 color: 'white',
@@ -2695,7 +2803,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 }
                                             }}
                                         >
-                                            Add Team Member
+                                            Team & Roles
                                         </Button>
                                         <Button
                                             variant="outlined"
@@ -2913,6 +3021,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         justifyContent: 'space-between'
                     }}
                 >
+
+                    
                     <Button
                         onClick={() => setSelectedProject(null)}
                         variant="outlined"
@@ -2932,7 +3042,6 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     >
                         Close
                     </Button>
-                    
 
                 </DialogActions>
             </Dialog>
@@ -3106,7 +3215,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Project Role</InputLabel>
                             <Select
                                 value={selectedTeamMemberRole}
-                                onChange={(e) => setSelectedTeamMemberRole(e.target.value as 'ADMIN' | 'DO_ER')}
+                                onChange={(e) => setSelectedTeamMemberRole(e.target.value as string)}
+                                disabled={rolesLoading}
                                 sx={{
                                     '& .MuiOutlinedInput-notchedOutline': {
                                         borderColor: 'rgba(255, 255, 255, 0.2)'
@@ -3120,26 +3230,47 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                     color: 'white'
                                 }}
                             >
-                                <MenuItem value="DO_ER">
-                                    <Box>
-                                        <Typography variant="body2" sx={{ fontWeight: 500, color: 'white' }}>
-                                            Do_Er
+                                {rolesLoading ? (
+                                    <MenuItem disabled>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <CircularProgress size={16} sx={{ color: 'rgba(255, 255, 255, 0.6)' }} />
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                                                Loading roles...
+                                            </Typography>
+                                        </Box>
+                                    </MenuItem>
+                                ) : availableRoles.length === 0 ? (
+                                    <MenuItem disabled>
+                                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                                            No roles available
                                         </Typography>
-                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
-                                            Can create, edit, and delete data but no admin privileges
-                                        </Typography>
-                                    </Box>
-                                </MenuItem>
-                                <MenuItem value="ADMIN">
-                                    <Box>
-                                        <Typography variant="body2" sx={{ fontWeight: 500, color: 'white' }}>
-                                            Admin
-                                        </Typography>
-                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
-                                            Full administrative access (only 1 admin per project)
-                                        </Typography>
-                                    </Box>
-                                </MenuItem>
+                                    </MenuItem>
+                                ) : (
+                                    availableRoles.map((role) => (
+                                        <MenuItem key={role.id} value={role.id}>
+                                            <Box>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                                    <Typography variant="body2" sx={{ fontWeight: 500, color: 'white' }}>
+                                                        {role.displayName}
+                                                    </Typography>
+                                                    <Chip 
+                                                        label={role.category} 
+                                                        size="small" 
+                                                        sx={{ 
+                                                            height: 16, 
+                                                            fontSize: '0.65rem',
+                                                            backgroundColor: projectRoleService.getRoleDisplayColor(role.category),
+                                                            color: 'white'
+                                                        }} 
+                                                    />
+                                                </Box>
+                                                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                                                    {projectRoleService.formatRoleDescription(role)}
+                                                </Typography>
+                                            </Box>
+                                        </MenuItem>
+                                    ))
+                                )}
                             </Select>
                         </FormControl>
                     </Box>
@@ -3178,7 +3309,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         onClick={() => {
                             setShowAddTeamMemberDialog(false);
                             setSelectedTeamMemberId('');
-                            setSelectedTeamMemberRole('DO_ER');
+                            setSelectedTeamMemberRole('');
+                            setAvailableRoles([]);
                             setTeamMemberSearch('');
                             setAddTeamMemberError(null);
                         }}
@@ -3211,10 +3343,11 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             setAddTeamMemberLoading(true);
                             
                             try {
-                                await cloudProjectIntegration.addTeamMemberToProject(
+                                // Use the new unified project role service
+                                await projectRoleService.addTeamMemberToProject(
                                     selectedProject.id, 
                                     selectedTeamMemberId, 
-                                    selectedTeamMemberRole as any
+                                    selectedTeamMemberRole
                                 );
                                 
                                 // Refresh team members list
@@ -3223,7 +3356,8 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 // Close dialog and reset
                                 setShowAddTeamMemberDialog(false);
                                 setSelectedTeamMemberId('');
-                                setSelectedTeamMemberRole('DO_ER');
+                                setSelectedTeamMemberRole('');
+                                setAvailableRoles([]);
                                 setTeamMemberSearch('');
                             } catch (e: any) {
                                 console.error('Failed to add team member:', e);
@@ -3259,18 +3393,238 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             </Dialog>
 
             {/* Dataset Management Dialog */}
-            <DatasetManagementDialog
+            <Dialog
                 open={showDatasetManagementDialog}
                 onClose={() => setShowDatasetManagementDialog(false)}
-                onDatasetUpdated={() => {
-                    // Refresh available datasets if a project is selected
-                    if (selectedProject) {
-                        void loadDatasetsForProject(selectedProject);
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                        color: 'white',
+                        borderRadius: 3,
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        maxHeight: '80vh'
                     }
-                    // Refresh project list to update dataset counts
-                    void loadProjects();
                 }}
-            />
+
+            >
+                <DialogTitle sx={{ 
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                    pb: 2,
+                    fontSize: '1.5rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                }}>
+                    Dataset Management
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                            setShowDatasetManagementDialog(false);
+                            setShowCreateDatasetWizard(true);
+                        }}
+                        sx={{
+                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                            color: 'white',
+                            borderRadius: 2,
+                            px: 3,
+                            py: 1,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            boxShadow: '0 4px 12px rgba(139, 92, 246, 0.4)',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+                                boxShadow: '0 6px 16px rgba(139, 92, 246, 0.5)',
+                                transform: 'translateY(-1px)'
+                            }
+                        }}
+                    >
+                        Create Dataset
+                    </Button>
+                </DialogTitle>
+                <DialogContent sx={{ p: 3, overflow: 'auto' }}>
+                    {organizationDatasetsLoading ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
+                            <CircularProgress sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+                            <Typography variant="body2" sx={{ ml: 2, color: 'rgba(255, 255, 255, 0.7)' }}>
+                                Loading datasets...
+                            </Typography>
+                        </Box>
+                    ) : organizationDatasets.length === 0 ? (
+                        <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <StorageIcon sx={{ fontSize: 64, color: 'rgba(255, 255, 255, 0.5)', mb: 2 }} />
+                            <Typography variant="h6" sx={{ mb: 2 }}>
+                                No Datasets Found
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 3 }}>
+                                Create your first dataset to get started with data management.
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <Box>
+                            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+                                <StorageIcon sx={{ mr: 1 }} />
+                                Available Datasets ({organizationDatasets.length})
+                            </Typography>
+                            <Grid container spacing={2}>
+                                {organizationDatasets.map((dataset) => (
+                                    <Grid item xs={12} sm={6} md={4} key={dataset.id}>
+                                        <Card
+                                            sx={{
+                                                background: 'rgba(255, 255, 255, 0.05)',
+                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                borderRadius: 2,
+                                                color: 'white',
+                                                '&:hover': {
+                                                    background: 'rgba(255, 255, 255, 0.08)',
+                                                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                                                    transform: 'translateY(-2px)',
+                                                    boxShadow: '0 8px 25px rgba(0, 0, 0, 0.3)'
+                                                },
+                                                transition: 'all 0.2s ease-in-out',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <CardContent sx={{ p: 2 }}>
+                                                <Typography variant="h6" sx={{ 
+                                                    fontSize: '1rem', 
+                                                    fontWeight: 600, 
+                                                    mb: 1,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap'
+                                                }}>
+                                                    {dataset.name}
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ 
+                                                    color: 'rgba(255, 255, 255, 0.7)', 
+                                                    mb: 1,
+                                                    minHeight: '2.5em',
+                                                    overflow: 'hidden',
+                                                    display: '-webkit-box',
+                                                    WebkitLineClamp: 2,
+                                                    WebkitBoxOrient: 'vertical'
+                                                }}>
+                                                    {dataset.description || 'No description available'}
+                                                </Typography>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+                                                    <Chip
+                                                        size="small"
+                                                        label={dataset.__label?.match(/\((.*?)\)$/)?.[1] || 'Firestore'}
+                                                        variant="outlined"
+                                                        sx={{
+                                                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                                                            color: 'rgba(255, 255, 255, 0.8)',
+                                                            fontSize: '0.75rem'
+                                                        }}
+                                                    />
+                                                    <Chip
+                                                        size="small"
+                                                        label={dataset.visibility || 'private'}
+                                                        variant="filled"
+                                                        sx={{
+                                                            backgroundColor: dataset.visibility === 'public' ? 'rgba(34, 197, 94, 0.2)' : 
+                                                                           dataset.visibility === 'organization' ? 'rgba(59, 130, 246, 0.2)' : 
+                                                                           'rgba(156, 163, 175, 0.2)',
+                                                            color: dataset.visibility === 'public' ? '#22c55e' : 
+                                                                   dataset.visibility === 'organization' ? '#3b82f6' : 
+                                                                   '#9ca3af',
+                                                            fontSize: '0.75rem'
+                                                        }}
+                                                    />
+                                                </Box>
+                                                <Typography variant="caption" sx={{ 
+                                                    color: 'rgba(255, 255, 255, 0.5)', 
+                                                    mt: 1,
+                                                    display: 'block'
+                                                }}>
+                                                    ID: {dataset.id}
+                                                </Typography>
+                                            </CardContent>
+                                        </Card>
+                                    </Grid>
+                                ))}
+                            </Grid>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ 
+                    p: 3, 
+                    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                    justifyContent: 'space-between'
+                }}>
+                    <Button
+                        onClick={loadOrganizationDatasets}
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
+                        disabled={organizationDatasetsLoading}
+                        sx={{
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            borderRadius: 2,
+                            px: 3,
+                            py: 1,
+                            textTransform: 'none',
+                            '&:hover': {
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }}
+                    >
+                        Refresh
+                    </Button>
+                    <Button
+                        onClick={() => setShowDatasetManagementDialog(false)}
+                        variant="outlined"
+                        sx={{
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            borderRadius: 2,
+                            px: 3,
+                            py: 1,
+                            textTransform: 'none',
+                            '&:hover': {
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }}
+                    >
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Team & Role Management Wizard */}
+            {selectedProject && (
+                <TeamRoleWizard
+                    open={showTeamRoleWizard}
+                    onClose={() => setShowTeamRoleWizard(false)}
+                    projectId={selectedProject.id}
+                    projectName={selectedProject.name}
+                    organizationId={completeUser?.organizationId || ''}
+                    existingProjectTeamMembers={projectTeamMembers}
+                    onTeamMembersUpdated={() => {
+                        console.log('🔄 [DashboardCloudProjectsBridge] Refreshing team members after wizard update');
+                        if (selectedProject) {
+                            loadTeamMembersForProject(selectedProject);
+                        }
+                    }}
+                />
+            )}
+
+            {/* Legacy Project Role Management Dialog (kept for fallback) */}
+            {selectedProject && (
+                <ProjectRoleManagementDialog
+                    open={showRoleManagementDialog}
+                    onClose={() => setShowRoleManagementDialog(false)}
+                    projectId={selectedProject.id}
+                    organizationId={completeUser?.organizationId || ''}
+                    projectName={selectedProject.name}
+                />
+            )}
 
         </Box>
     );

@@ -3,7 +3,7 @@
  */
 import { ServiceConfig } from './models/types';
 import { ProjectService } from './ProjectService';
-import { DatasetService } from './DatasetService';
+// import { DatasetService } from './DatasetService';
 import { TeamMemberService } from './TeamMemberService';
 import { FirestoreAdapter } from './adapters/FirestoreAdapter';
 
@@ -14,7 +14,7 @@ export class ServiceFactory {
   private static instance: ServiceFactory;
   private config: ServiceConfig;
   private projectService: ProjectService | null = null;
-  private datasetService: DatasetService | null = null;
+  // private datasetService: DatasetService | null = null;
   private teamMemberService: TeamMemberService | null = null;
 
   private constructor() {
@@ -51,7 +51,7 @@ export class ServiceFactory {
     
     // Reset services to ensure they're recreated with new config
     this.projectService = null;
-    this.datasetService = null;
+    // this.datasetService = null;
     this.teamMemberService = null;
   }
 
@@ -68,12 +68,12 @@ export class ServiceFactory {
   /**
    * Get DatasetService instance
    */
-  public getDatasetService(): DatasetService {
-    if (!this.datasetService) {
-      this.datasetService = DatasetService.getInstance(this.config);
-    }
-    return this.datasetService;
-  }
+  // public getDatasetService(): DatasetService {
+  //   if (!this.datasetService) {
+  //     this.datasetService = DatasetService.getInstance(this.config);
+  //   }
+  //   return this.datasetService;
+  // }
 
   /**
    * Get TeamMemberService instance

@@ -2882,17 +2882,50 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 }}
                                             >
                                                 {projectTeamMembers.map((member: any, index: number) => {
-                                                    // Extract team member details with proper fallbacks
-                                                    const teamMember = member.teamMember || member;
-                                                    const displayName = teamMember.name || 
-                                                        (teamMember.firstName && teamMember.lastName ? 
-                                                            `${teamMember.firstName} ${teamMember.lastName}` : 
-                                                            teamMember.firstName || 
-                                                            teamMember.email?.split('@')[0] || 
-                                                            'Unnamed User');
-                                                    const displayEmail = teamMember.email || member.email || 'No email';
-                                                    const displayRole = member.role || 'Member';
-                                                    const displayLicenseType = teamMember.licenseType || member.licenseType;
+                                                    // Debug: Log the actual member structure
+                                                    console.log('🔍 [DashboardCloudProjectsBridge] Team member structure:', member);
+                                                    
+                                                    // 🔧 ENHANCED: Use the enriched name from TeamMemberService
+                                                    // The TeamMemberService now properly enriches team member data with full profiles
+                                                    let displayName = 'Unnamed User';
+                                                    
+                                                    // Priority 1: Use the enriched name from TeamMemberService (this should be correct now)
+                                                    if (member.name && member.name !== 'Unnamed User') {
+                                                        displayName = member.name;
+                                                        console.log('🎯 [DashboardCloudProjectsBridge] Using enriched name from TeamMemberService:', displayName);
+                                                    }
+                                                    // Priority 2: Check nested teamMember profile (fallback)
+                                                    else if (member.teamMember?.name && member.teamMember.name !== 'Unnamed User') {
+                                                        displayName = member.teamMember.name;
+                                                        console.log('🎯 [DashboardCloudProjectsBridge] Using nested teamMember name:', displayName);
+                                                    }
+                                                    // Priority 3: Try to construct from nested profile data
+                                                    else if (member.teamMember?.firstName && member.teamMember?.lastName) {
+                                                        displayName = `${member.teamMember.firstName} ${member.teamMember.lastName}`;
+                                                        console.log('🎯 [DashboardCloudProjectsBridge] Constructed from nested firstName + lastName:', displayName);
+                                                    }
+                                                    // Priority 4: Use nested firstName only
+                                                    else if (member.teamMember?.firstName) {
+                                                        displayName = member.teamMember.firstName;
+                                                        console.log('🎯 [DashboardCloudProjectsBridge] Using nested firstName:', displayName);
+                                                    }
+                                                    // Priority 5: Extract from email (last resort)
+                                                    else if (member.email || member.teamMember?.email) {
+                                                        const email = member.email || member.teamMember.email;
+                                                        const emailParts = email.split('@');
+                                                        displayName = emailParts[0]
+                                                            .replace(/[._-]/g, ' ')
+                                                            .split(' ')
+                                                            .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                                                            .join(' ');
+                                                        console.log('🎯 [DashboardCloudProjectsBridge] Extracted from email:', displayName);
+                                                    }
+                                                    
+                                                    console.log('🔍 [DashboardCloudProjectsBridge] Final display name:', displayName);
+                                                    
+                                                    const displayEmail = member.email || member.teamMember?.email || 'No email';
+                                                    const displayRole = member.role || member.teamMember?.role || 'Member';
+                                                    const displayLicenseType = member.teamMember?.licenseType || member.licenseType;
                                                     
                                                     return (
                                                     <Box
@@ -3178,36 +3211,57 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                         </Typography>
                                     </MenuItem>
                                 )}
-                                {!teamMembersLoading && availableTeamMembers.map((member: any) => (
-                                    <MenuItem key={member.id} value={member.id}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
-                                            <Box
-                                                sx={{
-                                                    width: 32,
-                                                    height: 32,
-                                                    borderRadius: '50%',
-                                                    background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    fontSize: '14px',
-                                                    fontWeight: 600,
-                                                    color: 'white'
-                                                }}
-                                            >
-                                                {member.name?.charAt(0)?.toUpperCase() || member.email?.charAt(0)?.toUpperCase() || 'U'}
-                                            </Box>
-                                                                                    <Box sx={{ flexGrow: 1 }}>
-                                            <Typography variant="body2" sx={{ fontWeight: 500, color: 'white' }}>
-                                                {member.name || 'Unnamed User'}
-                                            </Typography>
-                                            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                                                {member.email} • {member.licenseType || 'Licensed'}
-                                            </Typography>
-                                        </Box>
-                                        </Box>
-                                    </MenuItem>
-                                ))}
+                                                                                {!teamMembersLoading && availableTeamMembers.map((member: any) => {
+                                                    // Enhanced name extraction for available team members
+                                                    let memberDisplayName = 'Unnamed User';
+                                                    
+                                                    if (member.name) {
+                                                        memberDisplayName = member.name;
+                                                    } else if (member.fullName) {
+                                                        memberDisplayName = member.fullName;
+                                                    } else if (member.displayName) {
+                                                        memberDisplayName = member.displayName;
+                                                    } else if (member.firstName && member.lastName) {
+                                                        memberDisplayName = `${member.firstName} ${member.lastName}`;
+                                                    } else if (member.firstName) {
+                                                        memberDisplayName = member.firstName;
+                                                    } else if (member.lastName) {
+                                                        memberDisplayName = member.lastName;
+                                                    } else if (member.email) {
+                                                        memberDisplayName = member.email.split('@')[0];
+                                                    }
+                                                    
+                                                    return (
+                                                    <MenuItem key={member.id} value={member.id}>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                                                            <Box
+                                                                sx={{
+                                                                    width: 32,
+                                                                    height: 32,
+                                                                    borderRadius: '50%',
+                                                                    background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    fontSize: '14px',
+                                                                    fontWeight: 600,
+                                                                    color: 'white'
+                                                                }}
+                                                            >
+                                                                {memberDisplayName.charAt(0)?.toUpperCase() || 'U'}
+                                                            </Box>
+                                                            <Box sx={{ flexGrow: 1 }}>
+                                                                <Typography variant="body2" sx={{ fontWeight: 500, color: 'white' }}>
+                                                                    {memberDisplayName}
+                                                                </Typography>
+                                                                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                                    {member.email} • {member.licenseType || 'Licensed'}
+                                                                </Typography>
+                                                            </Box>
+                                                        </Box>
+                                                    </MenuItem>
+                                                );
+                                                })}
                             </Select>
                         </FormControl>
                         

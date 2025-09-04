@@ -258,7 +258,7 @@ export interface StreamlinedTeamMember {
   email: string;
   
   // Role & Status
-  role: 'admin' | 'member' | 'viewer' | 'owner' | 'manager';
+  role: 'admin' | 'member' | 'viewer' | 'owner';
   status: 'active' | 'pending' | 'suspended' | 'removed';
   
   // Organization Context (embedded)
@@ -421,9 +421,9 @@ class UnifiedDataService {
       
       // Map status and dates
       status: data.status || 'ACTIVE',
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-      lastLoginAt: data.lastLoginAt?.toDate()
+      createdAt: this.safeToDate(data.createdAt),
+      updatedAt: this.safeToDate(data.updatedAt),
+      lastLoginAt: data.lastLoginAt ? this.safeToDate(data.lastLoginAt) : undefined
     } as StreamlinedUser;
   }
 
@@ -1299,7 +1299,7 @@ class UnifiedDataService {
           
           const teamMember: StreamlinedTeamMember = {
             id: userData.id,
-            firstName: userData.firstName || userData.name?.split(' ')[0] || userData.email.split('@')[0],
+            firstName: userData.firstName || userData.name?.split(' ')[0] || userData.email?.split('@')[0] || 'Unknown',
             lastName: userData.lastName || userData.name?.split(' ')[1] || '',
             email: userData.email,
             role: userData.role || 'member',
@@ -1326,7 +1326,9 @@ class UnifiedDataService {
           };
           
           // 🔧 FIX: Use email as key to prevent duplicates across collections
-          allUsers.set(userData.email, teamMember);
+          if (userData.email) {
+            allUsers.set(userData.email, teamMember);
+          }
         }
       } catch (error) {
         console.warn('⚠️ [UnifiedDataService] Users collection query failed:', error);
@@ -1351,7 +1353,7 @@ class UnifiedDataService {
           
           const teamMember: StreamlinedTeamMember = {
             id: tmData.id,
-            firstName: tmData.firstName || tmData.name?.split(' ')[0] || tmData.email.split('@')[0],
+            firstName: tmData.firstName || tmData.name?.split(' ')[0] || tmData.email?.split('@')[0] || 'Unknown',
             lastName: tmData.lastName || tmData.name?.split(' ')[1] || '',
             email: tmData.email,
             role: tmData.role || 'member',
@@ -1379,16 +1381,18 @@ class UnifiedDataService {
           
           // 🔧 FIX: Use email as key to prevent duplicates across collections
           // If we already have this user, merge the data (teamMembers might have more complete info)
-          const existingUser = allUsers.get(tmData.email);
-          if (existingUser) {
-            // Merge data, preferring teamMembers collection data
-            existingUser.role = tmData.role || existingUser.role;
-            existingUser.status = tmData.status || existingUser.status;
-            existingUser.department = tmData.department || existingUser.department;
-            existingUser.licenseAssignment = tmData.licenseAssignment || existingUser.licenseAssignment;
-            allUsers.set(tmData.email, existingUser);
-          } else {
-            allUsers.set(tmData.email, teamMember);
+          if (tmData.email) {
+            const existingUser = allUsers.get(tmData.email);
+            if (existingUser) {
+              // Merge data, preferring teamMembers collection data
+              existingUser.role = tmData.role || existingUser.role;
+              existingUser.status = tmData.status || existingUser.status;
+              existingUser.department = tmData.department || existingUser.department;
+              existingUser.licenseAssignment = tmData.licenseAssignment || existingUser.licenseAssignment;
+              allUsers.set(tmData.email, existingUser);
+            } else {
+              allUsers.set(tmData.email, teamMember);
+            }
           }
         }
       } catch (error) {

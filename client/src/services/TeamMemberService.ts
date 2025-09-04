@@ -87,7 +87,7 @@ export class TeamMemberService extends BaseService {
   public async addTeamMemberToProject(
     projectId: string, 
     teamMemberId: string, 
-    role: TeamMemberRole = TeamMemberRole.DO_ER
+    role: TeamMemberRole = TeamMemberRole.MEMBER
   ): Promise<boolean> {
     try {
       console.log('🚀 [TeamMemberService] Adding team member to project:', { projectId, teamMemberId, role });
@@ -566,22 +566,83 @@ export class TeamMemberService extends BaseService {
         console.log('ℹ️ [TeamMemberService] projectTeamMembers collection not found or accessible');
       }
       
-      // Now enrich the team member data with full profiles from the teamMembers collection
+      // Now enrich the team member data with full profiles from multiple collections
       const enrichedTeamMembers: ProjectTeamMember[] = [];
       for (const teamMember of teamMembers) {
         try {
-          // Get the full team member profile from Firestore
-          const fullProfile = await this.firestoreAdapter.getDocumentById<TeamMember>('teamMembers', teamMember.teamMemberId);
+          let fullProfile: TeamMember | null = null;
+          
+          // First try teamMembers collection
+          try {
+            fullProfile = await this.firestoreAdapter.getDocumentById<TeamMember>('teamMembers', teamMember.teamMemberId);
+            if (fullProfile) {
+              console.log('✅ [TeamMemberService] Found team member in teamMembers collection:', fullProfile.name || fullProfile.email);
+            }
+          } catch (teamMemberError) {
+            console.log('🔍 [TeamMemberService] Team member not found in teamMembers, trying users collection...');
+          }
+          
+          // If not found in teamMembers, try users collection
+          if (!fullProfile) {
+            try {
+              fullProfile = await this.firestoreAdapter.getDocumentById<TeamMember>('users', teamMember.teamMemberId);
+              if (fullProfile) {
+                console.log('✅ [TeamMemberService] Found team member in users collection:', fullProfile.name || fullProfile.email);
+              }
+            } catch (userError) {
+              console.log('🔍 [TeamMemberService] Team member not found in users collection either');
+            }
+          }
           
           if (fullProfile) {
+            // Extract name with comprehensive fallback logic
+            let displayName = 'Unnamed User';
+            
+            // Priority 1: Check fullProfile.name
+            if (fullProfile.name && fullProfile.name !== 'Unnamed User') {
+              displayName = fullProfile.name;
+            }
+            // Priority 2: Try firstName + lastName
+            else if (fullProfile.firstName && fullProfile.lastName) {
+              displayName = `${fullProfile.firstName} ${fullProfile.lastName}`;
+            }
+            // Priority 3: Try firstName only
+            else if (fullProfile.firstName) {
+              displayName = fullProfile.firstName;
+            }
+            // Priority 4: Try lastName only
+            else if (fullProfile.lastName) {
+              displayName = fullProfile.lastName;
+            }
+            // Priority 5: Extract from email
+            else if (fullProfile.email) {
+              const emailParts = fullProfile.email.split('@');
+              displayName = emailParts[0]
+                .replace(/[._-]/g, ' ')
+                .split(' ')
+                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+            }
+            
+            console.log('🔍 [TeamMemberService] Extracted display name:', displayName, 'from profile:', {
+              name: fullProfile.name,
+              firstName: fullProfile.firstName,
+              lastName: fullProfile.lastName,
+              email: fullProfile.email
+            });
+            
             // Enrich with full profile data
             enrichedTeamMembers.push({
               ...teamMember,
-              name: fullProfile.name || fullProfile.email || teamMember.name || 'Unnamed User',
+              name: displayName,
               email: fullProfile.email || teamMember.email || 'No email',
-              teamMember: fullProfile
+              teamMember: {
+                ...fullProfile,
+                name: displayName // Ensure the nested teamMember also has the correct name
+              }
             });
           } else {
+            console.warn('⚠️ [TeamMemberService] No profile found for team member:', teamMember.teamMemberId);
             // If no full profile found, use the basic data
             enrichedTeamMembers.push(teamMember);
           }
@@ -613,12 +674,65 @@ export class TeamMemberService extends BaseService {
       
       await this.firestoreAdapter.initialize();
       
-      // First, get the full team member profile to store complete data
-      const teamMemberProfile = await this.firestoreAdapter.getDocumentById<TeamMember>('teamMembers', teamMemberId);
+      // First, try to get the team member profile from multiple collections
+      let teamMemberProfile: TeamMember | null = null;
+      
+      // Try teamMembers collection first
+      teamMemberProfile = await this.firestoreAdapter.getDocumentById<TeamMember>('teamMembers', teamMemberId);
+      
+      // If not found, try users collection
+      if (!teamMemberProfile) {
+        console.log('🔍 [TeamMemberService] Team member not found in teamMembers, trying users collection...');
+        const userProfile = await this.firestoreAdapter.getDocumentById<any>('users', teamMemberId);
+        if (userProfile) {
+          // Convert user profile to team member format
+          teamMemberProfile = {
+            id: userProfile.id,
+            email: userProfile.email,
+            name: userProfile.name || `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim(),
+            firstName: userProfile.firstName,
+            lastName: userProfile.lastName,
+            role: userProfile.role || 'MEMBER',
+            licenseType: userProfile.licenseType || 'BASIC',
+            status: userProfile.status || 'ACTIVE',
+            organizationId: userProfile.organizationId,
+            department: userProfile.department,
+            company: userProfile.company,
+            createdAt: userProfile.createdAt || new Date(),
+            updatedAt: userProfile.updatedAt || new Date()
+          } as TeamMember;
+          console.log('✅ [TeamMemberService] Found team member in users collection:', teamMemberProfile.name);
+        }
+      }
+      
+      // If still not found, try orgMembers collection
+      if (!teamMemberProfile) {
+        console.log('🔍 [TeamMemberService] Team member not found in users, trying orgMembers collection...');
+        const orgMemberProfile = await this.firestoreAdapter.getDocumentById<any>('orgMembers', teamMemberId);
+        if (orgMemberProfile) {
+          // Convert org member profile to team member format
+          teamMemberProfile = {
+            id: orgMemberProfile.id,
+            email: orgMemberProfile.email,
+            name: orgMemberProfile.name || `${orgMemberProfile.firstName || ''} ${orgMemberProfile.lastName || ''}`.trim(),
+            firstName: orgMemberProfile.firstName,
+            lastName: orgMemberProfile.lastName,
+            role: orgMemberProfile.role || 'MEMBER',
+            licenseType: orgMemberProfile.licenseType || 'BASIC',
+            status: orgMemberProfile.status || 'ACTIVE',
+            organizationId: orgMemberProfile.organizationId,
+            department: orgMemberProfile.department,
+            company: orgMemberProfile.company,
+            createdAt: orgMemberProfile.createdAt || new Date(),
+            updatedAt: orgMemberProfile.updatedAt || new Date()
+          } as TeamMember;
+          console.log('✅ [TeamMemberService] Found team member in orgMembers collection:', teamMemberProfile.name);
+        }
+      }
       
       if (!teamMemberProfile) {
-        console.warn('⚠️ [TeamMemberService] Team member not found:', teamMemberId);
-        return false;
+        console.warn('⚠️ [TeamMemberService] Team member not found in any collection:', teamMemberId);
+        throw new Error(`Team member not found: ${teamMemberId}`);
       }
       
       // Check if there's already an Admin for this project (only 1 admin allowed)

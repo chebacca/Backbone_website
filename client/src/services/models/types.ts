@@ -31,10 +31,7 @@ export enum TeamMemberStatus {
 
 export enum TeamMemberRole {
   ADMIN = 'ADMIN',
-  MEMBER = 'MEMBER',
-  VIEWER = 'VIEWER',
-  OWNER = 'OWNER',
-  DO_ER = 'DO_ER'
+  MEMBER = 'MEMBER'
 }
 
 export enum LicenseType {

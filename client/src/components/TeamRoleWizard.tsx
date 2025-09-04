@@ -77,7 +77,7 @@ import { getAllEnhancedTemplates, getPopularTemplates, EnhancedIndustryType } fr
 import { TeamMemberService } from '../services/TeamMemberService';
 import { unifiedDataService } from '../services/UnifiedDataService';
 import { TeamMemberRole } from '../services/models/types';
-import { EnhancedRoleBridgeService, LicensingRole, DashboardUserRole } from '../services/EnhancedRoleBridgeService';
+import { EnhancedRoleBridgeService, DashboardUserRole } from '../services/EnhancedRoleBridgeService';
 import { CrossAppRoleSyncService } from '../services/CrossAppRoleSyncService';
 
 // Types
@@ -305,7 +305,7 @@ const TeamRoleWizard: React.FC<TeamRoleWizardProps> = ({
         id: member.id,
         name: member.name || `${member.firstName} ${member.lastName}`,
         email: member.email,
-        tier: member.licenseType || 'BASIC',
+        tier: member.role || member.licenseType || 'MEMBER', // Show role first, fallback to license type
         isSelected: false
       }));
       
@@ -346,7 +346,7 @@ const TeamRoleWizard: React.FC<TeamRoleWizardProps> = ({
         },
         {
           id: 'basic-doer',
-          name: 'DO_ER',
+          name: 'MEMBER',
           displayName: 'Team Member',
           description: 'Standard team member with task execution access',
           category: 'EXECUTION',
@@ -508,23 +508,18 @@ const TeamRoleWizard: React.FC<TeamRoleWizardProps> = ({
         console.log(`📋 [TeamRoleWizard] Processing assignment ${i + 1}/${assignments.length}: ${member?.name} -> ${role?.displayName}`);
         
         // Enhanced role mapping using the role bridge service
-        let roleName: TeamMemberRole = TeamMemberRole.DO_ER;
+        let roleName: TeamMemberRole = TeamMemberRole.MEMBER;
         let dashboardRole: DashboardUserRole | null = null;
         
-        // Determine licensing role
-        let licensingRole: LicensingRole = LicensingRole.DO_ER;
+        // Determine licensing role using unified TeamMemberRole (only ADMIN and MEMBER)
+        let licensingRole: TeamMemberRole = TeamMemberRole.MEMBER;
         if (role?.name === 'ADMIN') {
-          licensingRole = LicensingRole.ADMIN;
+          licensingRole = TeamMemberRole.ADMIN;
           roleName = TeamMemberRole.ADMIN;
-        } else if (role?.name === 'MANAGER') {
-          licensingRole = LicensingRole.MANAGER;
-          roleName = TeamMemberRole.MEMBER; // Map MANAGER to MEMBER for licensing
-        } else if (role?.name === 'VIEWER') {
-          licensingRole = LicensingRole.VIEWER;
-          roleName = TeamMemberRole.VIEWER;
-        } else if (role?.name === 'DO_ER') {
-          licensingRole = LicensingRole.DO_ER;
-          roleName = TeamMemberRole.DO_ER;
+        } else {
+          // All other roles (MANAGER, VIEWER, DO_ER, etc.) map to MEMBER
+          licensingRole = TeamMemberRole.MEMBER;
+          roleName = TeamMemberRole.MEMBER;
         }
         
         // Enhanced mapping for template roles
@@ -1271,66 +1266,6 @@ const TeamRoleWizard: React.FC<TeamRoleWizardProps> = ({
             {error}
           </Alert>
         )}
-        {success && (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            {success}
-          </Alert>
-        )}
-
-        {/* Loading State */}
-        {loading && (
-          <Box display="flex" justifyContent="center" py={4}>
-            <CircularProgress />
-          </Box>
-        )}
-
-        {/* Step Content */}
-        {!loading && renderStepContent()}
-      </DialogContent>
-
-      <DialogActions sx={{ p: 3, pt: 0 }}>
-        <Button onClick={onClose} disabled={loading}>
-          Cancel
-        </Button>
-        
-        <Box flex={1} />
-        
-        {activeStep > 0 && (
-          <Button 
-            onClick={handleBack} 
-            disabled={loading}
-            startIcon={<ArrowBackIcon />}
-          >
-            Back
-          </Button>
-        )}
-        
-        {activeStep < STEPS.length - 1 ? (
-          <Button 
-            variant="contained" 
-            onClick={handleNext}
-            disabled={loading}
-            endIcon={<ArrowForwardIcon />}
-          >
-            Next
-          </Button>
-        ) : (
-          <Button 
-            variant="contained" 
-            onClick={handleSubmit}
-            disabled={loading || selectedMembers.length === 0}
-            startIcon={<CheckIcon />}
-          >
-            {loading ? 'Adding...' : 'Add Team Members'}
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-export default TeamRoleWizard;
-
         {success && (
           <Alert severity="success" sx={{ mb: 3 }}>
             {success}

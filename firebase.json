@@ -166,6 +166,32 @@
     }
   },
   "emulators": {
+    "auth": {
+      "port": 9098,
+      "host": "localhost"
+    },
+    "firestore": {
+      "port": 8081,
+      "host": "localhost"
+    },
+    "functions": {
+      "port": 5002,
+      "host": "localhost"
+    },
+    "hosting": {
+      "port": 5001,
+      "host": "localhost"
+    },
+    "storage": {
+      "port": 9198,
+      "host": "localhost"
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4001,
+      "host": "localhost"
+    },
+    "singleProjectMode": true,
     "dataconnect": {
       "dataDir": "dataconnect/.dataconnect/pgliteData"
     }

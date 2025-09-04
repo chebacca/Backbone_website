@@ -117,9 +117,7 @@ enum StorageBackend {
 
 enum ProjectAssignmentRole {
   ADMIN
-  MANAGER
-  DO_ER
-  VIEWER
+  MEMBER
 }
 
 model User {

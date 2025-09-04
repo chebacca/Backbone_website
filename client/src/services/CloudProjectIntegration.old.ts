@@ -2369,7 +2369,7 @@ class CloudProjectIntegrationService {
     /**
      * Add a team member to a project with a specific role
      */
-    public async addTeamMemberToProject(projectId: string, teamMemberId: string, role: TeamMemberRole = TeamMemberRole.DO_ER): Promise<void> {
+    public async addTeamMemberToProject(projectId: string, teamMemberId: string, role: TeamMemberRole = TeamMemberRole.MEMBER): Promise<void> {
         try {
             // 🔧 CRITICAL FIX: In webonly mode, use direct Firestore access
             if (this.isWebOnlyMode()) {

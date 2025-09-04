@@ -7,7 +7,7 @@
 
 export enum TeamMemberRole {
     ADMIN = 'admin',
-    DO_ER = 'do_er'
+    MEMBER = 'member'
 }
 
 export enum TeamMemberStatus {
@@ -135,7 +135,7 @@ export const TEAM_MEMBER_ROLE_MAPPINGS: TeamMemberRoleMapping[] = [
         description: 'Full administrative access to the project. Can manage users, roles, and all project settings.'
     },
     {
-        teamMemberRole: TeamMemberRole.DO_ER,
+        teamMemberRole: TeamMemberRole.MEMBER,
         backboneUserRole: 'MEMBER', // Maps to UserRole.MEMBER
         permissions: [
             'sessions.create_sessions',

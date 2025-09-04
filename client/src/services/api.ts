@@ -13,13 +13,27 @@ declare global {
 }
 
 // Determine the base URL for API calls
-// Licensing website is ALWAYS in production mode (web-only)
+// Licensing website detects localhost for emulator mode
 const getBaseURL = (): string => {
-  // 🔥 PRODUCTION MODE: Use Cloud Run API endpoint
-  // This is a web-only Firebase project that uses Cloud Run for API calls
-  const apiUrl = 'https://api-oup5qxogca-uc.a.run.app/api';
-  console.log('[api] PRODUCTION MODE: Using Cloud Run API endpoint');
-  return apiUrl;
+  // Check if we're running on localhost (emulator mode)
+  const isLocalhost = typeof window !== 'undefined' && 
+                     (window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1');
+  
+  if (isLocalhost) {
+    // 🔧 EMULATOR MODE: Use local Firebase Functions emulator
+    const apiUrl = 'http://localhost:5001/backbone-logic/us-central1/api';
+    console.log('[api] EMULATOR MODE: Using local Functions emulator');
+    console.log(`[api] baseURL = ${apiUrl} mode = emulator (local development)`);
+    return apiUrl;
+  } else {
+    // 🔥 PRODUCTION MODE: Use Cloud Run API endpoint
+    // This is a web-only Firebase project that uses Cloud Run for API calls
+    const apiUrl = 'https://api-oup5qxogca-uc.a.run.app/api';
+    console.log('[api] PRODUCTION MODE: Using Cloud Run API endpoint');
+    console.log(`[api] baseURL = ${apiUrl} mode = production (web-only)`);
+    return apiUrl;
+  }
 };
 
 const baseURL = getBaseURL();

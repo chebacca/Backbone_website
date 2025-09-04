@@ -188,9 +188,18 @@ const DashboardOverview: React.FC = () => {
 
         // Fetching data for authenticated user
 
-        // Get current user data from Firestore using Firebase UID
+        // Get current user data from Firestore - try both UID and email as document ID
         const firebaseUid = user.firebaseUid || user.id;
-        const userDoc = await getDoc(doc(db, 'users', firebaseUid));
+        const userEmail = user.email;
+        
+        let userDoc = await getDoc(doc(db, 'users', firebaseUid));
+        
+        // If not found by UID, try by email
+        if (!userDoc.exists() && userEmail) {
+          console.log('🔍 [DashboardOverview] User not found by UID, trying email:', userEmail);
+          userDoc = await getDoc(doc(db, 'users', userEmail));
+        }
+        
         if (userDoc.exists()) {
           const userData = userDoc.data();
           setCurrentUser({
@@ -199,6 +208,9 @@ const DashboardOverview: React.FC = () => {
             createdAt: convertFirestoreDate(userData.createdAt) || new Date(),
             updatedAt: convertFirestoreDate(userData.updatedAt) || new Date(),
           } as DashboardUser);
+          console.log('✅ [DashboardOverview] Found user data:', userData.email);
+        } else {
+          console.warn('⚠️ [DashboardOverview] User document not found for UID or email:', firebaseUid, userEmail);
         }
 
         // Get organization data if user has organizationId
@@ -247,7 +259,7 @@ const DashboardOverview: React.FC = () => {
             const teamQuery = query(
               collection(db, 'teamMembers'),
               where('organizationId', '==', user.organizationId),
-              where('status', '==', 'ACTIVE')
+              where('status', 'in', ['ACTIVE', 'active'])
             );
             const teamSnapshot = await getDocs(teamQuery);
             console.log('✅ [DashboardOverview] Team members found:', teamSnapshot.size);

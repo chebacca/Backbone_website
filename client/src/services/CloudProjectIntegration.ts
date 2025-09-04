@@ -620,7 +620,7 @@ class CloudProjectIntegrationService {
   public async addTeamMemberToProject(
     projectId: string, 
     teamMemberId: string, 
-    role: TeamMemberRole = TeamMemberRole.DO_ER
+    role: TeamMemberRole = TeamMemberRole.MEMBER
   ): Promise<void> {
     await this.serviceFactory.getTeamMemberService().addTeamMemberToProject(projectId, teamMemberId, role);
   }

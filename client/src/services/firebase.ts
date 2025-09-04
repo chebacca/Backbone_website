@@ -24,6 +24,8 @@ import {
   connectFirestoreEmulator
 } from 'firebase/firestore';
 import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 
 // Firebase configuration - these are public config values
 // For backbone-logic project - these are safe to expose in client code
@@ -141,6 +143,39 @@ export const db = app ? getFirestore(app) : getFirestore();
 
 // Initialize Auth with lazy initialization
 export const auth = app ? getAuth(app) : getAuth();
+
+// Connect to emulators in development mode
+const isEmulator = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+if (isEmulator && app) {
+  console.log('🔧 [FIREBASE SERVICE] Connecting to Firebase emulators...');
+  
+  try {
+    // Connect to SHARED Auth Emulator (same as Dashboard)
+    connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+    console.log('✅ [FIREBASE SERVICE] Connected to SHARED Auth Emulator (port 9099)');
+    
+    // Connect to SHARED Firestore Emulator (same as Dashboard)
+    connectFirestoreEmulator(db, 'localhost', 8080);
+    console.log('✅ [FIREBASE SERVICE] Connected to SHARED Firestore Emulator (port 8080)');
+    
+    // Connect to SHARED Functions Emulator (same as Dashboard)
+    const functions = getFunctions(app);
+    connectFunctionsEmulator(functions, 'localhost', 5001);
+    console.log('✅ [FIREBASE SERVICE] Connected to SHARED Functions Emulator (port 5001)');
+    
+    // Connect to SHARED Storage Emulator (same as Dashboard)
+    const storage = getStorage(app);
+    connectStorageEmulator(storage, 'localhost', 9199);
+    console.log('✅ [FIREBASE SERVICE] Connected to SHARED Storage Emulator (port 9199)');
+    
+    console.log('🎉 [FIREBASE SERVICE] All emulators connected successfully!');
+    
+  } catch (error) {
+    console.warn('⚠️ [FIREBASE SERVICE] Emulators may already be connected:', (error as Error)?.message || error);
+  }
+}
 
 // Configure Firebase Auth to persist authentication state
 if (auth) {
@@ -657,6 +692,54 @@ export class FirebaseTeamMemberService {
   ): Promise<FirestoreProjectTeamMember> {
     try {
       console.log('🔍 [Firebase] Adding team member to project:', { projectId, teamMemberId, role });
+      
+      // First, verify the team member exists in one of the collections
+      let teamMemberExists = false;
+      let teamMemberData: any = null;
+      
+      // Check teamMembers collection
+      try {
+        const teamMemberDoc = await getDoc(doc(db, 'teamMembers', teamMemberId));
+        if (teamMemberDoc.exists()) {
+          teamMemberExists = true;
+          teamMemberData = teamMemberDoc.data();
+          console.log('✅ [Firebase] Found team member in teamMembers collection');
+        }
+      } catch (error) {
+        console.log('🔍 [Firebase] Team member not found in teamMembers, checking other collections...');
+      }
+      
+      // Check users collection if not found
+      if (!teamMemberExists) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', teamMemberId));
+          if (userDoc.exists()) {
+            teamMemberExists = true;
+            teamMemberData = userDoc.data();
+            console.log('✅ [Firebase] Found team member in users collection');
+          }
+        } catch (error) {
+          console.log('🔍 [Firebase] Team member not found in users collection...');
+        }
+      }
+      
+      // Check orgMembers collection if still not found
+      if (!teamMemberExists) {
+        try {
+          const orgMemberDoc = await getDoc(doc(db, 'orgMembers', teamMemberId));
+          if (orgMemberDoc.exists()) {
+            teamMemberExists = true;
+            teamMemberData = orgMemberDoc.data();
+            console.log('✅ [Firebase] Found team member in orgMembers collection');
+          }
+        } catch (error) {
+          console.log('🔍 [Firebase] Team member not found in orgMembers collection...');
+        }
+      }
+      
+      if (!teamMemberExists) {
+        throw new Error(`Team member not found in any collection: ${teamMemberId}`);
+      }
       
       // Check if already assigned
       const existingQuery = query(

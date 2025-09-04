@@ -228,9 +228,36 @@ const UnifiedTeamRoleManagementDialog: React.FC<UnifiedTeamRoleManagementDialogP
         loadUserCreatedRoles()
       ]);
       
-      // Load role templates
-      const templates = getAllEnhancedTemplates();
-      setRoleTemplates(templates);
+      // 🔧 ENHANCEMENT: Load comprehensive template library (800+ templates) from unified API
+      try {
+        const auth = (window as any).firebase?.auth();
+        const currentUser = auth?.currentUser;
+        
+        if (currentUser) {
+          const token = await currentUser.getIdToken();
+          const response = await fetch('https://us-central1-backbone-logic.cloudfunctions.net/api/templates?limit=800', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const templatesData = await response.json();
+            const templates = templatesData.data || [];
+            setRoleTemplates(templates);
+            console.log(`🎭 [UnifiedTeamRole] Loaded ${templates.length} comprehensive role templates from unified API`);
+          } else {
+            throw new Error('API request failed');
+          }
+        } else {
+          throw new Error('No authenticated user');
+        }
+      } catch (error) {
+        console.warn('⚠️ [UnifiedTeamRole] Failed to load templates from API, falling back to basic templates:', error);
+        const templates = getAllEnhancedTemplates();
+        setRoleTemplates(templates);
+      }
       
     } catch (err) {
       console.error('❌ [UnifiedTeamRole] Error loading data:', err);
@@ -325,6 +352,27 @@ const UnifiedTeamRoleManagementDialog: React.FC<UnifiedTeamRoleManagementDialogP
   const loadAvailableRoles = async () => {
     try {
       const roles = await projectRoleService.getAvailableRoles(projectId);
+      
+      // Add admin role if current user can assign admins
+      const canAssignAdmin = await checkCanAssignAdmin();
+      if (canAssignAdmin) {
+        const adminRole = {
+          id: 'admin-role',
+          name: 'ADMIN',
+          displayName: 'Project Administrator',
+          description: 'Full administrative access to the project',
+          category: 'ADMINISTRATIVE',
+          hierarchy: 100,
+          baseRole: 'ADMIN',
+          isDefault: true,
+          permissions: ['*'],
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        roles.unshift(adminRole); // Add admin role at the beginning
+      }
+      
       setAvailableRoles(roles);
       
       // Set default role selection
@@ -335,6 +383,65 @@ const UnifiedTeamRoleManagementDialog: React.FC<UnifiedTeamRoleManagementDialogP
     } catch (err) {
       console.error('❌ [UnifiedTeamRole] Error loading available roles:', err);
       setAvailableRoles([]);
+    }
+  };
+
+  // Check if current user can assign admin roles
+  const checkCanAssignAdmin = async () => {
+    try {
+      const token = await getFirebaseToken();
+      
+      // Method 1: Check Firebase Auth user email directly
+      if (typeof window !== 'undefined' && (window as any).firebase?.auth) {
+        const auth = (window as any).firebase.auth();
+        const currentUser = auth?.currentUser;
+        if (currentUser?.email) {
+          const userEmail = currentUser.email;
+          console.log('🔍 [UnifiedTeamRole] Checking admin permissions for:', userEmail);
+          
+          // Allow admin assignment for enterprise.user and Steve Martin
+          if (userEmail === 'enterprise.user@enterprisemedia.com' || 
+              userEmail === 'smartin@example.com') {
+            console.log('✅ [UnifiedTeamRole] User has admin assignment permissions');
+            return true;
+          }
+        }
+      }
+      
+      // Method 2: Check via team member data
+      try {
+        const response = await fetch(`https://us-central1-backbone-logic.cloudfunctions.net/api/team-members/licensed`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const teamMembers = data.data || [];
+          
+          // Find current user in team members and check their role
+          const currentUserEmail = (window as any).firebase?.auth?.()?.currentUser?.email;
+          const currentTeamMember = teamMembers.find((member: any) => 
+            member.email === currentUserEmail
+          );
+          
+          if (currentTeamMember && (currentTeamMember.role === 'ADMIN' || currentTeamMember.role === 'admin')) {
+            console.log('✅ [UnifiedTeamRole] User is admin team member');
+            return true;
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [UnifiedTeamRole] Could not check team member role:', error);
+      }
+      
+      console.log('❌ [UnifiedTeamRole] User does not have admin assignment permissions');
+      return false;
+    } catch (error) {
+      console.warn('⚠️ [UnifiedTeamRole] Could not check admin permissions:', error);
+      return false; // Default to no admin permissions
     }
   };
 
@@ -371,8 +478,31 @@ const UnifiedTeamRoleManagementDialog: React.FC<UnifiedTeamRoleManagementDialogP
     setError(null);
 
     try {
+      const selectedRoleObj = availableRoles.find(role => role.id === selectedRole);
+      const isAdminRole = selectedRoleObj?.name === 'ADMIN';
+      
+      if (isAdminRole) {
+        // Special handling for admin role assignment
+        const canAssignAdmin = await checkCanAssignAdmin();
+        if (!canAssignAdmin) {
+          throw new Error('You do not have permission to assign admin roles');
+        }
+        
+        // Check if project already has an admin
+        const currentAdmin = teamMembers.find(member => member.currentRole?.name === 'ADMIN');
+        if (currentAdmin) {
+          const confirmReplace = window.confirm(
+            `This project already has an admin (${currentAdmin.name}). Do you want to replace them with the new admin? The current admin will be reassigned as a Manager.`
+          );
+          if (!confirmReplace) {
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      
       await projectRoleService.addTeamMemberToProject(projectId, selectedTeamMember, selectedRole);
-      setSuccess('Team member added successfully!');
+      setSuccess(`Team member added successfully${isAdminRole ? ' as Project Administrator' : ''}!`);
       
       // Reload data
       await loadTeamMembers();

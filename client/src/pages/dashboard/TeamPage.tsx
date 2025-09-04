@@ -101,6 +101,16 @@ import MetricCard from '@/components/common/MetricCard';
 // TYPES
 // ============================================================================
 
+/**
+ * Team Member Roles - Organizational Level (from unified role system)
+ * These roles determine access to the licensing system and basic permissions
+ */
+enum TeamMemberRole {
+  VIEWER = 'viewer',    // Can view team and project info, limited access
+  MEMBER = 'member',    // Standard team member with project access
+  ADMIN = 'admin'       // Full administrative access to team management
+}
+
 // Use StreamlinedTeamMember from UnifiedDataService
 type TeamMember = StreamlinedTeamMember;
 
@@ -138,7 +148,6 @@ const getRoleColor = (role: TeamMember['role']) => {
   switch (roleLower) {
     case 'owner': return 'error';
     case 'admin': return 'primary';
-    case 'manager': return 'secondary';
     case 'member': return 'info';
     case 'viewer': return 'default';
     default: return 'default';
@@ -244,7 +253,7 @@ const TeamPage: React.FC = () => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteFirstName, setInviteFirstName] = useState('');
   const [inviteLastName, setInviteLastName] = useState('');
-  const [inviteRole, setInviteRole] = useState<TeamMember['role']>('member');
+  const [inviteRole, setInviteRole] = useState<TeamMemberRole>(TeamMemberRole.MEMBER);
   const [inviteDepartment, setInviteDepartment] = useState('');
   const [invitePosition, setInvitePosition] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
@@ -263,7 +272,7 @@ const TeamPage: React.FC = () => {
   // Edit member form states
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
-  const [editRole, setEditRole] = useState<TeamMember['role']>('member');
+  const [editRole, setEditRole] = useState<TeamMemberRole>(TeamMemberRole.MEMBER);
   const [editDepartment, setEditDepartment] = useState('');
   const [editSelectedLicenseId, setEditSelectedLicenseId] = useState('');
   const [editStatus, setEditStatus] = useState<TeamMember['status']>('pending');
@@ -541,7 +550,7 @@ const TeamPage: React.FC = () => {
       setInviteEmail('');
       setInviteFirstName('');
       setInviteLastName('');
-      setInviteRole('member');
+      setInviteRole(TeamMemberRole.MEMBER);
       setInviteDepartment('');
       setInvitePosition('');
       setInvitePhone('');
@@ -572,7 +581,7 @@ const TeamPage: React.FC = () => {
     setSelectedMember(memberToEdit);
     setEditFirstName(memberToEdit.firstName || '');
     setEditLastName(memberToEdit.lastName || '');
-    setEditRole(memberToEdit.role || 'member');
+    setEditRole((memberToEdit.role as TeamMemberRole) || TeamMemberRole.MEMBER);
     setEditDepartment(memberToEdit.department || '');
     setEditStatus(memberToEdit.status || 'pending');
     
@@ -1198,27 +1207,21 @@ const TeamPage: React.FC = () => {
                   <Select
                     value={inviteRole}
                     label="Role"
-                    onChange={(e) => setInviteRole(e.target.value as TeamMember['role'])}
+                    onChange={(e) => setInviteRole(e.target.value as TeamMemberRole)}
                   >
-                    <MenuItem value="viewer">
+                    <MenuItem value={TeamMemberRole.VIEWER}>
                       <Box>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>Viewer</Typography>
                         <Typography variant="caption" color="text.secondary">Read-only access to projects</Typography>
                       </Box>
                     </MenuItem>
-                    <MenuItem value="member">
+                    <MenuItem value={TeamMemberRole.MEMBER}>
                       <Box>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>Member</Typography>
                         <Typography variant="caption" color="text.secondary">Standard project access</Typography>
                       </Box>
                     </MenuItem>
-                    <MenuItem value="manager">
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>Manager</Typography>
-                        <Typography variant="caption" color="text.secondary">Team management capabilities</Typography>
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="admin">
+                    <MenuItem value={TeamMemberRole.ADMIN}>
                       <Box>
                         <Typography variant="body2" sx={{ fontWeight: 500 }}>Admin</Typography>
                         <Typography variant="caption" color="text.secondary">Full organizational access</Typography>
@@ -1475,27 +1478,21 @@ const TeamPage: React.FC = () => {
                     <Select
                       value={editRole}
                       label="Role"
-                      onChange={(e) => setEditRole(e.target.value as TeamMember['role'])}
+                      onChange={(e) => setEditRole(e.target.value as TeamMemberRole)}
                     >
-                      <MenuItem value="viewer">
+                      <MenuItem value={TeamMemberRole.VIEWER}>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>Viewer</Typography>
                           <Typography variant="caption" color="text.secondary">Read-only access to projects</Typography>
                         </Box>
                       </MenuItem>
-                      <MenuItem value="member">
+                      <MenuItem value={TeamMemberRole.MEMBER}>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>Member</Typography>
                           <Typography variant="caption" color="text.secondary">Standard project access</Typography>
                         </Box>
                       </MenuItem>
-                      <MenuItem value="manager">
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500 }}>Manager</Typography>
-                          <Typography variant="caption" color="text.secondary">Team management capabilities</Typography>
-                        </Box>
-                      </MenuItem>
-                      <MenuItem value="admin">
+                      <MenuItem value={TeamMemberRole.ADMIN}>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>Admin</Typography>
                           <Typography variant="caption" color="text.secondary">Full organizational access</Typography>

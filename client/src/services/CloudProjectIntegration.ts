@@ -211,6 +211,29 @@ class CloudProjectIntegrationService {
   }
 
   /**
+   * Update an existing dataset with new collection assignments and other properties
+   */
+  public async updateDataset(datasetId: string, updates: Partial<Omit<CloudDataset, 'id' | 'ownerId' | 'createdAt'>>): Promise<CloudDataset | null> {
+    try {
+      console.log('🔍 [CloudProjectIntegration] Updating dataset:', datasetId, 'with updates:', updates);
+      
+      // 🔧 CRITICAL FIX: In webonly mode, use direct Firestore access
+      if (this.isWebOnlyMode()) {
+        console.log('🔍 [CloudProjectIntegration] WebOnly mode - updating dataset in Firestore');
+        return await this.updateDatasetInFirestore(datasetId, updates);
+      }
+
+      // For non-webonly mode, we would use REST API, but since this is web-only, fall back to Firestore
+      console.log('🔄 [CloudProjectIntegration] Non-webonly mode detected, falling back to Firestore');
+      return await this.updateDatasetInFirestore(datasetId, updates);
+      
+    } catch (error: any) {
+      console.error('❌ [CloudProjectIntegration] Failed to update dataset:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get datasets for a specific project
    */
   public async getProjectDatasets(projectId: string): Promise<CloudDataset[]> {
@@ -263,13 +286,6 @@ class CloudProjectIntegrationService {
     // await this.serviceFactory.getDatasetService().unassignDatasetFromProject(projectId, datasetId);
   }
 
-  /**
-   * Update a dataset
-   */
-  public async updateDataset(datasetId: string, updates: Partial<CloudDataset>): Promise<CloudDataset | null> {
-    // return await this.serviceFactory.getDatasetService().updateDataset(datasetId, updates);
-    return null;
-  }
 
   /**
    * Delete a dataset permanently
@@ -331,7 +347,9 @@ class CloudProjectIntegrationService {
         updatedAt: now.toISOString(),
         lastAccessedAt: now.toISOString(),
         size: 0,
-        fileCount: 0
+        fileCount: 0,
+        // 🆕 NEW: Collection assignment for Firestore datasets
+        collectionAssignment: (input as any).collectionAssignment || null
       };
       
       // Save to Firestore
@@ -343,6 +361,75 @@ class CloudProjectIntegrationService {
       
     } catch (error) {
       console.error('❌ [CloudProjectIntegration] Failed to create dataset in Firestore:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing dataset in Firestore (webonly mode)
+   */
+  private async updateDatasetInFirestore(datasetId: string, updates: Partial<Omit<CloudDataset, 'id' | 'ownerId' | 'createdAt'>>): Promise<CloudDataset | null> {
+    try {
+      console.log('🔍 [CloudProjectIntegration] Updating dataset in Firestore:', datasetId);
+      
+      // Import Firebase modules
+      const { db, auth } = await import('./firebase');
+      const { doc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+      
+      // 🔧 CRITICAL FIX: Wait for Firebase authentication to be ready
+      const currentUser = await this.waitForFirebaseAuth();
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Get reference to the dataset document
+      const datasetRef = doc(db, 'datasets', datasetId);
+      
+      // First, get the current dataset to verify ownership and organization
+      const currentDatasetDoc = await getDoc(datasetRef);
+      if (!currentDatasetDoc.exists()) {
+        throw new Error('Dataset not found');
+      }
+      
+      const currentDataset = currentDatasetDoc.data() as CloudDataset;
+      
+      // Verify user has permission to update this dataset
+      const { doc: docFn } = await import('firebase/firestore');
+      const userDoc = await getDoc(docFn(db, 'users', currentUser.uid));
+      const userData = userDoc.data();
+      const userOrganizationId = userData?.organizationId;
+      
+      if (currentDataset.organizationId !== userOrganizationId) {
+        throw new Error('Unauthorized: Dataset belongs to different organization');
+      }
+      
+      // Prepare update data
+      const updateData: any = {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+        lastAccessedAt: new Date().toISOString()
+      };
+      
+      // Remove fields that shouldn't be updated
+      delete updateData.id;
+      delete updateData.ownerId;
+      delete updateData.createdAt;
+      
+      console.log('🔄 [CloudProjectIntegration] Updating dataset with data:', updateData);
+      
+      // Update the document
+      await updateDoc(datasetRef, updateData);
+      
+      // Get the updated dataset
+      const updatedDatasetDoc = await getDoc(datasetRef);
+      const updatedDataset = updatedDatasetDoc.data() as CloudDataset;
+      
+      console.log('✅ [CloudProjectIntegration] Dataset updated successfully in Firestore:', datasetId);
+      
+      return updatedDataset;
+      
+    } catch (error) {
+      console.error('❌ [CloudProjectIntegration] Failed to update dataset in Firestore:', error);
       throw error;
     }
   }

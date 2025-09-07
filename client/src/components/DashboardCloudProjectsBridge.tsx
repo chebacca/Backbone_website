@@ -82,13 +82,25 @@ import {
     Person as PersonIcon,
     GroupAdd as GroupAddIcon,
     Refresh as RefreshIcon,
-    Security as SecurityIcon
+    Security as SecurityIcon,
+    CheckCircle,
+    Schedule,
+    MoreVert as MoreVertIcon,
+    Visibility as VisibilityIcon,
+    PlayArrow as PlayArrowIcon,
+    Stop as StopIcon,
+    Pause as PauseIcon,
+    Check as CheckIcon,
+    Warning as WarningIcon,
+    Edit as EditIcon
 } from '@mui/icons-material';
 
-import { cloudProjectIntegration } from '../services/CloudProjectIntegration';
+import { cloudProjectIntegration, ProjectStatus, CloudDataset } from '../services/CloudProjectIntegration';
 import { simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
+import { datasetConflictAnalyzer, DatasetConflictAnalysis } from '../services/DatasetConflictAnalyzer';
 import UnifiedProjectCreationDialog from './UnifiedProjectCreationDialog';
 import DatasetCreationWizard from './DatasetCreationWizard';
+import EditDatasetDialog from './EditDatasetDialog';
 // import { DatasetManagementDialog } from './DatasetManagementDialog';
 import { ErrorBoundary } from './common/ErrorBoundary';
 import { ProjectRoleManagementDialog } from './ProjectRoleManagementDialog';
@@ -115,10 +127,22 @@ interface CloudProject {
     allowCollaboration?: boolean;
     maxCollaborators?: number;
     realTimeEnabled?: boolean;
+    // Enhanced project status management
+    status: 'draft' | 'active' | 'in-progress' | 'completed' | 'archived' | 'paused';
+    completionPercentage?: number;
+    lastActivityAt?: string;
+    teamMemberCount?: number;
+    collaborationEnabled?: boolean;
     settings?: {
       preferredPorts?: {
         website?: number;
         api?: number;
+      };
+      autoEnableCollaboration?: boolean;
+      completionCriteria?: {
+        requiresDatasets?: boolean;
+        requiresTeamMembers?: boolean;
+        minimumActivity?: number;
       };
     };
     // Team member specific properties
@@ -131,49 +155,217 @@ interface CloudProject {
 interface DashboardCloudProjectsBridgeProps {
 }
 
-// Function to get collaboration limit based on user's license
+// Function to get collaboration limit based on active licenses
 const getCollaborationLimit = (user: any): number => {
-    if (!user) return 10; // Default for unauthenticated users
+    if (!user) return 1; // Default for unauthenticated users - just themselves
     
-    // Check if user has subscription plan
-    if (user.subscription?.plan) {
-        const plan = user.subscription.plan.toUpperCase();
-        if (plan === 'ENTERPRISE') return 250;
-        if (plan === 'PRO' || plan === 'PROFESSIONAL') return 50;
-        if (plan === 'BASIC') return 10;
-    }
+    let totalActiveLicenses = 0;
     
-    // Check if user has licenses array
-    if (user.licenses && user.licenses.length > 0) {
-        const activeLicense = user.licenses.find((license: any) => 
+    // Count active licenses from user.licenses array
+    if (user.licenses && Array.isArray(user.licenses)) {
+        const activeLicenses = user.licenses.filter((license: any) => 
             license.status === 'ACTIVE' || license.status === 'PENDING'
         );
-        if (activeLicense) {
-            // Try to determine license type from key or other properties
-            const licenseKey = activeLicense.key?.toUpperCase() || '';
-            if (licenseKey.includes('ENTERPRISE')) return 250;
-            if (licenseKey.includes('PROFESSIONAL') || licenseKey.includes('PRO')) return 50;
-            if (licenseKey.includes('BASIC')) return 10;
+        totalActiveLicenses += activeLicenses.length;
+    }
+    
+    // Check subscription-based licenses
+    if (user.subscription?.plan) {
+        const plan = user.subscription.plan.toUpperCase();
+        // Subscription plans typically include a base number of licenses
+        if (plan === 'ENTERPRISE') {
+            totalActiveLicenses += user.subscription.seats || 100; // Enterprise typically has many seats
+        } else if (plan === 'PRO' || plan === 'PROFESSIONAL') {
+            totalActiveLicenses += user.subscription.seats || 25; // Pro typically has moderate seats
+        } else if (plan === 'BASIC') {
+            totalActiveLicenses += user.subscription.seats || 5; // Basic typically has few seats
         }
     }
     
-    // Fallback to basic limit
-    return 10;
+    // For organization owners, check organization-level licenses
+    if (user.organizationId && !user.isTeamMember) {
+        // Organization owners can use all licenses in their organization
+        // This will be the actual limit for collaboration
+        const orgLicenseCount = user.organizationLicenseCount || totalActiveLicenses;
+        totalActiveLicenses = Math.max(totalActiveLicenses, orgLicenseCount);
+    }
+    
+    // Ensure minimum of 1 (the user themselves) and reasonable maximum for performance
+    // Since it's frontend-heavy, we can be generous but still set a reasonable cap
+    const minLimit = 1;
+    const maxLimit = 1000; // Performance-conscious upper limit
+    
+    return Math.max(minLimit, Math.min(totalActiveLicenses, maxLimit));
+};
+
+// Helper functions for project status and collaboration management
+const getProjectStatus = (project: any, teamMemberCount: number = 0, datasetCount: number = 0): 'draft' | 'active' | 'in-progress' | 'completed' | 'archived' | 'paused' => {
+    // Check for extended status in metadata first
+    if (project.metadata?.extendedStatus) {
+        const extendedStatus = project.metadata.extendedStatus;
+        if (['draft', 'active', 'in-progress', 'completed', 'archived', 'paused'].includes(extendedStatus)) {
+            return extendedStatus;
+        }
+    }
+    
+    // If explicitly archived
+    if (project.isArchived || project.status === 'archived') {
+        return 'archived';
+    }
+    
+    // If explicitly paused (legacy check)
+    if (project.status === 'paused') {
+        return 'paused';
+    }
+    
+    // If explicitly completed (legacy check)
+    if (project.status === 'completed') {
+        return 'completed';
+    }
+    
+    // If explicitly draft
+    if (project.status === 'draft') {
+        return 'draft';
+    }
+    
+    // Determine status based on activity and setup
+    const hasTeamMembers = teamMemberCount > 0;
+    const hasDatasets = datasetCount > 0;
+    const hasRecentActivity = project.lastAccessedAt && 
+        (new Date().getTime() - new Date(project.lastAccessedAt).getTime()) < (7 * 24 * 60 * 60 * 1000); // 7 days
+    
+    // If project has team members and datasets and recent activity, it's in progress
+    if (hasTeamMembers && hasDatasets && hasRecentActivity) {
+        return 'in-progress';
+    }
+    
+    // If project has some setup but no recent activity, it's active but not progressing
+    if ((hasTeamMembers || hasDatasets) && !hasRecentActivity) {
+        return 'active';
+    }
+    
+    // If project has recent activity but minimal setup, it's active
+    if (hasRecentActivity) {
+        return 'active';
+    }
+    
+    // Default to draft for new projects with minimal setup
+    return 'draft';
+};
+
+const shouldEnableCollaboration = (project: any, teamMemberCount: number = 0): boolean => {
+    // Always enable collaboration for shared network projects (cloud projects are collaborative by nature)
+    if (project.applicationMode === 'shared_network') {
+        return true;
+    }
+    
+    // Enable if team members are assigned (they need to collaborate)
+    if (teamMemberCount > 0) {
+        return true;
+    }
+    
+    // Enable if explicitly set in project settings
+    if (project.settings?.autoEnableCollaboration !== false) {
+        // Default to true for cloud projects unless explicitly disabled
+        return true;
+    }
+    
+    // Enable if allowCollaboration is explicitly true
+    if (project.allowCollaboration === true) {
+        return true;
+    }
+    
+    // For cloud projects, default to enabled since they're designed for collaboration
+    // Only disable if explicitly set to false
+    return project.allowCollaboration !== false;
+};
+
+const calculateCompletionPercentage = (project: any, teamMemberCount: number = 0, datasetCount: number = 0): number => {
+    let completionScore = 0;
+    let totalCriteria = 0;
+    
+    // Basic project setup (20%)
+    if (project.name && project.description) {
+        completionScore += 20;
+    } else if (project.name) {
+        completionScore += 10;
+    }
+    totalCriteria += 20;
+    
+    // Team member assignment (30%)
+    if (teamMemberCount > 0) {
+        completionScore += Math.min(30, teamMemberCount * 10);
+    }
+    totalCriteria += 30;
+    
+    // Dataset assignment (25%)
+    if (datasetCount > 0) {
+        completionScore += Math.min(25, datasetCount * 5);
+    }
+    totalCriteria += 25;
+    
+    // Recent activity (25%)
+    if (project.lastAccessedAt) {
+        const daysSinceAccess = (new Date().getTime() - new Date(project.lastAccessedAt).getTime()) / (24 * 60 * 60 * 1000);
+        if (daysSinceAccess <= 1) {
+            completionScore += 25;
+        } else if (daysSinceAccess <= 7) {
+            completionScore += 15;
+        } else if (daysSinceAccess <= 30) {
+            completionScore += 5;
+        }
+    }
+    totalCriteria += 25;
+    
+    return Math.min(100, Math.round((completionScore / totalCriteria) * 100));
+};
+
+const getStatusColor = (status: string): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
+    switch (status) {
+        case 'draft': return 'default';
+        case 'active': return 'primary';
+        case 'in-progress': return 'info';
+        case 'completed': return 'success';
+        case 'archived': return 'default';
+        case 'paused': return 'warning';
+        default: return 'default';
+    }
+};
+
+const getStatusIcon = (status: string) => {
+    switch (status) {
+        case 'draft': return <InfoIcon />;
+        case 'active': return <TrendingUpIcon />;
+        case 'in-progress': return <AssessmentIcon />;
+        case 'completed': return <CheckCircle />;
+        case 'archived': return <ArchiveIcon />;
+        case 'paused': return <Schedule />;
+        default: return <InfoIcon />;
+    }
 };
 
 // Function to map service CloudProject to component CloudProject
-const mapServiceProjectToComponentProject = (serviceProject: any): CloudProject => {
+const mapServiceProjectToComponentProject = (serviceProject: any, teamMemberCount: number = 0, datasetCount: number = 0, user?: any): CloudProject => {
     console.log('🔍 [DashboardCloudProjectsBridge] Mapping project:', serviceProject.name);
     console.log('🔍 [DashboardCloudProjectsBridge] Raw project data:', serviceProject);
-    console.log('🔍 [DashboardCloudProjectsBridge] Project status:', serviceProject.status);
-    console.log('🔍 [DashboardCloudProjectsBridge] Project isActive field:', serviceProject.isActive);
-    console.log('🔍 [DashboardCloudProjectsBridge] Project isArchived field:', serviceProject.isArchived);
+    console.log('🔍 [DashboardCloudProjectsBridge] Team member count:', teamMemberCount);
+    console.log('🔍 [DashboardCloudProjectsBridge] Dataset count:', datasetCount);
+    
+    // Calculate enhanced project properties
+    const projectStatus = getProjectStatus(serviceProject, teamMemberCount, datasetCount);
+    const collaborationEnabled = shouldEnableCollaboration(serviceProject, teamMemberCount);
+    const completionPercentage = calculateCompletionPercentage(serviceProject, teamMemberCount, datasetCount);
+    const lastActivityAt = serviceProject.lastActivityAt || serviceProject.lastAccessedAt || serviceProject.updatedAt;
+    
+    console.log('🔍 [DashboardCloudProjectsBridge] Calculated status:', projectStatus);
+    console.log('🔍 [DashboardCloudProjectsBridge] Collaboration enabled:', collaborationEnabled);
+    console.log('🔍 [DashboardCloudProjectsBridge] Completion percentage:', completionPercentage);
     
     return {
         id: serviceProject.id,
         name: serviceProject.name,
         description: serviceProject.description,
-        applicationMode: serviceProject.settings?.applicationMode || 'standalone',
+        applicationMode: serviceProject.settings?.applicationMode || 'shared_network', // Default to shared_network for cloud projects
         storageBackend: serviceProject.settings?.storageBackend || 'firestore',
         gcsBucket: serviceProject.settings?.gcsBucket,
         gcsPrefix: serviceProject.settings?.gcsPrefix,
@@ -184,12 +376,27 @@ const mapServiceProjectToComponentProject = (serviceProject: any): CloudProject 
         azureContainer: serviceProject.settings?.azureContainer,
         azurePrefix: serviceProject.settings?.azurePrefix,
         lastAccessedAt: serviceProject.lastAccessedAt || new Date().toISOString(),
-        isActive: serviceProject.status === 'active' || serviceProject.isActive !== false,
-        isArchived: serviceProject.status === 'archived' || serviceProject.isArchived === true,
-        allowCollaboration: serviceProject.settings?.allowCollaboration || false,
-        maxCollaborators: serviceProject.settings?.maxCollaborators || 10,
-        realTimeEnabled: serviceProject.settings?.realTimeEnabled || false,
-        settings: serviceProject.settings,
+        isActive: projectStatus !== 'archived' && projectStatus !== 'paused',
+        isArchived: projectStatus === 'archived',
+        allowCollaboration: collaborationEnabled,
+        maxCollaborators: serviceProject.settings?.maxCollaborators || getCollaborationLimit(user),
+        realTimeEnabled: serviceProject.settings?.realTimeEnabled || collaborationEnabled, // Enable real-time if collaboration is enabled
+        // Enhanced properties
+        status: projectStatus,
+        completionPercentage,
+        lastActivityAt,
+        teamMemberCount,
+        collaborationEnabled,
+        settings: {
+            ...serviceProject.settings,
+            autoEnableCollaboration: serviceProject.settings?.autoEnableCollaboration ?? true, // Default to true for cloud projects
+            completionCriteria: {
+                requiresDatasets: true,
+                requiresTeamMembers: true,
+                minimumActivity: 1,
+                ...serviceProject.settings?.completionCriteria
+            }
+        },
         teamMemberRole: serviceProject.teamMembers?.[0]?.role,
         role: serviceProject.teamMembers?.[0]?.role,
         assignedAt: serviceProject.teamMembers?.[0]?.assignedAt,
@@ -434,6 +641,17 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [showCreateDatasetWizard, setShowCreateDatasetWizard] = useState(false);
   const [datasetWizardAssignToProject, setDatasetWizardAssignToProject] = useState<string | null>(null);
       const [showDatasetManagementDialog, setShowDatasetManagementDialog] = useState(false);
+  const [showDatasetInsightsDialog, setShowDatasetInsightsDialog] = useState(false);
+  const [datasetAnalysis, setDatasetAnalysis] = useState<DatasetConflictAnalysis | null>(null);
+  const [loadingDatasetAnalysis, setLoadingDatasetAnalysis] = useState(false);
+  
+  // Edit Dataset Dialog State
+  const [showEditDatasetDialog, setShowEditDatasetDialog] = useState(false);
+  const [datasetToEdit, setDatasetToEdit] = useState<CloudDataset | null>(null);
+  
+  // Dataset Management State
+  const [selectedDatasetForManagement, setSelectedDatasetForManagement] = useState<any | null>(null);
+  const [showDatasetCollectionsDialog, setShowDatasetCollectionsDialog] = useState(false);
   
   // Role Management State
   const [showRoleManagementDialog, setShowRoleManagementDialog] = useState(false);
@@ -456,6 +674,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // Enhanced project tracking state
+  const [projectTeamMemberCounts, setProjectTeamMemberCounts] = useState<Record<string, number>>({});
+  const [projectStatusUpdating, setProjectStatusUpdating] = useState<Record<string, boolean>>({});
+
+  // Action menu state
+  const [actionMenuAnchor, setActionMenuAnchor] = useState<Record<string, HTMLElement | null>>({});
+  const [actionsDropdownAnchor, setActionsDropdownAnchor] = useState<HTMLElement | null>(null);
 
   // Helper to load available + assigned datasets for selected project
   const loadDatasetsForProject = useCallback(async (project: CloudProject) => {
@@ -693,6 +919,37 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         }
     }, [teamMemberSearch, selectedProject, showAddTeamMemberDialog, loadTeamMembersForProject]);
 
+    // Helper to load team member counts for all projects
+    const loadTeamMemberCountsForAllProjects = useCallback(async (projectList: CloudProject[]) => {
+        try {
+            console.log('🔍 [DashboardCloudProjectsBridge] Loading team member counts for all projects...');
+            
+            const teamMemberCountPromises = projectList.map(async (project) => {
+                try {
+                    const teamMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
+                    return { projectId: project.id, count: teamMembers.length };
+                } catch (error) {
+                    console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load team members for project ${project.id}:`, error);
+                    return { projectId: project.id, count: 0 };
+                }
+            });
+            
+            const teamMemberCounts = await Promise.all(teamMemberCountPromises);
+            
+            // Update the projectTeamMemberCounts state
+            const newCounts: Record<string, number> = {};
+            teamMemberCounts.forEach(({ projectId, count }) => {
+                newCounts[projectId] = count;
+            });
+            
+            setProjectTeamMemberCounts(newCounts);
+            console.log('✅ [DashboardCloudProjectsBridge] Loaded team member counts for all projects:', newCounts);
+            
+        } catch (error) {
+            console.error('❌ [DashboardCloudProjectsBridge] Failed to load team member counts for all projects:', error);
+        }
+    }, []);
+
     // Helper to load dataset counts for all projects
     const loadDatasetCountsForAllProjects = useCallback(async (projectList: CloudProject[]) => {
         try {
@@ -799,6 +1056,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     const transformedProjects = teamMemberProjects.map((project: any) => {
                         console.log('🔍 [DashboardCloudProjectsBridge] Transforming project:', project);
                         
+                        // Calculate enhanced properties for team member projects
+                        const teamMemberCount = 1; // At least the current user
+                        const datasetCount = 0; // Default to 0, will be updated later
+                        const projectStatus = getProjectStatus(project, teamMemberCount, datasetCount);
+                        const collaborationEnabled = shouldEnableCollaboration(project, teamMemberCount);
+                        const completionPercentage = calculateCompletionPercentage(project, teamMemberCount, datasetCount);
+                        
                         const transformed = {
                             id: project.projectId || project.id,
                             name: project.projectName || project.name || 'Unnamed Project',
@@ -806,14 +1070,25 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             applicationMode: 'shared_network' as const, // Team members always use network mode
                             storageBackend: 'firestore' as const, // Always Firestore in webonly mode
                             lastAccessedAt: project.lastAccessed || project.assignedAt || new Date().toISOString(),
-                            isActive: project.isActive !== false,
-                            isArchived: project.isArchived === true,
-                            allowCollaboration: true, // Team member projects are collaborative
-                            maxCollaborators: project.maxCollaborators || 10,
-                            realTimeEnabled: true,
-                            enableComments: true,
-                            enableChat: true,
-                            enableActivityLog: true,
+                            isActive: projectStatus !== 'archived' && projectStatus !== 'paused',
+                            isArchived: projectStatus === 'archived',
+                            allowCollaboration: collaborationEnabled,
+                            maxCollaborators: project.maxCollaborators || getCollaborationLimit(completeUser),
+                            realTimeEnabled: collaborationEnabled,
+                            // Enhanced properties
+                            status: projectStatus,
+                            completionPercentage,
+                            lastActivityAt: project.lastAccessed || project.assignedAt || new Date().toISOString(),
+                            teamMemberCount,
+                            collaborationEnabled,
+                            settings: {
+                                autoEnableCollaboration: true,
+                                completionCriteria: {
+                                    requiresDatasets: true,
+                                    requiresTeamMembers: true,
+                                    minimumActivity: 1
+                                }
+                            },
                             // Team member specific fields
                             teamMemberRole: project.role || project.teamMemberRole || 'MEMBER',
                             role: project.role || project.teamMemberRole || 'MEMBER', // Ensure both fields are set
@@ -842,25 +1117,44 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             
                             if (parsed.projectAccess && Array.isArray(parsed.projectAccess)) {
                                 
-                                const fallbackProjects = parsed.projectAccess.map((access: any) => ({
-                                    id: access.projectId,
-                                    name: access.projectName || 'Unnamed Project',
-                                    description: access.description || '',
-                                    applicationMode: 'shared_network' as const,
-                                    storageBackend: 'firestore' as const,
-                                    lastAccessedAt: access.lastAccessed || new Date().toISOString(),
-                                    isActive: true,
-                                    isArchived: false,
-                                    allowCollaboration: true,
-                                    maxCollaborators: 10,
-                                    realTimeEnabled: true,
-                                    enableComments: true,
-                                    enableChat: true,
-                                    enableActivityLog: true,
-                                    teamMemberRole: access.role || 'MEMBER',
-                                    assignedAt: access.assignedAt,
-                                    projectOwner: 'Organization Owner',
-                                }));
+                                const fallbackProjects = parsed.projectAccess.map((access: any) => {
+                                    const teamMemberCount = 1;
+                                    const datasetCount = 0;
+                                    const projectStatus = getProjectStatus(access, teamMemberCount, datasetCount);
+                                    const collaborationEnabled = shouldEnableCollaboration(access, teamMemberCount);
+                                    const completionPercentage = calculateCompletionPercentage(access, teamMemberCount, datasetCount);
+                                    
+                                    return {
+                                        id: access.projectId,
+                                        name: access.projectName || 'Unnamed Project',
+                                        description: access.description || '',
+                                        applicationMode: 'shared_network' as const,
+                                        storageBackend: 'firestore' as const,
+                                        lastAccessedAt: access.lastAccessed || new Date().toISOString(),
+                                        isActive: projectStatus !== 'archived' && projectStatus !== 'paused',
+                                        isArchived: projectStatus === 'archived',
+                                        allowCollaboration: collaborationEnabled,
+                                        maxCollaborators: getCollaborationLimit(completeUser),
+                                        realTimeEnabled: collaborationEnabled,
+                                        // Enhanced properties
+                                        status: projectStatus,
+                                        completionPercentage,
+                                        lastActivityAt: access.lastAccessed || new Date().toISOString(),
+                                        teamMemberCount,
+                                        collaborationEnabled,
+                                        settings: {
+                                            autoEnableCollaboration: true,
+                                            completionCriteria: {
+                                                requiresDatasets: true,
+                                                requiresTeamMembers: true,
+                                                minimumActivity: 1
+                                            }
+                                        },
+                                        teamMemberRole: access.role || 'MEMBER',
+                                        assignedAt: access.assignedAt,
+                                        projectOwner: 'Organization Owner',
+                                    };
+                                });
                                 
                                 setProjects(fallbackProjects);
                                 
@@ -911,15 +1205,64 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 console.log('🔍 [DashboardCloudProjectsBridge] Raw service projects:', serviceProjects);
                 console.log('🔍 [DashboardCloudProjectsBridge] Service projects count:', serviceProjects.length);
                 
-                const cloudProjects = serviceProjects.map(mapServiceProjectToComponentProject);
-                console.log('🔍 [DashboardCloudProjectsBridge] Mapped cloud projects:', cloudProjects);
+                // Load team member and dataset counts first
+                console.log('🔍 [DashboardCloudProjectsBridge] Loading team member and dataset counts...');
+                const teamMemberCountPromises = serviceProjects.map(async (project) => {
+                    try {
+                        const teamMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
+                        return { projectId: project.id, count: teamMembers.length };
+                    } catch (error) {
+                        console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load team members for project ${project.id}:`, error);
+                        return { projectId: project.id, count: 0 };
+                    }
+                });
+                
+                const datasetCountPromises = serviceProjects.map(async (project) => {
+                    try {
+                        const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
+                        return { projectId: project.id, count: datasets.length };
+                    } catch (error) {
+                        console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
+                        return { projectId: project.id, count: 0 };
+                    }
+                });
+                
+                const [teamMemberCounts, datasetCounts] = await Promise.all([
+                    Promise.all(teamMemberCountPromises),
+                    Promise.all(datasetCountPromises)
+                ]);
+                
+                // Create lookup maps
+                const teamMemberCountMap: Record<string, number> = {};
+                const datasetCountMap: Record<string, number> = {};
+                
+                teamMemberCounts.forEach(({ projectId, count }) => {
+                    teamMemberCountMap[projectId] = count;
+                });
+                
+                datasetCounts.forEach(({ projectId, count }) => {
+                    datasetCountMap[projectId] = count;
+                });
+                
+                // Update state with counts
+                setProjectTeamMemberCounts(teamMemberCountMap);
+                setProjectDatasetCounts(datasetCountMap);
+                
+                // Map projects with enhanced data
+                const cloudProjects = serviceProjects.map(project => 
+                    mapServiceProjectToComponentProject(
+                        project, 
+                        teamMemberCountMap[project.id] || 0, 
+                        datasetCountMap[project.id] || 0,
+                        completeUser
+                    )
+                );
+                
+                console.log('🔍 [DashboardCloudProjectsBridge] Mapped cloud projects with enhanced data:', cloudProjects);
                 console.log('🔍 [DashboardCloudProjectsBridge] Mapped projects count:', cloudProjects.length);
                 
                 setProjects(cloudProjects);
-                console.log('✅ [DashboardCloudProjectsBridge] Projects set in state');
-                
-                // Load dataset counts for all regular user projects
-                await loadDatasetCountsForAllProjects(cloudProjects);
+                console.log('✅ [DashboardCloudProjectsBridge] Projects set in state with enhanced status and collaboration logic');
             }
 
         } catch (err: any) {
@@ -988,11 +1331,118 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         setPage(0);
     };
 
+    // Action menu handlers
+    const handleActionMenuOpen = (event: React.MouseEvent<HTMLElement>, projectId: string) => {
+        setActionMenuAnchor(prev => ({
+            ...prev,
+            [projectId]: event.currentTarget
+        }));
+    };
+
+    const handleActionMenuClose = (projectId: string) => {
+        setActionMenuAnchor(prev => ({
+            ...prev,
+            [projectId]: null
+        }));
+    };
+
+    const handleActionsDropdownOpen = (event: React.MouseEvent<HTMLElement>) => {
+        setActionsDropdownAnchor(event.currentTarget);
+    };
+
+    const handleActionsDropdownClose = () => {
+        setActionsDropdownAnchor(null);
+    };
+
     const handleProjectCreated = async (projectId: string) => {
         setShowCreateDialog(false);
         await loadProjects(); // Refresh the list
         // Project created successfully - no need to auto-launch
     };
+
+    // Function to update project status
+    const updateProjectStatus = useCallback(async (projectId: string, newStatus: 'draft' | 'active' | 'in-progress' | 'completed' | 'archived' | 'paused') => {
+        try {
+            setProjectStatusUpdating(prev => ({ ...prev, [projectId]: true }));
+            
+            // Map extended status to supported ProjectStatus enum values
+            let mappedStatus: 'draft' | 'active' | 'archived';
+            switch (newStatus) {
+                case 'draft':
+                    mappedStatus = 'draft';
+                    break;
+                case 'active':
+                case 'in-progress':
+                case 'completed':
+                    mappedStatus = 'active';
+                    break;
+                case 'archived':
+                case 'paused':
+                    mappedStatus = 'archived';
+                    break;
+                default:
+                    mappedStatus = 'active';
+            }
+            
+            // Update project status via the cloud integration service
+            // Using updateProject with status field since updateProjectStatus doesn't exist yet
+            await cloudProjectIntegration.updateProject(projectId, { 
+                status: mappedStatus as any, // Cast to any to work with the service interface
+                lastActivityAt: new Date().toISOString(),
+                isActive: mappedStatus !== 'archived',
+                isArchived: mappedStatus === 'archived',
+                // Store the extended status in metadata for UI purposes
+                metadata: {
+                    extendedStatus: newStatus,
+                    statusUpdatedAt: new Date().toISOString()
+                }
+            });
+            
+            // Refresh the projects list to reflect the change
+            await loadProjects();
+            
+            console.log(`✅ [DashboardCloudProjectsBridge] Project ${projectId} status updated to ${newStatus} (mapped to ${mappedStatus})`);
+        } catch (error) {
+            console.error(`❌ [DashboardCloudProjectsBridge] Failed to update project status:`, error);
+            setError(`Failed to update project status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } finally {
+            setProjectStatusUpdating(prev => ({ ...prev, [projectId]: false }));
+        }
+    }, []);
+
+    // Function to toggle collaboration
+    const toggleProjectCollaboration = useCallback(async (projectId: string, enable: boolean) => {
+        try {
+            setProjectStatusUpdating(prev => ({ ...prev, [projectId]: true }));
+            
+            // Update collaboration settings via the cloud integration service
+            // Using updateProject with collaboration fields since updateProjectCollaboration doesn't exist yet
+            const maxCollaborators = getCollaborationLimit(completeUser);
+            await cloudProjectIntegration.updateProject(projectId, { 
+                settings: {
+                    allowCollaboration: enable,
+                    autoEnableCollaboration: enable,
+                    realTimeEnabled: enable,
+                    maxCollaborators: enable ? maxCollaborators : 1
+                },
+                allowCollaboration: enable,
+                collaborationEnabled: enable,
+                realTimeEnabled: enable,
+                maxCollaborators: enable ? maxCollaborators : 1,
+                lastActivityAt: new Date().toISOString()
+            });
+            
+            // Refresh the projects list to reflect the change
+            await loadProjects();
+            
+            console.log(`✅ [DashboardCloudProjectsBridge] Project ${projectId} collaboration ${enable ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+            console.error(`❌ [DashboardCloudProjectsBridge] Failed to toggle collaboration:`, error);
+            setError(`Failed to update collaboration settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } finally {
+            setProjectStatusUpdating(prev => ({ ...prev, [projectId]: false }));
+        }
+    }, []);
 
     const getStorageIcon = (storageBackend: string) => {
         switch (storageBackend) {
@@ -1094,6 +1544,80 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         }
     }, [showDatasetManagementDialog, loadOrganizationDatasets]);
 
+    // 🆕 NEW: Load dataset conflict analysis
+    const loadDatasetAnalysis = useCallback(async () => {
+        if (!completeUser?.organizationId) {
+            console.warn('⚠️ [DashboardCloudProjectsBridge] No organization ID for dataset analysis');
+            return;
+        }
+
+        setLoadingDatasetAnalysis(true);
+        try {
+            console.log('🔍 [DashboardCloudProjectsBridge] Loading dataset conflict analysis...');
+            
+            // Get all organization datasets - use the same data as the management dialog
+            let allDatasets = organizationDatasets;
+            
+            // If organization datasets aren't loaded yet, load them
+            if (allDatasets.length === 0) {
+                console.log('🔄 [DashboardCloudProjectsBridge] Loading organization datasets for analysis...');
+                allDatasets = await cloudProjectIntegration.getAllOrganizationDatasets();
+                
+                // Add backend labels for consistency
+                allDatasets = allDatasets.map((ds: any) => {
+                    const getBackendLabel = (backend: string) => {
+                        switch (backend) {
+                            case 'gcs': return '(GCS)';
+                            case 's3': return '(S3)';
+                            case 'aws': return '(AWS)';
+                            case 'azure': return '(Azure)';
+                            case 'firestore':
+                            default: return '(Firestore)';
+                        }
+                    };
+                    return {
+                        ...ds,
+                        __label: `${ds.name} ${getBackendLabel(ds.storage?.backend)}`,
+                    };
+                });
+            }
+            
+            console.log('📊 [DashboardCloudProjectsBridge] Analyzing datasets:', {
+                totalDatasets: allDatasets.length,
+                firestoreDatasets: allDatasets.filter(ds => ds.storage?.backend === 'firestore').length,
+                datasetsWithCollections: allDatasets.filter(ds => ds.collectionAssignment?.selectedCollections?.length > 0).length
+            });
+            
+            // Analyze conflicts and overlaps
+            const analysis = await datasetConflictAnalyzer.analyzeOrganizationDatasets(
+                completeUser.organizationId,
+                allDatasets
+            );
+            
+            setDatasetAnalysis(analysis);
+            console.log('✅ [DashboardCloudProjectsBridge] Dataset analysis complete:', {
+                datasets: analysis.totalDatasets,
+                collections: analysis.totalCollections,
+                overlaps: analysis.overlaps.length,
+                healthScore: analysis.healthScore,
+                recommendations: analysis.globalInsights.recommendations.length
+            });
+            
+        } catch (error) {
+            console.error('❌ [DashboardCloudProjectsBridge] Failed to load dataset analysis:', error);
+            setDatasetAnalysis(null);
+        } finally {
+            setLoadingDatasetAnalysis(false);
+        }
+    }, [completeUser?.organizationId, organizationDatasets]);
+
+    // Load dataset analysis when insights dialog opens
+    useEffect(() => {
+        if (showDatasetInsightsDialog) {
+            loadDatasetAnalysis();
+        }
+    }, [showDatasetInsightsDialog, loadDatasetAnalysis]);
+
     // 🔧 DEBUG: Add subscription validation debug function
     const debugSubscriptionStatus = useCallback(() => {
         if (!completeUser) {
@@ -1177,159 +1701,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     )}
                 </Box>
                 
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    {/* Show Create Project button for account owners and admin team members */}
-                    {canCreateProjects() && (
-                        <Button
-                            variant="contained"
-                            startIcon={<AddIcon />}
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                console.log('🚀 [DashboardCloudProjectsBridge] Create Project button clicked');
-                                handleCreateProject();
-                            }}
-                            size="large"
-                            sx={{
-                                minWidth: '160px',
-                                fontWeight: 'bold',
-                                boxShadow: 2,
-                                '&:hover': {
-                                    boxShadow: 4,
-                                    transform: 'translateY(-1px)'
-                                },
-                                transition: 'all 0.2s ease-in-out'
-                            }}
-                        >
-                            Create Project
-                        </Button>
-                    )}
-                    
-                    {/* Show Create Dataset button for account owners and admin team members */}
-                    {canCreateProjects() && (
-                        <Button
-                            variant="outlined"
-                            startIcon={<DatasetIcon />}
-                            onClick={() => {
-                                console.log('🚀 [DashboardCloudProjectsBridge] Create Dataset button clicked');
-                                setDatasetWizardAssignToProject(null);
-                                setShowCreateDatasetWizard(true);
-                            }}
-                            size="large"
-                            sx={{
-                                minWidth: '160px',
-                                borderColor: 'primary.main',
-                                color: 'primary.main',
-                                fontWeight: 'bold',
-                                borderWidth: 2,
-                                '&:hover': {
-                                    borderColor: 'primary.dark',
-                                    backgroundColor: 'primary.main',
-                                    color: 'white',
-                                    borderWidth: 2,
-                                    transform: 'translateY(-1px)'
-                                },
-                                transition: 'all 0.2s ease-in-out'
-                            }}
-                        >
-                            Create Dataset
-                        </Button>
-                    )}
-                    
-                    {/* Show Manage Datasets button for account owners and admin team members */}
-                    {canCreateProjects() && (
-                        <Button
-                            variant="outlined"
-                            startIcon={<StorageIcon />}
-                            onClick={() => {
-                                console.log('🚀 [DashboardCloudProjectsBridge] Manage Datasets button clicked');
-                                setShowDatasetManagementDialog(true);
-                            }}
-                            size="large"
-                            sx={{
-                                borderColor: 'rgba(255, 255, 255, 0.2)',
-                                color: 'white',
-                                '&:hover': {
-                                    borderColor: 'rgba(255, 255, 255, 0.4)',
-                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                    transform: 'translateY(-1px)'
-                                },
-                                transition: 'all 0.2s ease-in-out'
-                            }}
-                        >
-                            Manage Datasets
-                        </Button>
-                    )}
-                    
-                    {/* Show message for users who cannot create projects */}
-                    {!canCreateProjects() && completeUser && (
-                        <Box sx={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: 1,
-                            px: 2,
-                            py: 1,
-                            backgroundColor: 'warning.light',
-                            borderRadius: 1,
-                            border: '1px solid',
-                            borderColor: 'warning.main'
-                        }}>
-                            <InfoIcon color="warning" />
-                            <Typography variant="body2" color="warning.dark">
-                                {isTeamMember() 
-                                    ? 'Contact your team administrator to create projects'
-                                    : 'Active subscription required to create projects'
-                                }
-                            </Typography>
-                        </Box>
-                    )}
-                    
-                    {/* Launch buttons for all users */}
-                    <Button
-                        variant="contained"
-                        startIcon={<LaunchIcon />}
-                        onClick={handleLaunchWeb}
-                        sx={{
-                            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-                            color: 'white',
-                            borderRadius: 2,
-                            px: 4,
-                            py: 1.5,
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            boxShadow: '0 6px 20px rgba(79, 70, 229, 0.4)',
-                            '&:hover': {
-                                background: 'linear-gradient(135deg, #4338ca, #6d28d9)',
-                                boxShadow: '0 8px 25px rgba(79, 70, 229, 0.5)',
-                                transform: 'translateY(-2px)'
-                            }
-                        }}
-                    >
-                        Launch Web App
-                    </Button>
-                    <Button
-                        variant="contained"
-                        startIcon={<LaunchIcon />}
-                        onClick={handleLaunchDesktop}
-                        sx={{
-                            background: 'linear-gradient(135deg, #059669, #10b981)',
-                            color: 'white',
-                            borderRadius: 2,
-                            px: 4,
-                            py: 1.5,
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            boxShadow: '0 6px 20px rgba(5, 150, 105, 0.4)',
-                            '&:hover': {
-                                background: 'linear-gradient(135deg, #047857, #059669)',
-                                boxShadow: '0 8px 25px rgba(5, 150, 105, 0.5)',
-                                transform: 'translateY(-2px)'
-                            }
-                        }}
-                    >
-                        Launch Desktop App
-                    </Button>
-                </Box>
+                {/* Button row removed - consolidated into dropdown menu in tab row */}
             </Box>
 
 
@@ -1507,117 +1879,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         </Grid>
                     ))}
                 </Grid>
-            ) : (
-                <Grid container spacing={3} sx={{ mb: 4 }}>
-                    {/* Storage Breakdown Card */}
-                    <Grid item xs={12} lg={6}>
-                        <Card sx={{ 
-                            height: '100%',
-                            transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
-                            '&:hover': {
-                                transform: 'translateY(-2px)',
-                                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)'
-                            }
-                        }}>
-                            <CardContent>
-                                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <StorageIcon color="primary" />
-                                    Storage Backend Distribution
-                                </Typography>
-                                <Box sx={{ mt: 2 }}>
-                                    {Object.entries(analyticsData.storageBreakdown).map(([backend, count]) => (
-                                        count > 0 && (
-                                            <Box key={backend} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                    {getStorageIcon(backend)}
-                                                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                                                        {backend === 'azure-blob' ? 'Azure Blob' : backend}
-                                                    </Typography>
-                                                </Box>
-                                                <Chip 
-                                                    size="small" 
-                                                    label={count} 
-                                                    color="primary" 
-                                                    variant="outlined"
-                                                />
-                                            </Box>
-                                        )
-                                    ))}
-                                    {Object.values(analyticsData.storageBreakdown).every(count => count === 0) && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            No projects with storage backends yet
-                                        </Typography>
-                                    )}
-                                </Box>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-
-                    {/* Application Mode Breakdown Card */}
-                    <Grid item xs={12} lg={6}>
-                        <Card sx={{ 
-                            height: '100%',
-                            transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
-                            '&:hover': {
-                                transform: 'translateY(-2px)',
-                                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)'
-                            }
-                        }}>
-                            <CardContent>
-                                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <NetworkIcon color="primary" />
-                                    Application Mode Distribution
-                                </Typography>
-                                <Box sx={{ mt: 2 }}>
-                                    {Object.entries(analyticsData.modeBreakdown).map(([mode, count]) => (
-                                        count > 0 && (
-                                            <Box key={mode} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                    {getModeIcon(mode)}
-                                                    <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                                                        {mode === 'shared_network' ? 'Network' : mode}
-                                                    </Typography>
-                                                </Box>
-                                                <Chip 
-                                                    size="small" 
-                                                    label={count} 
-                                                    color="secondary" 
-                                                    variant="outlined"
-                                                />
-                                            </Box>
-                                        )
-                                    ))}
-                                    {Object.values(analyticsData.modeBreakdown).every(count => count === 0) && (
-                                        <Typography variant="body2" color="text.secondary">
-                                            No projects created yet
-                                        </Typography>
-                                    )}
-                                </Box>
-                                
-                                {/* Total Datasets Info */}
-                                {analyticsData.totalDatasets > 0 && (
-                                    <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                <DatasetIcon color="primary" />
-                                                <Typography variant="body2">
-                                                    Total Datasets
-                                                </Typography>
-                                            </Box>
-                                            <Chip 
-                                                size="small" 
-                                                label={analyticsData.totalDatasets} 
-                                                color="success" 
-                                                variant="outlined"
-                                            />
-                                        </Box>
-                                    </Box>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                </Grid>
-            )}
+            ) : null}
 
 
 
@@ -1628,15 +1890,171 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 </Alert>
             )}
 
-            {/* Tabs */}
-            <Tabs
-                value={tab}
-                onChange={(_, newValue) => setTab(newValue)}
-                sx={{ borderBottom: 1, borderColor: 'divider', mb: 4 }}
-            >
-                <Tab label={`Active Projects (${activeProjects.length})`} />
-                <Tab label={`Archived (${archivedProjects.length})`} />
-            </Tabs>
+            {/* Tabs with Actions Dropdown */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
+                <Tabs
+                    value={tab}
+                    onChange={(_, newValue) => setTab(newValue)}
+                    sx={{ borderBottom: 1, borderColor: 'divider' }}
+                >
+                    <Tab label={`Active Projects (${activeProjects.length})`} />
+                    <Tab label={`Archived (${archivedProjects.length})`} />
+                </Tabs>
+                
+                {/* Consolidated Actions Dropdown */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    {/* Show message for users who cannot create projects */}
+                    {!canCreateProjects() && completeUser && (
+                        <Box sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: 1,
+                            px: 2,
+                            py: 1,
+                            backgroundColor: 'warning.light',
+                            borderRadius: 1,
+                            border: '1px solid',
+                            borderColor: 'warning.main'
+                        }}>
+                            <InfoIcon color="warning" />
+                            <Typography variant="body2" color="warning.dark">
+                                {isTeamMember() 
+                                    ? 'Contact your team administrator to create projects'
+                                    : 'Active subscription required to create projects'
+                                }
+                            </Typography>
+                        </Box>
+                    )}
+                    
+                    {/* Actions Dropdown Button */}
+                    <Button
+                        variant="contained"
+                        startIcon={<MoreVertIcon />}
+                        onClick={handleActionsDropdownOpen}
+                        sx={{
+                            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                            color: 'white',
+                            borderRadius: 2,
+                            px: 3,
+                            py: 1.5,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            boxShadow: '0 6px 20px rgba(79, 70, 229, 0.4)',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #4338ca, #6d28d9)',
+                                boxShadow: '0 8px 25px rgba(79, 70, 229, 0.5)',
+                                transform: 'translateY(-2px)'
+                            }
+                        }}
+                    >
+                        Actions
+                    </Button>
+                    
+                    {/* Actions Dropdown Menu */}
+                    <Menu
+                        anchorEl={actionsDropdownAnchor}
+                        open={Boolean(actionsDropdownAnchor)}
+                        onClose={handleActionsDropdownClose}
+                        PaperProps={{
+                            sx: {
+                                backgroundColor: 'rgba(30, 30, 30, 0.95)',
+                                backdropFilter: 'blur(10px)',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                borderRadius: 2,
+                                minWidth: 200,
+                                '& .MuiMenuItem-root': {
+                                    color: 'white',
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                                    }
+                                }
+                            }
+                        }}
+                    >
+                        {/* Create Project */}
+                        {canCreateProjects() && (
+                            <MenuItem 
+                                onClick={() => {
+                                    handleActionsDropdownClose();
+                                    console.log('🚀 [DashboardCloudProjectsBridge] Create Project button clicked');
+                                    handleCreateProject();
+                                }}
+                            >
+                                <AddIcon sx={{ mr: 2 }} />
+                                Create Project
+                            </MenuItem>
+                        )}
+                        
+                        {/* Create Dataset */}
+                        {canCreateProjects() && (
+                            <MenuItem 
+                                onClick={() => {
+                                    handleActionsDropdownClose();
+                                    console.log('🚀 [DashboardCloudProjectsBridge] Create Dataset button clicked');
+                                    setDatasetWizardAssignToProject(null);
+                                    setShowCreateDatasetWizard(true);
+                                }}
+                            >
+                                <DatasetIcon sx={{ mr: 2 }} />
+                                Create Dataset
+                            </MenuItem>
+                        )}
+                        
+                        {/* Manage Datasets */}
+                        {canCreateProjects() && (
+                            <MenuItem 
+                                onClick={() => {
+                                    handleActionsDropdownClose();
+                                    console.log('🚀 [DashboardCloudProjectsBridge] Manage Datasets button clicked');
+                                    setShowDatasetManagementDialog(true);
+                                }}
+                            >
+                                <StorageIcon sx={{ mr: 2 }} />
+                                Manage Datasets
+                            </MenuItem>
+                        )}
+                        
+                        {/* Dataset Insights */}
+                        {canCreateProjects() && (
+                            <MenuItem 
+                                onClick={() => {
+                                    handleActionsDropdownClose();
+                                    console.log('🚀 [DashboardCloudProjectsBridge] Dataset Insights button clicked');
+                                    setShowDatasetInsightsDialog(true);
+                                }}
+                            >
+                                <AssessmentIcon sx={{ mr: 2 }} />
+                                Dataset Insights
+                            </MenuItem>
+                        )}
+                        
+                        {/* Divider */}
+                        <MenuItem disabled sx={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', my: 1 }} />
+                        
+                        {/* Launch Web App */}
+                        <MenuItem 
+                            onClick={() => {
+                                handleActionsDropdownClose();
+                                handleLaunchWeb();
+                            }}
+                        >
+                            <LaunchIcon sx={{ mr: 2 }} />
+                            Launch Web App
+                        </MenuItem>
+                        
+                        {/* Launch Desktop App */}
+                        <MenuItem 
+                            onClick={() => {
+                                handleActionsDropdownClose();
+                                handleLaunchDesktop();
+                            }}
+                        >
+                            <LaunchIcon sx={{ mr: 2 }} />
+                            Launch Desktop App
+                        </MenuItem>
+                    </Menu>
+                </Box>
+            </Box>
 
             {/* Search Bar */}
             <Box sx={{ mb: 4, display: 'flex', gap: 3, alignItems: 'center' }}>
@@ -1732,11 +2150,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 <TableHead>
                                     <TableRow sx={{ backgroundColor: 'primary.main' }}>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Project</TableCell>
+                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Status</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Mode</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Storage</TableCell>
                                         {isTeamMember() && (
                                             <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Your Role</TableCell>
                                         )}
+                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Team</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Datasets</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Collaboration</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Last Accessed</TableCell>
@@ -1756,16 +2176,19 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                             }}
                                         >
                                             <TableCell>
-                                                <Box>
-                                                    <Typography variant="subtitle1" fontWeight={600}>
-                                                        {project.name}
-                                                    </Typography>
-                                                    {project.description && (
-                                                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                                            {project.description}
-                                                        </Typography>
-                                                    )}
-                                                </Box>
+                                                <Typography variant="subtitle1" fontWeight={600}>
+                                                    {project.name}
+                                                </Typography>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Chip
+                                                    size="small"
+                                                    icon={getStatusIcon(project.status)}
+                                                    label={project.status.charAt(0).toUpperCase() + project.status.slice(1).replace('-', ' ')}
+                                                    color={getStatusColor(project.status)}
+                                                    variant="filled"
+                                                    sx={{ fontWeight: 600 }}
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 <Chip
@@ -1801,28 +2224,63 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 </TableCell>
                                             )}
                                             <TableCell>
-                                                {typeof projectDatasetCounts[project.id] === 'number' ? (
+                                                {typeof projectTeamMemberCounts[project.id] === 'number' ? (
                                                     <Chip
                                                         size="small"
-                                                        label={`${projectDatasetCounts[project.id]} datasets available`}
+                                                        icon={<GroupIcon />}
+                                                        label={`${projectTeamMemberCounts[project.id]} member${projectTeamMemberCounts[project.id] !== 1 ? 's' : ''}`}
                                                         variant="outlined"
-                                                        color="secondary"
-                                                        title="Total datasets available in your organization"
+                                                        color={projectTeamMemberCounts[project.id] > 0 ? "primary" : "default"}
+                                                        title={`${projectTeamMemberCounts[project.id]} team members assigned to this project`}
                                                     />
                                                 ) : (
                                                     <Typography variant="body2" color="text.secondary">-</Typography>
                                                 )}
                                             </TableCell>
                                             <TableCell>
-                                                {project.allowCollaboration ? (
+                                                {typeof projectDatasetCounts[project.id] === 'number' ? (
                                                     <Chip
                                                         size="small"
-                                                        label={`${project.maxCollaborators || getCollaborationLimit(user)} users`}
+                                                        icon={<DatasetIcon />}
+                                                        label={`${projectDatasetCounts[project.id]} dataset${projectDatasetCounts[project.id] !== 1 ? 's' : ''}`}
                                                         variant="outlined"
-                                                        color="success"
+                                                        color={projectDatasetCounts[project.id] > 0 ? "secondary" : "default"}
+                                                        title={`${projectDatasetCounts[project.id]} datasets assigned to this project`}
                                                     />
                                                 ) : (
-                                                    <Typography variant="body2" color="text.secondary">Disabled</Typography>
+                                                    <Typography variant="body2" color="text.secondary">-</Typography>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {project.collaborationEnabled ? (
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <Chip
+                                                            size="small"
+                                                            icon={<GroupIcon />}
+                                                            label={`${project.maxCollaborators || getCollaborationLimit(completeUser)} licenses`}
+                                                            variant="outlined"
+                                                            color="success"
+                                                            sx={{ fontWeight: 600 }}
+                                                            title={`Based on your active licenses: ${project.maxCollaborators || getCollaborationLimit(completeUser)} users can collaborate`}
+                                                        />
+                                                        {project.realTimeEnabled && (
+                                                            <Chip
+                                                                size="small"
+                                                                label="Real-time"
+                                                                variant="filled"
+                                                                color="info"
+                                                                sx={{ fontSize: '0.7rem', height: '20px' }}
+                                                            />
+                                                        )}
+                                                    </Box>
+                                                ) : (
+                                                    <Chip
+                                                        size="small"
+                                                        label="Disabled"
+                                                        variant="outlined"
+                                                        color="default"
+                                                        sx={{ color: 'text.secondary' }}
+                                                    />
                                                 )}
                                             </TableCell>
                                             <TableCell>
@@ -1831,87 +2289,182 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 </Typography>
                                             </TableCell>
                                             <TableCell>
-                                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                                    <Button
+                                                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                                                    <IconButton
                                                         size="small"
-                                                        variant="outlined"
-                                                        onClick={() => setSelectedProject(project)}
-                                                        sx={{ 
-                                                            borderColor: 'primary.main',
-                                                            color: 'primary.main',
-                                                            minWidth: 'auto',
+                                                        onClick={(event) => handleActionMenuOpen(event, project.id)}
+                                                        sx={{
+                                                            color: 'text.secondary',
                                                             '&:hover': {
-                                                                borderColor: 'primary.dark',
-                                                                backgroundColor: 'primary.main',
-                                                                color: 'white'
+                                                                backgroundColor: 'action.hover',
+                                                                color: 'text.primary'
                                                             }
                                                         }}
                                                     >
-                                                        Details
-                                                    </Button>
-                                                    <Button
-                                                        size="small"
-                                                        variant="outlined"
-                                                        color={!project.isArchived ? 'warning' : 'success'}
-                                                        onClick={async () => {
-                                                            try {
-                                                                if (!project.isArchived) {
-                                                                    await cloudProjectIntegration.archiveProject(project.id);
-                                                                } else {
-                                                                    await cloudProjectIntegration.restoreProject(project.id);
-                                                                }
-                                                                await loadProjects();
-                                                            } catch (e) {
-                                                                console.error('Failed to toggle archive', e);
-                                                                setError('Failed to update project');
+                                                        <MoreVertIcon />
+                                                    </IconButton>
+                                                    
+                                                    <Menu
+                                                        anchorEl={actionMenuAnchor[project.id]}
+                                                        open={Boolean(actionMenuAnchor[project.id])}
+                                                        onClose={() => handleActionMenuClose(project.id)}
+                                                        anchorOrigin={{
+                                                            vertical: 'bottom',
+                                                            horizontal: 'right',
+                                                        }}
+                                                        transformOrigin={{
+                                                            vertical: 'top',
+                                                            horizontal: 'right',
+                                                        }}
+                                                        PaperProps={{
+                                                            sx: {
+                                                                backgroundColor: 'background.paper',
+                                                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                                                borderRadius: 2,
+                                                                minWidth: 200,
+                                                                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
                                                             }
                                                         }}
-                                                        sx={{ minWidth: 'auto' }}
                                                     >
-                                                        {!project.isArchived ? 'Archive' : 'Restore'}
-                                                    </Button>
-                                                    <Button
-                                                        size="small"
-                                                        variant="outlined"
-                                                        color="error"
-                                                        onClick={async () => {
-                                                            try {
-                                                                const confirmDelete = window.confirm(
-                                                                    `Are you sure you want to permanently delete "${project.name}"? This action cannot be undone and will remove all project data, datasets, and team member assignments.`
-                                                                );
-                                                                
-                                                                if (confirmDelete) {
-                                                                    setLoading(true);
-                                                                    const success = await cloudProjectIntegration.deleteProject(project.id);
-                                                                    
-                                                                    if (success) {
-                                                                        console.log(`✅ [DashboardCloudProjectsBridge] Project "${project.name}" deleted successfully`);
-                                                                        await loadProjects(); // Refresh the project list
-                                                                        setError(null);
+                                                        {/* Details */}
+                                                        <MenuItem 
+                                                            onClick={() => {
+                                                                setSelectedProject(project);
+                                                                handleActionMenuClose(project.id);
+                                                            }}
+                                                            sx={{ py: 1.5 }}
+                                                        >
+                                                            <VisibilityIcon sx={{ mr: 2, fontSize: 20 }} />
+                                                            <Typography variant="body2">Details</Typography>
+                                                        </MenuItem>
+                                                        
+                                                        {/* Status Actions */}
+                                                        {project.status === 'draft' && (
+                                                            <MenuItem 
+                                                                onClick={() => {
+                                                                    updateProjectStatus(project.id, 'active');
+                                                                    handleActionMenuClose(project.id);
+                                                                }}
+                                                                disabled={projectStatusUpdating[project.id]}
+                                                                sx={{ py: 1.5 }}
+                                                            >
+                                                                <PlayArrowIcon sx={{ mr: 2, fontSize: 20, color: 'success.main' }} />
+                                                                <Typography variant="body2">Activate</Typography>
+                                                            </MenuItem>
+                                                        )}
+                                                        
+                                                        {project.status === 'active' && (
+                                                            <MenuItem 
+                                                                onClick={() => {
+                                                                    updateProjectStatus(project.id, 'in-progress');
+                                                                    handleActionMenuClose(project.id);
+                                                                }}
+                                                                disabled={projectStatusUpdating[project.id]}
+                                                                sx={{ py: 1.5 }}
+                                                            >
+                                                                <PlayArrowIcon sx={{ mr: 2, fontSize: 20, color: 'info.main' }} />
+                                                                <Typography variant="body2">Start</Typography>
+                                                            </MenuItem>
+                                                        )}
+                                                        
+                                                        {project.status === 'in-progress' && (
+                                                            <MenuItem 
+                                                                onClick={() => {
+                                                                    updateProjectStatus(project.id, 'completed');
+                                                                    handleActionMenuClose(project.id);
+                                                                }}
+                                                                disabled={projectStatusUpdating[project.id]}
+                                                                sx={{ py: 1.5 }}
+                                                            >
+                                                                <CheckIcon sx={{ mr: 2, fontSize: 20, color: 'success.main' }} />
+                                                                <Typography variant="body2">Complete</Typography>
+                                                            </MenuItem>
+                                                        )}
+                                                        
+                                                        {/* Collaboration Toggle */}
+                                                        <MenuItem 
+                                                            onClick={() => {
+                                                                toggleProjectCollaboration(project.id, !project.collaborationEnabled);
+                                                                handleActionMenuClose(project.id);
+                                                            }}
+                                                            disabled={projectStatusUpdating[project.id]}
+                                                            sx={{ py: 1.5 }}
+                                                        >
+                                                            {project.collaborationEnabled ? (
+                                                                <StopIcon sx={{ mr: 2, fontSize: 20, color: 'warning.main' }} />
+                                                            ) : (
+                                                                <PlayArrowIcon sx={{ mr: 2, fontSize: 20, color: 'success.main' }} />
+                                                            )}
+                                                            <Typography variant="body2">
+                                                                {project.collaborationEnabled ? 'Disable Collab' : 'Enable Collab'}
+                                                            </Typography>
+                                                        </MenuItem>
+                                                        
+                                                        {/* Archive/Restore */}
+                                                        <MenuItem 
+                                                            onClick={async () => {
+                                                                try {
+                                                                    if (!project.isArchived) {
+                                                                        await updateProjectStatus(project.id, 'archived');
                                                                     } else {
-                                                                        setError(`Failed to delete project "${project.name}". Please try again.`);
+                                                                        await updateProjectStatus(project.id, 'active');
                                                                     }
+                                                                    handleActionMenuClose(project.id);
+                                                                } catch (e) {
+                                                                    console.error('Failed to toggle archive', e);
+                                                                    setError('Failed to update project');
                                                                 }
-                                                            } catch (e) {
-                                                                console.error('Failed to delete project:', e);
-                                                                setError(`Failed to delete project "${project.name}": ${e instanceof Error ? e.message : 'Unknown error'}`);
-                                                            } finally {
-                                                                setLoading(false);
-                                                            }
-                                                        }}
-                                                        sx={{ 
-                                                            minWidth: 'auto',
-                                                            borderColor: 'error.main',
-                                                            color: 'error.main',
-                                                            '&:hover': {
-                                                                borderColor: 'error.dark',
-                                                                backgroundColor: 'error.main',
-                                                                color: 'white'
-                                                            }
-                                                        }}
-                                                    >
-                                                        Delete
-                                                    </Button>
+                                                            }}
+                                                            disabled={projectStatusUpdating[project.id]}
+                                                            sx={{ py: 1.5 }}
+                                                        >
+                                                            <ArchiveIcon sx={{ mr: 2, fontSize: 20, color: project.isArchived ? 'success.main' : 'warning.main' }} />
+                                                            <Typography variant="body2">
+                                                                {!project.isArchived ? 'Archive' : 'Restore'}
+                                                            </Typography>
+                                                        </MenuItem>
+                                                        
+                                                        {/* Delete */}
+                                                        <MenuItem 
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const confirmDelete = window.confirm(
+                                                                        `Are you sure you want to permanently delete "${project.name}"? This action cannot be undone and will remove all project data, datasets, and team member assignments.`
+                                                                    );
+                                                                    
+                                                                    if (confirmDelete) {
+                                                                        setLoading(true);
+                                                                        const success = await cloudProjectIntegration.deleteProject(project.id);
+                                                                        
+                                                                        if (success) {
+                                                                            console.log(`✅ [DashboardCloudProjectsBridge] Project "${project.name}" deleted successfully`);
+                                                                            await loadProjects(); // Refresh the project list
+                                                                            setError(null);
+                                                                        } else {
+                                                                            setError(`Failed to delete project "${project.name}". Please try again.`);
+                                                                        }
+                                                                    }
+                                                                    handleActionMenuClose(project.id);
+                                                                } catch (e) {
+                                                                    console.error('Failed to delete project:', e);
+                                                                    setError(`Failed to delete project "${project.name}": ${e instanceof Error ? e.message : 'Unknown error'}`);
+                                                                } finally {
+                                                                    setLoading(false);
+                                                                }
+                                                            }}
+                                                            sx={{ 
+                                                                py: 1.5,
+                                                                color: 'error.main',
+                                                                '&:hover': {
+                                                                    backgroundColor: 'error.light',
+                                                                    color: 'error.dark'
+                                                                }
+                                                            }}
+                                                        >
+                                                            <DeleteIcon sx={{ mr: 2, fontSize: 20 }} />
+                                                            <Typography variant="body2">Delete</Typography>
+                                                        </MenuItem>
+                                                    </Menu>
                                                 </Box>
                                             </TableCell>
                                         </TableRow>
@@ -2263,11 +2816,116 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 </Typography>
                                             </Box>
                                             <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
-                                                Up to {selectedProject?.maxCollaborators || getCollaborationLimit(completeUser)} users
+                                                {selectedProject?.maxCollaborators || getCollaborationLimit(completeUser)} licenses available
                                             </Typography>
                                         </Box>
                                     </Grid>
                                 </Grid>
+                            </Box>
+
+                            {/* Project Description and Progress Section */}
+                            <Box sx={{ mb: 4 }}>
+                                <Typography variant="h6" sx={{ 
+                                    color: 'white', 
+                                    mb: 3, 
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1
+                                }}>
+                                    <Box
+                                        sx={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                            boxShadow: '0 0 8px rgba(139, 92, 246, 0.5)'
+                                        }}
+                                    />
+                                    Project Details
+                                </Typography>
+                                
+                                <Box
+                                    sx={{
+                                        p: 3,
+                                        borderRadius: 2,
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        backdropFilter: 'blur(10px)',
+                                        transition: 'all 0.3s ease',
+                                        '&:hover': {
+                                            transform: 'translateY(-2px)',
+                                            boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2)',
+                                            borderColor: 'rgba(139, 92, 246, 0.3)'
+                                        }
+                                    }}
+                                >
+                                    {/* Project Description */}
+                                    {selectedProject?.description && (
+                                        <Box sx={{ mb: 3 }}>
+                                            <Typography variant="body2" sx={{ 
+                                                color: 'rgba(255, 255, 255, 0.6)', 
+                                                mb: 1,
+                                                fontWeight: 500
+                                            }}>
+                                                Description
+                                            </Typography>
+                                            <Typography variant="body1" sx={{ 
+                                                color: 'white',
+                                                lineHeight: 1.6
+                                            }}>
+                                                {selectedProject.description}
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                    
+                                    {/* Progress Bar */}
+                                    {selectedProject?.completionPercentage !== undefined && (
+                                        <Box>
+                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                                <Typography variant="body2" sx={{ 
+                                                    color: 'rgba(255, 255, 255, 0.6)',
+                                                    fontWeight: 500
+                                                }}>
+                                                    Completion Progress
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ 
+                                                    color: 'white',
+                                                    fontWeight: 600
+                                                }}>
+                                                    {selectedProject.completionPercentage}%
+                                                </Typography>
+                                            </Box>
+                                            <Box sx={{ 
+                                                width: '100%', 
+                                                height: '8px', 
+                                                backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+                                                borderRadius: '4px', 
+                                                overflow: 'hidden',
+                                                position: 'relative'
+                                            }}>
+                                                <Box 
+                                                    sx={{ 
+                                                        width: `${selectedProject.completionPercentage}%`, 
+                                                        height: '100%', 
+                                                        background: selectedProject.completionPercentage >= 80 ? 
+                                                            'linear-gradient(90deg, #10b981, #059669)' :
+                                                            selectedProject.completionPercentage >= 50 ? 
+                                                            'linear-gradient(90deg, #f59e0b, #d97706)' : 
+                                                            'linear-gradient(90deg, #ef4444, #dc2626)',
+                                                        transition: 'width 0.5s ease',
+                                                        borderRadius: '4px',
+                                                        boxShadow: selectedProject.completionPercentage >= 80 ? 
+                                                            '0 0 10px rgba(16, 185, 129, 0.3)' :
+                                                            selectedProject.completionPercentage >= 50 ? 
+                                                            '0 0 10px rgba(245, 158, 11, 0.3)' : 
+                                                            '0 0 10px rgba(239, 68, 68, 0.3)'
+                                                    }} 
+                                                />
+                                            </Box>
+                                        </Box>
+                                    )}
+                                </Box>
                             </Box>
 
                             {/* Assigned Datasets Section */}
@@ -2681,13 +3339,60 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                                         {ds.description}
                                                                     </Typography>
                                                                 )}
+                                                                {/* Show collection assignment info for Firestore datasets */}
+                                                                {ds.storage?.backend === 'firestore' && ds.collectionAssignment?.selectedCollections?.length > 0 && (
+                                                                    <Box sx={{ mt: 1 }}>
+                                                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', display: 'block', mb: 0.5 }}>
+                                                                            Assigned Collections:
+                                                                        </Typography>
+                                                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                                                            {ds.collectionAssignment.selectedCollections.slice(0, 3).map((collection: string) => (
+                                                                                <Chip
+                                                                                    key={collection}
+                                                                                    label={collection}
+                                                                                    size="small"
+                                                                                    sx={{
+                                                                                        height: 18,
+                                                                                        fontSize: '0.65rem',
+                                                                                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                                                                                        color: '#fbbf24',
+                                                                                        border: '1px solid rgba(245, 158, 11, 0.3)'
+                                                                                    }}
+                                                                                />
+                                                                            ))}
+                                                                            {ds.collectionAssignment.selectedCollections.length > 3 && (
+                                                                                <Chip
+                                                                                    label={`+${ds.collectionAssignment.selectedCollections.length - 3} more`}
+                                                                                    size="small"
+                                                                                    sx={{
+                                                                                        height: 18,
+                                                                                        fontSize: '0.65rem',
+                                                                                        backgroundColor: 'rgba(156, 163, 175, 0.2)',
+                                                                                        color: '#9ca3af'
+                                                                                    }}
+                                                                                />
+                                                                            )}
+                                                                        </Box>
+                                                                        {ds.collectionAssignment.organizationScope && (
+                                                                            <Typography variant="caption" sx={{ 
+                                                                                color: 'rgba(16, 185, 129, 0.8)', 
+                                                                                display: 'block', 
+                                                                                mt: 0.5,
+                                                                                fontSize: '0.65rem'
+                                                                            }}>
+                                                                                ✓ Organization scoped for data isolation
+                                                                            </Typography>
+                                                                        )}
+                                                                    </Box>
+                                                                )}
                                                             </Box>
                                                         </Box>
-                                                        <Button
-                                                            variant="outlined"
-                                                            size="small"
-                                                            startIcon={<DeleteIcon />}
-                                                            onClick={async () => {
+                                                        <Box sx={{ display: 'flex', gap: 1 }}>
+                                                            <Button
+                                                                variant="outlined"
+                                                                size="small"
+                                                                startIcon={<DeleteIcon />}
+                                                                onClick={async () => {
                                   try {
                                     console.log('🗑️ [DashboardCloudProjectsBridge] Removing dataset from project:', { projectId: selectedProject!.id, datasetId: ds.id });
                                     await cloudProjectIntegration.unassignDatasetFromProject(selectedProject!.id, ds.id);
@@ -2742,6 +3447,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                         >
                                                             Remove
                                                         </Button>
+                                                        </Box>
                                                     </Box>
                                                 ))}
                                             </Box>
@@ -3532,17 +4238,17 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 border: '1px solid rgba(255, 255, 255, 0.1)',
                                                 borderRadius: 2,
                                                 color: 'white',
+                                                position: 'relative',
                                                 '&:hover': {
                                                     background: 'rgba(255, 255, 255, 0.08)',
                                                     borderColor: 'rgba(255, 255, 255, 0.2)',
                                                     transform: 'translateY(-2px)',
                                                     boxShadow: '0 8px 25px rgba(0, 0, 0, 0.3)'
                                                 },
-                                                transition: 'all 0.2s ease-in-out',
-                                                cursor: 'pointer'
+                                                transition: 'all 0.2s ease-in-out'
                                             }}
                                         >
-                                            <CardContent sx={{ p: 2 }}>
+                                            <CardContent sx={{ p: 2, pb: 1 }}>
                                                 <Typography variant="h6" sx={{ 
                                                     fontSize: '1rem', 
                                                     fontWeight: 600, 
@@ -3555,7 +4261,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ 
                                                     color: 'rgba(255, 255, 255, 0.7)', 
-                                                    mb: 1,
+                                                    mb: 2,
                                                     minHeight: '2.5em',
                                                     overflow: 'hidden',
                                                     display: '-webkit-box',
@@ -3564,7 +4270,50 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 }}>
                                                     {dataset.description || 'No description available'}
                                                 </Typography>
-                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+                                                
+                                                {/* Collection Info */}
+                                                {dataset.storage?.backend === 'firestore' && dataset.collectionAssignment?.selectedCollections?.length > 0 && (
+                                                    <Box sx={{ mb: 2 }}>
+                                                        <Typography variant="caption" sx={{ 
+                                                            color: 'rgba(255, 255, 255, 0.6)', 
+                                                            display: 'block', 
+                                                            mb: 0.5,
+                                                            fontWeight: 500
+                                                        }}>
+                                                            Collections ({dataset.collectionAssignment.selectedCollections.length}):
+                                                        </Typography>
+                                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                                            {dataset.collectionAssignment.selectedCollections.slice(0, 2).map((collection: string) => (
+                                                                <Chip
+                                                                    key={collection}
+                                                                    label={collection}
+                                                                    size="small"
+                                                                    sx={{
+                                                                        height: 18,
+                                                                        fontSize: '0.65rem',
+                                                                        backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                                                                        color: '#a5b4fc',
+                                                                        border: '1px solid rgba(79, 70, 229, 0.3)'
+                                                                    }}
+                                                                />
+                                                            ))}
+                                                            {dataset.collectionAssignment.selectedCollections.length > 2 && (
+                                                                <Chip
+                                                                    label={`+${dataset.collectionAssignment.selectedCollections.length - 2}`}
+                                                                    size="small"
+                                                                    sx={{
+                                                                        height: 18,
+                                                                        fontSize: '0.65rem',
+                                                                        backgroundColor: 'rgba(156, 163, 175, 0.2)',
+                                                                        color: '#9ca3af'
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </Box>
+                                                    </Box>
+                                                )}
+                                                
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                                                     <Chip
                                                         size="small"
                                                         label={dataset.__label?.match(/\((.*?)\)$/)?.[1] || 'Firestore'}
@@ -3590,6 +4339,108 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                         }}
                                                     />
                                                 </Box>
+                                                
+                                                {/* Action Buttons */}
+                                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                                    <Button
+                                                        variant="outlined"
+                                                        size="small"
+                                                        startIcon={<EditIcon />}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            console.log('✏️ [DashboardCloudProjectsBridge] Edit dataset clicked:', dataset.id);
+                                                            setDatasetToEdit(dataset);
+                                                            setShowEditDatasetDialog(true);
+                                                        }}
+                                                        sx={{
+                                                            borderColor: 'rgba(139, 92, 246, 0.3)',
+                                                            color: '#8b5cf6',
+                                                            minWidth: 'auto',
+                                                            px: 1.5,
+                                                            py: 0.5,
+                                                            fontSize: '0.75rem',
+                                                            '&:hover': {
+                                                                borderColor: '#8b5cf6',
+                                                                backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                                                            }
+                                                        }}
+                                                    >
+                                                        Edit
+                                                    </Button>
+                                                    
+                                                    {dataset.storage?.backend === 'firestore' && (
+                                                        <Button
+                                                            variant="outlined"
+                                                            size="small"
+                                                            startIcon={<DatasetIcon />}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                console.log('📊 [DashboardCloudProjectsBridge] View collections clicked:', dataset.id);
+                                                                setSelectedDatasetForManagement(dataset);
+                                                                setShowDatasetCollectionsDialog(true);
+                                                            }}
+                                                            sx={{
+                                                                borderColor: 'rgba(59, 130, 246, 0.3)',
+                                                                color: '#3b82f6',
+                                                                minWidth: 'auto',
+                                                                px: 1.5,
+                                                                py: 0.5,
+                                                                fontSize: '0.75rem',
+                                                                '&:hover': {
+                                                                    borderColor: '#3b82f6',
+                                                                    backgroundColor: 'rgba(59, 130, 246, 0.1)'
+                                                                }
+                                                            }}
+                                                        >
+                                                            Collections
+                                                        </Button>
+                                                    )}
+                                                    
+                                                    <Button
+                                                        variant="outlined"
+                                                        size="small"
+                                                        startIcon={<DeleteIcon />}
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            const confirmDelete = window.confirm(
+                                                                `Are you sure you want to delete dataset "${dataset.name}"? This action cannot be undone and will remove the dataset from all projects.`
+                                                            );
+                                                            
+                                                            if (confirmDelete) {
+                                                                try {
+                                                                    console.log('🗑️ [DashboardCloudProjectsBridge] Deleting dataset:', dataset.id);
+                                                                    await cloudProjectIntegration.deleteDataset(dataset.id);
+                                                                    console.log('✅ [DashboardCloudProjectsBridge] Dataset deleted successfully');
+                                                                    
+                                                                    // Refresh organization datasets
+                                                                    await loadOrganizationDatasets();
+                                                                    
+                                                                    // Refresh dataset counts for all projects
+                                                                    await refreshDatasetCounts();
+                                                                    
+                                                                } catch (error) {
+                                                                    console.error('❌ [DashboardCloudProjectsBridge] Failed to delete dataset:', error);
+                                                                    setError(`Failed to delete dataset: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                                                                }
+                                                            }
+                                                        }}
+                                                        sx={{
+                                                            borderColor: 'rgba(239, 68, 68, 0.3)',
+                                                            color: '#ef4444',
+                                                            minWidth: 'auto',
+                                                            px: 1.5,
+                                                            py: 0.5,
+                                                            fontSize: '0.75rem',
+                                                            '&:hover': {
+                                                                borderColor: '#ef4444',
+                                                                backgroundColor: 'rgba(239, 68, 68, 0.1)'
+                                                            }
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </Box>
+                                                
                                                 <Typography variant="caption" sx={{ 
                                                     color: 'rgba(255, 255, 255, 0.5)', 
                                                     mt: 1,
@@ -3679,6 +4530,653 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     projectName={selectedProject.name}
                 />
             )}
+
+            {/* Dataset Insights Dialog */}
+            <Dialog
+                open={showDatasetInsightsDialog}
+                onClose={() => setShowDatasetInsightsDialog(false)}
+                maxWidth="lg"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                        color: 'white',
+                        borderRadius: 3,
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        maxHeight: '90vh'
+                    }
+                }}
+            >
+                <DialogTitle sx={{ 
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                    pb: 2,
+                    fontSize: '1.5rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <AssessmentIcon sx={{ fontSize: 32, color: '#8b5cf6' }} />
+                        <Box>
+                            <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                                Dataset Insights & Analysis
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                Global overview of dataset organization and conflicts
+                            </Typography>
+                        </Box>
+                    </Box>
+                    {datasetAnalysis && (
+                        <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="h4" sx={{ 
+                                color: datasetAnalysis.healthScore >= 80 ? '#10b981' : 
+                                       datasetAnalysis.healthScore >= 60 ? '#f59e0b' : '#ef4444',
+                                fontWeight: 700
+                            }}>
+                                {datasetAnalysis.healthScore}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                                Health Score
+                            </Typography>
+                        </Box>
+                    )}
+                </DialogTitle>
+                
+                <DialogContent sx={{ p: 3, overflow: 'auto' }}>
+                    {loadingDatasetAnalysis ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+                            <CircularProgress sx={{ color: '#8b5cf6', mr: 2 }} />
+                            <Typography variant="body1">Analyzing dataset organization...</Typography>
+                        </Box>
+                    ) : datasetAnalysis ? (
+                        <Box>
+                            {/* Dataset Summary */}
+                            <Box sx={{ mb: 4, p: 3, borderRadius: 2, background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <AssessmentIcon sx={{ color: '#8b5cf6' }} />
+                                    Dataset Analysis Summary
+                                </Typography>
+                                <Grid container spacing={2}>
+                                    <Grid item xs={12} sm={6} md={3}>
+                                        <Box sx={{ textAlign: 'center' }}>
+                                            <Typography variant="h3" sx={{ fontWeight: 700, color: '#667eea' }}>
+                                                {datasetAnalysis.totalDatasets}
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                Total Datasets
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    <Grid item xs={12} sm={6} md={3}>
+                                        <Box sx={{ textAlign: 'center' }}>
+                                            <Typography variant="h3" sx={{ fontWeight: 700, color: '#f093fb' }}>
+                                                {organizationDatasets.filter(ds => ds.storage?.backend === 'firestore').length}
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                Firestore Datasets
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    <Grid item xs={12} sm={6} md={3}>
+                                        <Box sx={{ textAlign: 'center' }}>
+                                            <Typography variant="h3" sx={{ fontWeight: 700, color: '#4facfe' }}>
+                                                {datasetAnalysis.totalCollections}
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                Unique Collections
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    <Grid item xs={12} sm={6} md={3}>
+                                        <Box sx={{ textAlign: 'center' }}>
+                                            <Typography variant="h3" sx={{ 
+                                                fontWeight: 700, 
+                                                color: datasetAnalysis.overlaps.length > 0 ? '#fc4a1a' : '#11998e'
+                                            }}>
+                                                {datasetAnalysis.overlaps.length}
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                Collection Overlaps
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                </Grid>
+                            </Box>
+
+                            {/* Overview Cards */}
+                            <Grid container spacing={3} sx={{ mb: 4 }}>
+                                <Grid item xs={12} sm={3}>
+                                    <Card sx={{ 
+                                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                        color: 'white',
+                                        textAlign: 'center',
+                                        p: 2
+                                    }}>
+                                        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                                            {datasetAnalysis.totalDatasets}
+                                        </Typography>
+                                        <Typography variant="body2">Total Datasets</Typography>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={3}>
+                                    <Card sx={{ 
+                                        background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                                        color: 'white',
+                                        textAlign: 'center',
+                                        p: 2
+                                    }}>
+                                        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                                            {datasetAnalysis.totalCollections}
+                                        </Typography>
+                                        <Typography variant="body2">Unique Collections</Typography>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={3}>
+                                    <Card sx={{ 
+                                        background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                                        color: 'white',
+                                        textAlign: 'center',
+                                        p: 2
+                                    }}>
+                                        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                                            {datasetAnalysis.overlaps.length}
+                                        </Typography>
+                                        <Typography variant="body2">Collection Overlaps</Typography>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={3}>
+                                    <Card sx={{ 
+                                        background: datasetAnalysis.globalInsights.redundantAssignments.length > 0 ?
+                                            'linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%)' :
+                                            'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+                                        color: 'white',
+                                        textAlign: 'center',
+                                        p: 2
+                                    }}>
+                                        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                                            {datasetAnalysis.globalInsights.redundantAssignments.length}
+                                        </Typography>
+                                        <Typography variant="body2">Redundancies</Typography>
+                                    </Card>
+                                </Grid>
+                            </Grid>
+
+                            {/* Collection Overlaps */}
+                            {datasetAnalysis.overlaps.length > 0 && (
+                                <Box sx={{ mb: 4 }}>
+                                    <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <WarningIcon color="warning" />
+                                        Collection Overlaps
+                                    </Typography>
+                                    {datasetAnalysis.overlaps.map((overlap, index) => (
+                                        <Card key={index} sx={{ 
+                                            mb: 2, 
+                                            bgcolor: 'rgba(255, 255, 255, 0.05)',
+                                            border: `2px solid ${
+                                                overlap.conflictLevel === 'high' ? '#ef4444' :
+                                                overlap.conflictLevel === 'medium' ? '#f59e0b' : '#10b981'
+                                            }`
+                                        }}>
+                                            <CardContent>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <StorageIcon />
+                                                        {overlap.collection}
+                                                    </Typography>
+                                                    <Chip 
+                                                        label={overlap.conflictLevel.toUpperCase()} 
+                                                        color={
+                                                            overlap.conflictLevel === 'high' ? 'error' :
+                                                            overlap.conflictLevel === 'medium' ? 'warning' : 'success'
+                                                        }
+                                                        sx={{ fontWeight: 600 }}
+                                                    />
+                                                </Box>
+                                                <Typography variant="body2" sx={{ mb: 2 }}>
+                                                    Used by {overlap.datasets.length} datasets: {overlap.datasets.map(d => d.name).join(', ')}
+                                                </Typography>
+                                                {overlap.conflictReasons.length > 0 && (
+                                                    <Box sx={{ mb: 2 }}>
+                                                        <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
+                                                            Issues:
+                                                        </Typography>
+                                                        {overlap.conflictReasons.map((reason, i) => (
+                                                            <Typography key={i} variant="body2" sx={{ color: '#ef4444', fontSize: '0.85rem' }}>
+                                                                • {reason}
+                                                            </Typography>
+                                                        ))}
+                                                    </Box>
+                                                )}
+                                                {overlap.recommendations.length > 0 && (
+                                                    <Box>
+                                                        <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
+                                                            Recommendations:
+                                                        </Typography>
+                                                        {overlap.recommendations.map((rec, i) => (
+                                                            <Typography key={i} variant="body2" sx={{ color: '#10b981', fontSize: '0.85rem' }}>
+                                                                💡 {rec}
+                                                            </Typography>
+                                                        ))}
+                                                    </Box>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </Box>
+                            )}
+
+                            {/* Most Used Collections */}
+                            {datasetAnalysis.globalInsights.mostUsedCollections.length > 0 && (
+                                <Box sx={{ mb: 4 }}>
+                                    <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <TrendingUpIcon color="primary" />
+                                        Most Used Collections
+                                    </Typography>
+                                    <Grid container spacing={2}>
+                                        {datasetAnalysis.globalInsights.mostUsedCollections.slice(0, 6).map((item, index) => (
+                                            <Grid item xs={12} sm={6} md={4} key={index}>
+                                                <Card sx={{ bgcolor: 'rgba(255, 255, 255, 0.05)', p: 2 }}>
+                                                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                                        <DatasetIcon color="primary" />
+                                                        {item.collection}
+                                                    </Typography>
+                                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                        Used by {item.count} dataset{item.count !== 1 ? 's' : ''}
+                                                    </Typography>
+                                                    <Box sx={{ mt: 1 }}>
+                                                        {item.datasets.slice(0, 2).map((dataset, i) => (
+                                                            <Chip 
+                                                                key={i}
+                                                                label={dataset} 
+                                                                size="small" 
+                                                                sx={{ mr: 0.5, mb: 0.5, fontSize: '0.7rem' }}
+                                                            />
+                                                        ))}
+                                                        {item.datasets.length > 2 && (
+                                                            <Chip 
+                                                                label={`+${item.datasets.length - 2} more`} 
+                                                                size="small" 
+                                                                sx={{ fontSize: '0.7rem' }}
+                                                            />
+                                                        )}
+                                                    </Box>
+                                                </Card>
+                                            </Grid>
+                                        ))}
+                                    </Grid>
+                                </Box>
+                            )}
+
+                            {/* Global Recommendations */}
+                            {datasetAnalysis.globalInsights.recommendations.length > 0 && (
+                                <Box>
+                                    <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <InfoIcon color="info" />
+                                        Optimization Recommendations
+                                    </Typography>
+                                    {datasetAnalysis.globalInsights.recommendations.map((rec, index) => (
+                                        <Alert key={index} severity="info" sx={{ mb: 1, bgcolor: 'rgba(79, 70, 229, 0.1)' }}>
+                                            {rec}
+                                        </Alert>
+                                    ))}
+                                </Box>
+                            )}
+
+                            {/* Perfect State Message */}
+                            {datasetAnalysis.overlaps.length === 0 && datasetAnalysis.globalInsights.redundantAssignments.length === 0 && datasetAnalysis.totalDatasets > 0 && (
+                                <Box sx={{ textAlign: 'center', py: 4 }}>
+                                    <CheckCircle sx={{ fontSize: 64, color: '#10b981', mb: 2 }} />
+                                    <Typography variant="h5" sx={{ color: '#10b981', mb: 1 }}>
+                                        Excellent Dataset Organization!
+                                    </Typography>
+                                    <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                        No conflicts or redundancies detected. Your datasets are well-organized.
+                                    </Typography>
+                                </Box>
+                            )}
+                            
+                            {/* No Datasets State */}
+                            {datasetAnalysis.totalDatasets === 0 && (
+                                <Box sx={{ textAlign: 'center', py: 6 }}>
+                                    <StorageIcon sx={{ fontSize: 80, color: 'rgba(255, 255, 255, 0.3)', mb: 3 }} />
+                                    <Typography variant="h5" sx={{ mb: 2, color: 'rgba(255, 255, 255, 0.8)' }}>
+                                        No Datasets Found
+                                    </Typography>
+                                    <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 3, maxWidth: 400, mx: 'auto' }}>
+                                        Create your first dataset to start organizing your data and see detailed insights about collection usage and potential conflicts.
+                                    </Typography>
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<AddIcon />}
+                                        onClick={() => {
+                                            setShowDatasetInsightsDialog(false);
+                                            setShowCreateDatasetWizard(true);
+                                        }}
+                                        sx={{
+                                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                            color: 'white',
+                                            borderRadius: 2,
+                                            px: 4,
+                                            py: 1.5,
+                                            textTransform: 'none',
+                                            fontWeight: 600,
+                                            boxShadow: '0 4px 12px rgba(139, 92, 246, 0.4)',
+                                            '&:hover': {
+                                                background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
+                                                boxShadow: '0 6px 20px rgba(139, 92, 246, 0.5)',
+                                                transform: 'translateY(-2px)'
+                                            }
+                                        }}
+                                    >
+                                        Create Your First Dataset
+                                    </Button>
+                                </Box>
+                            )}
+                        </Box>
+                    ) : (
+                        <Box sx={{ textAlign: 'center', py: 6 }}>
+                            <AssessmentIcon sx={{ fontSize: 80, color: 'rgba(255, 255, 255, 0.3)', mb: 3 }} />
+                            <Typography variant="h5" sx={{ mb: 2, color: 'rgba(255, 255, 255, 0.8)' }}>
+                                Dataset Analysis Unavailable
+                            </Typography>
+                            <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.6)', mb: 3, maxWidth: 400, mx: 'auto' }}>
+                                Unable to load dataset analysis. This could be due to missing organization data or a temporary service issue.
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<RefreshIcon />}
+                                    onClick={loadDatasetAnalysis}
+                                    sx={{
+                                        borderColor: 'rgba(139, 92, 246, 0.3)',
+                                        color: '#8b5cf6',
+                                        '&:hover': {
+                                            borderColor: '#8b5cf6',
+                                            backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                                        }
+                                    }}
+                                >
+                                    Retry Analysis
+                                </Button>
+                                <Button
+                                    variant="contained"
+                                    startIcon={<AddIcon />}
+                                    onClick={() => {
+                                        setShowDatasetInsightsDialog(false);
+                                        setShowCreateDatasetWizard(true);
+                                    }}
+                                    sx={{
+                                        background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                        color: 'white',
+                                        '&:hover': {
+                                            background: 'linear-gradient(135deg, #7c3aed, #9333ea)'
+                                        }
+                                    }}
+                                >
+                                    Create Dataset
+                                </Button>
+                            </Box>
+                        </Box>
+                    )}
+                </DialogContent>
+                
+                <DialogActions sx={{ 
+                    p: 3, 
+                    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                    justifyContent: 'space-between'
+                }}>
+                    <Button
+                        onClick={loadDatasetAnalysis}
+                        variant="outlined"
+                        startIcon={<RefreshIcon />}
+                        disabled={loadingDatasetAnalysis}
+                        sx={{
+                            borderColor: 'rgba(139, 92, 246, 0.3)',
+                            color: '#8b5cf6',
+                            '&:hover': {
+                                borderColor: '#8b5cf6',
+                                backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                            }
+                        }}
+                    >
+                        Refresh Analysis
+                    </Button>
+                    <Button
+                        onClick={() => setShowDatasetInsightsDialog(false)}
+                        variant="outlined"
+                        sx={{
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            '&:hover': {
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }}
+                    >
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Dataset Collections Dialog */}
+            <Dialog
+                open={showDatasetCollectionsDialog}
+                onClose={() => {
+                    setShowDatasetCollectionsDialog(false);
+                    setSelectedDatasetForManagement(null);
+                }}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                        color: 'white',
+                        borderRadius: 3,
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        maxHeight: '80vh'
+                    }
+                }}
+            >
+                <DialogTitle sx={{ 
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                    pb: 2,
+                    fontSize: '1.25rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2
+                }}>
+                    <DatasetIcon sx={{ color: '#3b82f6' }} />
+                    <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                            Dataset Collections
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                            {selectedDatasetForManagement?.name || 'Dataset'}
+                        </Typography>
+                    </Box>
+                </DialogTitle>
+                
+                <DialogContent sx={{ p: 3 }}>
+                    {selectedDatasetForManagement && (
+                        <Box>
+                            {/* Dataset Info */}
+                            <Box sx={{ mb: 3, p: 2, borderRadius: 2, background: 'rgba(255, 255, 255, 0.05)' }}>
+                                <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+                                    {selectedDatasetForManagement.name}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2 }}>
+                                    {selectedDatasetForManagement.description || 'No description available'}
+                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <Chip 
+                                        size="small" 
+                                        label={selectedDatasetForManagement.storage?.backend || 'firestore'} 
+                                        sx={{ backgroundColor: 'rgba(79, 70, 229, 0.2)', color: '#a5b4fc' }}
+                                    />
+                                    <Chip 
+                                        size="small" 
+                                        label={selectedDatasetForManagement.visibility || 'private'} 
+                                        sx={{ backgroundColor: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}
+                                    />
+                                </Box>
+                            </Box>
+
+                            {/* Collections Section */}
+                            {selectedDatasetForManagement.storage?.backend === 'firestore' ? (
+                                <Box>
+                                    <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <StorageIcon sx={{ color: '#f59e0b' }} />
+                                        Firestore Collections
+                                    </Typography>
+                                    
+                                    {selectedDatasetForManagement.collectionAssignment?.selectedCollections?.length > 0 ? (
+                                        <Box>
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 2 }}>
+                                                This dataset includes {selectedDatasetForManagement.collectionAssignment.selectedCollections.length} collection(s):
+                                            </Typography>
+                                            
+                                            <Grid container spacing={1}>
+                                                {selectedDatasetForManagement.collectionAssignment.selectedCollections.map((collection: string, index: number) => (
+                                                    <Grid item xs={12} sm={6} md={4} key={index}>
+                                                        <Box
+                                                            sx={{
+                                                                p: 2,
+                                                                borderRadius: 2,
+                                                                background: 'rgba(245, 158, 11, 0.1)',
+                                                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: 1
+                                                            }}
+                                                        >
+                                                            <DatasetIcon sx={{ color: '#f59e0b', fontSize: 20 }} />
+                                                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                                                {collection}
+                                                            </Typography>
+                                                        </Box>
+                                                    </Grid>
+                                                ))}
+                                            </Grid>
+                                            
+                                            {selectedDatasetForManagement.collectionAssignment.organizationScope && (
+                                                <Box sx={{ mt: 2, p: 2, borderRadius: 2, background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                                    <Typography variant="body2" sx={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <SecurityIcon sx={{ fontSize: 16 }} />
+                                                        Organization scoped for data isolation
+                                                    </Typography>
+                                                </Box>
+                                            )}
+                                        </Box>
+                                    ) : (
+                                        <Box sx={{ textAlign: 'center', py: 4 }}>
+                                            <WarningIcon sx={{ fontSize: 48, color: 'rgba(245, 158, 11, 0.5)', mb: 2 }} />
+                                            <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                                                No Collections Assigned
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                                                This Firestore dataset doesn't have any collections assigned yet.
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                </Box>
+                            ) : (
+                                <Box sx={{ textAlign: 'center', py: 4 }}>
+                                    <InfoIcon sx={{ fontSize: 48, color: 'rgba(59, 130, 246, 0.5)', mb: 2 }} />
+                                    <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.7)', mb: 1 }}>
+                                        Non-Firestore Dataset
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                                        Collection management is only available for Firestore datasets.
+                                    </Typography>
+                                </Box>
+                            )}
+                        </Box>
+                    )}
+                </DialogContent>
+                
+                <DialogActions sx={{ 
+                    p: 3, 
+                    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                    justifyContent: 'space-between'
+                }}>
+                    <Button
+                        onClick={() => {
+                            if (selectedDatasetForManagement) {
+                                setDatasetToEdit(selectedDatasetForManagement);
+                                setShowEditDatasetDialog(true);
+                                setShowDatasetCollectionsDialog(false);
+                            }
+                        }}
+                        variant="outlined"
+                        startIcon={<EditIcon />}
+                        sx={{
+                            borderColor: 'rgba(139, 92, 246, 0.3)',
+                            color: '#8b5cf6',
+                            '&:hover': {
+                                borderColor: '#8b5cf6',
+                                backgroundColor: 'rgba(139, 92, 246, 0.1)'
+                            }
+                        }}
+                    >
+                        Edit Dataset
+                    </Button>
+                    <Button
+                        onClick={() => {
+                            setShowDatasetCollectionsDialog(false);
+                            setSelectedDatasetForManagement(null);
+                        }}
+                        variant="outlined"
+                        sx={{
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            color: 'rgba(255, 255, 255, 0.8)',
+                            '&:hover': {
+                                borderColor: 'rgba(255, 255, 255, 0.5)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }}
+                    >
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Edit Dataset Dialog */}
+            <EditDatasetDialog
+                open={showEditDatasetDialog}
+                onClose={() => {
+                    setShowEditDatasetDialog(false);
+                    setDatasetToEdit(null);
+                }}
+                dataset={datasetToEdit}
+                existingDatasets={organizationDatasets}
+                onDatasetUpdated={(updatedDataset) => {
+                    console.log('✅ [DashboardCloudProjectsBridge] Dataset updated:', updatedDataset);
+                    
+                    // Update the dataset in project datasets if it's currently displayed
+                    if (selectedProject) {
+                        setProjectDatasets(prev => 
+                            prev.map(ds => ds.id === updatedDataset.id ? updatedDataset : ds)
+                        );
+                    }
+                    
+                    // Update organization datasets
+                    setOrganizationDatasets(prev => 
+                        prev.map(ds => ds.id === updatedDataset.id ? updatedDataset : ds)
+                    );
+                    
+                    // Update selected dataset for management if it's the same
+                    if (selectedDatasetForManagement?.id === updatedDataset.id) {
+                        setSelectedDatasetForManagement(updatedDataset);
+                    }
+                    
+                    // Refresh dataset analysis if insights dialog is open
+                    if (showDatasetInsightsDialog) {
+                        loadDatasetAnalysis();
+                    }
+                }}
+            />
 
         </Box>
     );

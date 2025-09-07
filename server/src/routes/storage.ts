@@ -5,12 +5,11 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { authenticateToken } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { firestoreService } from '../services/firestoreService.js';
 
 const router: Router = Router();
-const prisma = new PrismaClient();
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -44,25 +43,19 @@ router.get('/usage', authenticateToken, asyncHandler(async (req: AuthenticatedRe
 
   try {
     // Get user's active subscription to determine tier
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        subscriptions: {
-          where: { status: 'ACTIVE' },
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      }
-    });
-
+    const user = await firestoreService.getUserById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        error: 'User not found'
       });
     }
+    
+    const subscriptions = await firestoreService.getSubscriptionsByUserId(userId);
+    const activeSubscriptions = subscriptions.filter(sub => sub.status === 'ACTIVE')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    const subscription = user.subscriptions[0];
+    const subscription = activeSubscriptions[0];
     const tier = subscription?.tier || 'BASIC';
     const storageLimit = TIER_STORAGE_LIMITS[tier as keyof typeof TIER_STORAGE_LIMITS] || TIER_STORAGE_LIMITS.BASIC;
 
@@ -78,23 +71,14 @@ router.get('/usage', authenticateToken, asyncHandler(async (req: AuthenticatedRe
     };
 
     // Get usage from licenses/projects (placeholder calculation)
-    const licenses = await prisma.license.findMany({
-      where: { userId },
-      include: {
-        analytics: {
-          where: {
-            timestamp: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-            }
-          }
-        }
-      }
-    });
+    const licenses = await firestoreService.getLicensesByUserId(userId);
+    // Note: Analytics data would need to be implemented in Firestore if needed
+    // For now, we'll use placeholder data
 
-    // Estimate storage usage based on analytics events
+    // Estimate storage usage based on license count
     // In production, this would query actual storage providers
     for (const license of licenses) {
-      const eventCount = license.analytics.length;
+      const eventCount = 10; // Placeholder - would come from actual analytics
       const estimatedBytes = eventCount * 1024; // 1KB per event (rough estimate)
       totalUsageBytes += estimatedBytes;
       
@@ -165,22 +149,11 @@ router.get('/breakdown', authenticateToken, asyncHandler(async (req: Authenticat
     // This would integrate with actual storage provider APIs in production
     // For now, return estimated breakdown based on user activity
     
-    const licenses = await prisma.license.findMany({
-      where: { userId },
-      include: {
-        analytics: {
-          where: {
-            timestamp: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-            }
-          }
-        }
-      }
-    });
+    const licenses = await firestoreService.getLicensesByUserId(userId);
 
     let totalEvents = 0;
     for (const license of licenses) {
-      totalEvents += license.analytics.length;
+      totalEvents += 10; // Placeholder - would come from actual analytics
     }
 
     // Estimate storage distribution
@@ -229,25 +202,26 @@ router.post('/purchase', authenticateToken, asyncHandler(async (req: Authenticat
 
   try {
     // Get user's subscription to determine pricing
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        subscriptions: {
-          where: { status: 'ACTIVE' },
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      }
-    });
+    const user = await firestoreService.getUserById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    const subscriptions = await firestoreService.getSubscriptionsByUserId(userId);
+    const activeSubscriptions = subscriptions.filter(sub => sub.status === 'ACTIVE')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    if (!user || !user.subscriptions[0]) {
+    if (activeSubscriptions.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'No active subscription found'
       });
     }
 
-    const subscription = user.subscriptions[0];
+    const subscription = activeSubscriptions[0];
     const tier = subscription.tier;
 
     // Pricing per GB per month

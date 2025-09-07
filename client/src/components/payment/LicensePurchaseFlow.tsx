@@ -100,27 +100,24 @@ interface LicensePlan {
   popular?: boolean;
 }
 
-interface BillingAddress {
-  firstName: string;
-  lastName: string;
-  company?: string;
-  email: string;
-  phone?: string;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  country: string;
-}
-
 interface PurchaseData {
   plan: LicensePlan;
   quantity: number;
-  billingAddress: BillingAddress;
   paymentMethod?: any;
   total: number;
   tax: number;
   subtotal: number;
+  billingAddress: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
 }
 
 interface LicensePurchaseFlowProps {
@@ -196,12 +193,6 @@ const PURCHASE_STEPS: PurchaseStep[] = [
     id: 'plan-selection',
     label: 'Select Plan',
     description: 'Choose your license plan and quantity',
-    completed: false,
-  },
-  {
-    id: 'billing-info',
-    label: 'Billing Information',
-    description: 'Enter your billing details',
     completed: false,
   },
   {
@@ -372,18 +363,6 @@ const LicensePurchaseFlow: React.FC<LicensePurchaseFlowProps> = ({
     LICENSE_PLANS.find(p => p.id === initialPlan) || LICENSE_PLANS[1]
   );
   const [quantity, setQuantity] = useState(initialQuantity);
-  const [billingAddress, setBillingAddress] = useState<BillingAddress>({
-    firstName: '',
-    lastName: '',
-    company: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    country: 'US',
-  });
 
   // Computed values
   const subtotal = selectedPlan.price * quantity;
@@ -393,10 +372,20 @@ const LicensePurchaseFlow: React.FC<LicensePurchaseFlowProps> = ({
   const purchaseData: PurchaseData = {
     plan: selectedPlan,
     quantity,
-    billingAddress,
     total,
     tax,
     subtotal,
+    billingAddress: {
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      country: '',
+    },
   };
 
   // Step navigation
@@ -430,17 +419,7 @@ const LicensePurchaseFlow: React.FC<LicensePurchaseFlowProps> = ({
     switch (stepIndex) {
       case 0: // Plan selection
         return selectedPlan && quantity > 0;
-      case 1: // Billing info
-        return !!(
-          billingAddress.firstName &&
-          billingAddress.lastName &&
-          billingAddress.email &&
-          billingAddress.address &&
-          billingAddress.city &&
-          billingAddress.state &&
-          billingAddress.zipCode
-        );
-      case 2: // Payment
+      case 1: // Payment
         return true; // Handled by Stripe validation
       default:
         return true;
@@ -465,7 +444,6 @@ const LicensePurchaseFlow: React.FC<LicensePurchaseFlowProps> = ({
           planId: selectedPlan.id,
           quantity,
           paymentMethodId: paymentMethod.id,
-          billingAddress,
           total,
         }),
       });
@@ -635,107 +613,7 @@ const LicensePurchaseFlow: React.FC<LicensePurchaseFlowProps> = ({
           </Box>
         );
 
-      case 1: // Billing Information
-        return (
-          <Box>
-            <Typography variant="h6" sx={{ mb: 3 }}>
-              Billing Information
-            </Typography>
-            
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="First Name"
-                  value={billingAddress.firstName}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, firstName: e.target.value })}
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Last Name"
-                  value={billingAddress.lastName}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, lastName: e.target.value })}
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Company (Optional)"
-                  value={billingAddress.company}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, company: e.target.value })}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Email Address"
-                  type="email"
-                  value={billingAddress.email}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, email: e.target.value })}
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Phone Number (Optional)"
-                  value={billingAddress.phone}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, phone: e.target.value })}
-                />
-              </Grid>
-              
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Address"
-                  value={billingAddress.address}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, address: e.target.value })}
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="City"
-                  value={billingAddress.city}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, city: e.target.value })}
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="State"
-                  value={billingAddress.state}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, state: e.target.value })}
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="ZIP Code"
-                  value={billingAddress.zipCode}
-                  onChange={(e) => setBillingAddress({ ...billingAddress, zipCode: e.target.value })}
-                  required
-                />
-              </Grid>
-            </Grid>
-          </Box>
-        );
-
-      case 2: // Payment
+      case 1: // Payment
         return (
           <Box>
             <Typography variant="h6" sx={{ mb: 3 }}>
@@ -777,7 +655,7 @@ const LicensePurchaseFlow: React.FC<LicensePurchaseFlowProps> = ({
           </Box>
         );
 
-      case 3: // Confirmation
+      case 2: // Confirmation
         return (
           <Box sx={{ textAlign: 'center' }}>
             <CheckCircle sx={{ fontSize: 80, color: 'success.main', mb: 2 }} />

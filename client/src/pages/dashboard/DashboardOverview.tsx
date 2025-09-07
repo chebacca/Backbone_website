@@ -147,7 +147,6 @@ interface DashboardMetrics {
   hasEnterpriseFeatures: boolean;
   projectCount: number;
   teamMemberCount: number;
-  licenseUtilization: number;
 }
 
 // ============================================================================
@@ -303,14 +302,12 @@ const DashboardOverview: React.FC = () => {
         hasEnterpriseFeatures: false,
         projectCount: 0,
         teamMemberCount: 0,
-        licenseUtilization: 0,
       };
     }
 
     // 🎫 Calculate license metrics from actual organization license data
     const totalLicenses = licenses?.length || 0;
     const activeLicenses = licenses?.filter(l => l.status === 'ACTIVE').length || 0;
-    const licenseUtilization = totalLicenses > 0 ? (activeLicenses / totalLicenses) * 100 : 0;
 
     // Calculate usage metrics
     const monthlyUsage = projects.reduce((sum, project) => {
@@ -342,7 +339,6 @@ const DashboardOverview: React.FC = () => {
       hasEnterpriseFeatures,
       projectCount,
       teamMemberCount,
-      licenseUtilization,
     };
   }, [currentUser, organization, projects, teamMembers, licenses, teamMembersData]);
 
@@ -482,8 +478,16 @@ const DashboardOverview: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Analytics Cards */}
+      {/* Analytics Cards and Account Status */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <MetricCard
+            title="Account Status"
+            value={metrics.currentPlan}
+            icon={<Security />}
+            color="primary"
+          />
+        </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
             title="Active Licenses"
@@ -508,41 +512,10 @@ const DashboardOverview: React.FC = () => {
             color="secondary"
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Monthly Usage"
-            value={metrics.monthlyUsage.toLocaleString()}
-            icon={<TrendingUp />}
-            color="warning"
-          />
-        </Grid>
       </Grid>
 
-      {/* License Utilization Progress */}
-      {metrics.totalLicenses > 0 && (
-        <Card sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-              License Utilization
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-              <LinearProgress 
-                variant="determinate" 
-                value={metrics.licenseUtilization} 
-                sx={{ flex: 1, height: 8, borderRadius: 4 }}
-              />
-              <Typography variant="body2" sx={{ minWidth: 60 }}>
-                {metrics.licenseUtilization.toFixed(1)}%
-              </Typography>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              {metrics.activeLicenses} of {metrics.totalLicenses} licenses are currently active
-            </Typography>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Action Cards Grid */}
+      {/* Quick Actions and Recent Projects Side by Side */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* Quick Actions */}
         <Grid item xs={12} md={6}>
@@ -552,7 +525,7 @@ const DashboardOverview: React.FC = () => {
                 Quick Actions
               </Typography>
               <List>
-                <ListItem button onClick={() => navigate('/dashboard/projects')}>
+                <ListItem button onClick={() => navigate('/dashboard/cloud-projects')}>
                   <ListItemIcon>
                     <Assessment />
                   </ListItemIcon>
@@ -604,130 +577,69 @@ const DashboardOverview: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* Account Status */}
+        {/* Recent Projects */}
         <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Account Status
-              </Typography>
-              <Box sx={{ mb: 2 }}>
-                <Chip 
-                  icon={<CheckCircle />} 
-                  label={`${metrics.currentPlan} Plan`} 
-                  color="primary" 
-                  sx={{ mr: 1, mb: 1 }}
-                />
-                <Chip 
-                  icon={<Security />} 
-                  label={userRole.charAt(0).toUpperCase() + userRole.slice(1)} 
-                  color="secondary" 
-                  sx={{ mr: 1, mb: 1 }}
-                />
-                {metrics.hasEnterpriseFeatures && (
-                  <Chip 
-                    icon={<Star />} 
-                    label="Enterprise" 
-                    color="warning" 
-                    sx={{ mr: 1, mb: 1 }}
-                  />
+          {projects && projects.length > 0 ? (
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Recent Projects
+                </Typography>
+                <List>
+                  {projects.slice(0, 5).map((project, index) => (
+                    <React.Fragment key={project.id}>
+                      <ListItem button onClick={() => navigate('/dashboard/cloud-projects')}>
+                        <ListItemIcon>
+                          <Assessment />
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={project.name} 
+                          secondary={`Created ${new Date(project.createdAt).toLocaleDateString()}`}
+                        />
+                        <Chip 
+                          label={project.status || 'ACTIVE'} 
+                          size="small" 
+                          color={project.status === 'ACTIVE' ? 'success' : 'default'}
+                        />
+                      </ListItem>
+                      {index < Math.min(projects.length - 1, 4) && <Divider />}
+                    </React.Fragment>
+                  ))}
+                </List>
+                {projects.length > 5 && (
+                  <Box sx={{ mt: 2, textAlign: 'center' }}>
+                    <Button 
+                      variant="outlined" 
+                      onClick={() => navigate('/dashboard/cloud-projects')}
+                    >
+                      View All Projects ({projects.length})
+                    </Button>
+                  </Box>
                 )}
-              </Box>
-              
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Organization: {organization.name}
-              </Typography>
-              
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Next renewal: {metrics.daysUntilRenewal}
-              </Typography>
-
-              <Box sx={{ mt: 2 }}>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent sx={{ textAlign: 'center', py: 4 }}>
+                <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  No Projects Yet
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Get started by creating your first project
+                </Typography>
                 <Button 
-                  variant="outlined" 
-                  size="small" 
-                  onClick={() => navigate('/dashboard/settings')}
-                  sx={{ mr: 1 }}
+                  variant="contained" 
+                  onClick={() => navigate('/dashboard/cloud-projects')}
                 >
-                  Account Settings
+                  Create Project
                 </Button>
-                {isAdmin && (
-                  <Button 
-                    variant="outlined" 
-                    size="small" 
-                    onClick={() => navigate('/dashboard/billing')}
-                  >
-                    Manage Billing
-                  </Button>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </Grid>
       </Grid>
 
-      {/* Recent Projects */}
-      {projects && projects.length > 0 && (
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Recent Projects
-            </Typography>
-            <List>
-              {projects.slice(0, 5).map((project, index) => (
-                <React.Fragment key={project.id}>
-                  <ListItem button onClick={() => navigate(`/dashboard/projects/${project.id}`)}>
-                    <ListItemIcon>
-                      <Assessment />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={project.name} 
-                      secondary={`Created ${new Date(project.createdAt).toLocaleDateString()}`}
-                    />
-                    <Chip 
-                      label={project.status || 'ACTIVE'} 
-                      size="small" 
-                      color={project.status === 'ACTIVE' ? 'success' : 'default'}
-                    />
-                  </ListItem>
-                  {index < Math.min(projects.length - 1, 4) && <Divider />}
-                </React.Fragment>
-              ))}
-            </List>
-            {projects.length > 5 && (
-              <Box sx={{ mt: 2, textAlign: 'center' }}>
-                <Button 
-                  variant="outlined" 
-                  onClick={() => navigate('/dashboard/projects')}
-                >
-                  View All Projects ({projects.length})
-                </Button>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* No Projects State */}
-      {projects && projects.length === 0 && (
-        <Card>
-          <CardContent sx={{ textAlign: 'center', py: 4 }}>
-            <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6" gutterBottom>
-              No Projects Yet
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Get started by creating your first project
-            </Typography>
-            <Button 
-              variant="contained" 
-              onClick={() => navigate('/dashboard/projects')}
-            >
-              Create Project
-            </Button>
-          </CardContent>
-        </Card>
-      )}
     </Box>
   );
 };

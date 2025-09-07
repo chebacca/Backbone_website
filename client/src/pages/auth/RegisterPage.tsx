@@ -15,6 +15,7 @@ import {
   Checkbox,
   FormControlLabel,
   LinearProgress,
+  MenuItem,
 } from '@mui/material';
 import {
   Visibility,
@@ -36,6 +37,17 @@ interface RegisterFormData {
   email: string;
   password: string;
   confirmPassword: string;
+  // Address information for KYC/billing purposes
+  firstName: string;
+  lastName: string;
+  company?: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  phone?: string;
   acceptTerms: boolean;
   acceptPrivacy: boolean;
   marketingConsent: boolean;
@@ -66,6 +78,17 @@ const RegisterPage: React.FC = () => {
       email: '',
       password: '',
       confirmPassword: '',
+      // Address information
+      firstName: '',
+      lastName: '',
+      company: '',
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      country: 'US',
+      phone: '',
       acceptTerms: false,
       acceptPrivacy: false,
       marketingConsent: false,
@@ -104,6 +127,17 @@ const RegisterPage: React.FC = () => {
         acceptTerms: data.acceptTerms,
         acceptPrivacy: data.acceptPrivacy,
         marketingConsent: data.marketingConsent,
+        // Address information for KYC/billing purposes
+        firstName: data.firstName,
+        lastName: data.lastName,
+        company: data.company,
+        addressLine1: data.addressLine1,
+        addressLine2: data.addressLine2,
+        city: data.city,
+        state: data.state,
+        postalCode: data.postalCode,
+        country: data.country,
+        phone: data.phone,
       });
       
       enqueueSnackbar('Account created successfully! Please check your email to verify your account.', { 
@@ -401,6 +435,244 @@ const RegisterPage: React.FC = () => {
                           </InputAdornment>
                         ),
                       }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        },
+                      }}
+                    />
+                  )}
+                />
+
+                {/* Address Information Section */}
+                <Box sx={{ mt: 4, mb: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: 'primary.main' }}>
+                    Address Information
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Required for account verification and billing purposes
+                  </Typography>
+                </Box>
+
+                <Controller
+                  name="firstName"
+                  control={control}
+                  rules={{
+                    required: 'First name is required',
+                    minLength: {
+                      value: 2,
+                      message: 'First name must be at least 2 characters',
+                    },
+                  }}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="First Name"
+                      error={!!errors.firstName}
+                      helperText={errors.firstName?.message}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        },
+                      }}
+                    />
+                  )}
+                />
+
+                <Controller
+                  name="lastName"
+                  control={control}
+                  rules={{
+                    required: 'Last name is required',
+                    minLength: {
+                      value: 2,
+                      message: 'Last name must be at least 2 characters',
+                    },
+                  }}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Last Name"
+                      error={!!errors.lastName}
+                      helperText={errors.lastName?.message}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        },
+                      }}
+                    />
+                  )}
+                />
+
+                <Controller
+                  name="company"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Company (Optional)"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        },
+                      }}
+                    />
+                  )}
+                />
+
+                <Controller
+                  name="addressLine1"
+                  control={control}
+                  rules={{
+                    required: 'Address is required',
+                  }}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Address Line 1"
+                      error={!!errors.addressLine1}
+                      helperText={errors.addressLine1?.message}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        },
+                      }}
+                    />
+                  )}
+                />
+
+                <Controller
+                  name="addressLine2"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Address Line 2 (Optional)"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        },
+                      }}
+                    />
+                  )}
+                />
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Controller
+                    name="city"
+                    control={control}
+                    rules={{
+                      required: 'City is required',
+                    }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="City"
+                        error={!!errors.city}
+                        helperText={errors.city?.message}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          },
+                        }}
+                      />
+                    )}
+                  />
+
+                  <Controller
+                    name="state"
+                    control={control}
+                    rules={{
+                      required: 'State/Province is required',
+                    }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="State/Province"
+                        error={!!errors.state}
+                        helperText={errors.state?.message}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          },
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Controller
+                    name="postalCode"
+                    control={control}
+                    rules={{
+                      required: 'Postal code is required',
+                    }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Postal Code"
+                        error={!!errors.postalCode}
+                        helperText={errors.postalCode?.message}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          },
+                        }}
+                      />
+                    )}
+                  />
+
+                  <Controller
+                    name="country"
+                    control={control}
+                    rules={{
+                      required: 'Country is required',
+                    }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        select
+                        label="Country"
+                        error={!!errors.country}
+                        helperText={errors.country?.message}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          },
+                        }}
+                      >
+                        <MenuItem value="US">United States</MenuItem>
+                        <MenuItem value="CA">Canada</MenuItem>
+                        <MenuItem value="GB">United Kingdom</MenuItem>
+                        <MenuItem value="AU">Australia</MenuItem>
+                        <MenuItem value="DE">Germany</MenuItem>
+                        <MenuItem value="FR">France</MenuItem>
+                        <MenuItem value="JP">Japan</MenuItem>
+                        <MenuItem value="OTHER">Other</MenuItem>
+                      </TextField>
+                    )}
+                  />
+                </Box>
+
+                <Controller
+                  name="phone"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Phone Number (Optional)"
+                      type="tel"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           backgroundColor: 'rgba(255, 255, 255, 0.05)',

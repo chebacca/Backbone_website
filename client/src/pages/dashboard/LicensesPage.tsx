@@ -83,6 +83,7 @@ import {
 import { StreamlinedLicense, StreamlinedTeamMember } from '@/services/UnifiedDataService';
 import MetricCard from '@/components/common/MetricCard';
 import LicensePurchaseFlow from '@/components/payment/LicensePurchaseFlow';
+import LicenseRenewalWizard from '@/components/payment/LicenseRenewalWizard';
 
 // ============================================================================
 // TYPES
@@ -96,7 +97,6 @@ interface LicenseStats {
   activeLicenses: number;
   expiringSoon: number;
   unassignedLicenses: number;
-  utilizationRate: number;
 }
 
 // ============================================================================
@@ -138,7 +138,7 @@ const getUserDisplayName = (assignedTo: License['assignedTo'], teamMembers?: Str
   
   // First, try to find the team member by email to get their actual name
   if (teamMembers && assignedTo.email) {
-    const teamMember = teamMembers.find(m => m.email.toLowerCase() === assignedTo.email.toLowerCase());
+    const teamMember = teamMembers.find(m => m.email && m.email.toLowerCase() === assignedTo.email.toLowerCase());
     if (teamMember) {
       if (teamMember.firstName && teamMember.lastName) {
         return `${teamMember.firstName} ${teamMember.lastName}`;
@@ -211,9 +211,13 @@ const LicensesPage: React.FC = () => {
 
   // Dialog states
   const [purchaseFlowOpen, setPurchaseFlowOpen] = useState(false);
+  const [renewalWizardOpen, setRenewalWizardOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  
+  // Filter state
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ACTIVE' | 'PENDING' | 'SUSPENDED' | 'EXPIRED'>('all');
   
   // Form states
   const [selectedLicense, setSelectedLicense] = useState<License | null>(null);
@@ -249,17 +253,17 @@ const LicensesPage: React.FC = () => {
     };
   }, [refetchLicenses]);
 
-  // 🧮 COMPUTED LICENSE DATA: Generate from real organization data
+  // 🧮 COMPUTED LICENSE DATA: Generate from real organization data with filtering and sorting
   const licenseData = useMemo(() => {
     if (!currentUser || !orgContext || !licenses) {
       return {
         licenses: [],
+        filteredLicenses: [],
         stats: {
           totalLicenses: 0,
           activeLicenses: 0,
           expiringSoon: 0,
           unassignedLicenses: 0,
-          utilizationRate: 0,
         },
       };
     }
@@ -273,18 +277,43 @@ const LicensesPage: React.FC = () => {
       return expiryDate <= thirtyDaysFromNow;
     }).length;
     const unassignedLicenses = licenses.filter(l => !l.assignedTo).length;
-    const utilizationRate = totalLicenses > 0 ? (activeLicenses / totalLicenses) * 100 : 0;
 
     const stats: LicenseStats = {
       totalLicenses,
       activeLicenses,
       expiringSoon,
       unassignedLicenses,
-      utilizationRate,
     };
 
-    return { licenses, stats };
-  }, [currentUser, orgContext, licenses]);
+    // Filter licenses based on status filter
+    const filteredLicenses = statusFilter === 'all' 
+      ? licenses 
+      : statusFilter === 'EXPIRED' 
+        ? licenses.filter(l => {
+            // For "EXPIRED" filter, show licenses that will expire within 30 days
+            const expiryDate = new Date(l.expiresAt);
+            const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            return expiryDate <= thirtyDaysFromNow;
+          })
+        : licenses.filter(l => l.status === statusFilter);
+
+    // Sort licenses: ACTIVE first, then by status priority, then by name
+    const sortedLicenses = [...filteredLicenses].sort((a, b) => {
+      // First sort by status priority (ACTIVE first)
+      const statusPriority = { 'ACTIVE': 0, 'PENDING': 1, 'SUSPENDED': 2, 'EXPIRED': 3 };
+      const aPriority = statusPriority[a.status as keyof typeof statusPriority] ?? 4;
+      const bPriority = statusPriority[b.status as keyof typeof statusPriority] ?? 4;
+      
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+      
+      // Then sort by name alphabetically
+      return a.name.localeCompare(b.name);
+    });
+
+    return { licenses, filteredLicenses: sortedLicenses, stats };
+  }, [currentUser, orgContext, licenses, statusFilter]);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, license: License) => {
     console.log('🔧 [LicensesPage] Menu clicked for license:', license);
@@ -462,6 +491,40 @@ const LicensesPage: React.FC = () => {
     setPurchaseFlowOpen(false);
   };
 
+  // Handle renewal completion
+  const handleRenewalComplete = async (result: {
+    licenses: any[];
+    invoice: any;
+    subscription: any;
+  }) => {
+    console.log('🔄 [LicensesPage] Renewal completed:', result);
+    
+    enqueueSnackbar(
+      `Successfully renewed ${result.licenses.length} license(s)! Your licenses have been extended.`,
+      { 
+        variant: 'success',
+        autoHideDuration: 6000,
+      }
+    );
+    
+    // Refresh license data to show updated expiration dates
+    await refetchLicenses();
+    
+    // Close renewal wizard
+    setRenewalWizardOpen(false);
+  };
+
+  // Get expiring licenses for renewal wizard
+  const expiringLicenses = useMemo(() => {
+    if (!licenses) return [];
+    
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    return licenses.filter(license => {
+      const expiryDate = new Date(license.expiresAt);
+      return expiryDate <= thirtyDaysFromNow;
+    });
+  }, [licenses]);
+
   // ============================================================================
   // LOADING STATE
   // ============================================================================
@@ -546,9 +609,9 @@ const LicensesPage: React.FC = () => {
           <Typography variant="body1" color="text.secondary">
             Manage your {orgContext.organization?.name || 'Organization'} licenses and assignments
             {licenses && (
-              <span style={{ marginLeft: '8px', fontWeight: 500, color: 'primary.main' }}>
+              <Box component="span" sx={{ marginLeft: '8px', fontWeight: 500, color: 'primary.main' }}>
                 • {licenses.length} total licenses
-              </span>
+              </Box>
             )}
           </Typography>
         </Box>
@@ -568,91 +631,200 @@ const LicensesPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* License Stats Cards */}
+      {/* License Filter Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Total Licenses"
-            value={licenseData.stats.totalLicenses.toString()}
-            icon={<CardMembership />}
-            color="primary"
-          />
+          <Card 
+            sx={{ 
+              background: statusFilter === 'all' 
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              color: 'white',
+              height: '100%',
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)'
+              }
+            }}
+            onClick={() => setStatusFilter('all')}
+          >
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="h4" fontWeight="bold">
+                    {licenseData.stats.totalLicenses}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Total Licenses
+                  </Typography>
+                </Box>
+                <CardMembership sx={{ fontSize: 40, opacity: 0.8 }} />
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
+        
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Active Licenses"
-            value={licenseData.stats.activeLicenses.toString()}
-            icon={<CheckCircle />}
-            color="success"
-          />
+          <Card 
+            sx={{ 
+              background: statusFilter === 'ACTIVE' 
+                ? 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)' 
+                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              color: 'white',
+              height: '100%',
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 8px 25px rgba(17, 153, 142, 0.3)'
+              }
+            }}
+            onClick={() => setStatusFilter('ACTIVE')}
+          >
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="h4" fontWeight="bold">
+                    {licenseData.stats.activeLicenses}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Active Licenses
+                  </Typography>
+                </Box>
+                <CheckCircle sx={{ fontSize: 40, opacity: 0.8 }} />
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
+        
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Expiring Soon"
-            value={licenseData.stats.expiringSoon.toString()}
-            icon={<Schedule />}
-            color="warning"
-          />
+          <Card 
+            sx={{ 
+              background: statusFilter === 'PENDING' 
+                ? 'linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%)' 
+                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              color: 'white',
+              height: '100%',
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 8px 25px rgba(252, 74, 26, 0.3)'
+              }
+            }}
+            onClick={() => setStatusFilter('PENDING')}
+          >
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="h4" fontWeight="bold">
+                    {licenses?.filter(l => l.status === 'PENDING').length || 0}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Pending Licenses
+                  </Typography>
+                </Box>
+                <Schedule sx={{ fontSize: 40, opacity: 0.8 }} />
+              </Box>
+            </CardContent>
+          </Card>
         </Grid>
+        
         <Grid item xs={12} sm={6} md={3}>
-          <MetricCard
-            title="Unassigned"
-            value={licenseData.stats.unassignedLicenses.toString()}
-            icon={<People />}
-            color="secondary"
-          />
+          <Card 
+            sx={{ 
+              background: statusFilter === 'EXPIRED' 
+                ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' 
+                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              color: 'white',
+              height: '100%',
+              cursor: 'pointer',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 8px 25px rgba(79, 172, 254, 0.3)'
+              }
+            }}
+            onClick={() => setStatusFilter('EXPIRED')}
+          >
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box>
+                  <Typography variant="h4" fontWeight="bold">
+                    {licenseData.stats.expiringSoon}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Expiring Soon
+                  </Typography>
+                </Box>
+                <Warning sx={{ fontSize: 40, opacity: 0.8 }} />
+              </Box>
+              {licenseData.stats.expiringSoon > 0 && (
+                <Button 
+                  variant="contained" 
+                  size="small" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenewalWizardOpen(true);
+                  }}
+                  sx={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                    color: 'white',
+                    fontWeight: 600,
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                    }
+                  }}
+                >
+                  Renew Licenses
+                </Button>
+              )}
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
 
-      {/* License Utilization */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-            License Utilization
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-            <LinearProgress
-              variant="determinate"
-              value={licenseData.stats.utilizationRate}
-              sx={{ flex: 1, height: 8, borderRadius: 4 }}
-            />
-            <Typography variant="body2" sx={{ minWidth: 60 }}>
-              {licenseData.stats.utilizationRate.toFixed(1)}%
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary">
-            {licenseData.stats.activeLicenses} of {licenseData.stats.totalLicenses} licenses are currently active
-          </Typography>
-        </CardContent>
-      </Card>
 
-      {/* Expiring Licenses Alert */}
-      {licenseData.stats.expiringSoon > 0 && (
-        <Alert severity="warning" sx={{ mb: 4 }}>
-          <AlertTitle>Licenses Expiring Soon</AlertTitle>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            {licenseData.stats.expiringSoon} license(s) will expire within the next 30 days.
-          </Typography>
-          <Button variant="outlined" size="small" onClick={() => window.open('/dashboard/billing', '_blank')}>
-            Renew Licenses
-          </Button>
-        </Alert>
-      )}
 
       {/* Licenses Table */}
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              All Licenses ({licenseData.licenses.length})
-            </Typography>
-            <Button
-              variant="outlined"
-              startIcon={<Download />}
-              onClick={() => enqueueSnackbar('License report downloaded', { variant: 'success' })}
-            >
-              Export Report
-            </Button>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {statusFilter === 'all' ? 'All Licenses' : statusFilter === 'EXPIRED' ? 'Expiring Soon Licenses' : `${statusFilter} Licenses`} ({licenseData.filteredLicenses.length})
+              </Typography>
+              {statusFilter !== 'all' && (
+                <Chip
+                  label={`Filtered by: ${statusFilter === 'EXPIRED' ? 'Expiring Soon' : statusFilter}`}
+                  color="primary"
+                  onDelete={() => setStatusFilter('all')}
+                  deleteIcon={<Block />}
+                  variant="outlined"
+                />
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              {statusFilter !== 'all' && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setStatusFilter('all')}
+                  startIcon={<Block />}
+                >
+                  Clear Filter
+                </Button>
+              )}
+              <Button
+                variant="outlined"
+                startIcon={<Download />}
+                onClick={() => enqueueSnackbar('License report downloaded', { variant: 'success' })}
+              >
+                Export Report
+              </Button>
+            </Box>
           </Box>
 
           <TableContainer>
@@ -665,13 +837,12 @@ const LicensesPage: React.FC = () => {
                   <TableCell sx={{ fontWeight: 600 }}>Assigned To</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Department</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Usage</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Expires</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {licenseData.licenses.map((license) => (
+                {licenseData.filteredLicenses.map((license) => (
                   <TableRow key={license.id} hover>
                     <TableCell>
                       <Box>
@@ -743,16 +914,6 @@ const LicensesPage: React.FC = () => {
                           —
                         </Typography>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <Box>
-                        <Typography variant="body2">
-                          {license.usage.apiCalls.toLocaleString()} API calls
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {license.usage.dataTransfer} GB transferred
-                        </Typography>
-                      </Box>
                     </TableCell>
                     <TableCell>
                       <Typography
@@ -1347,6 +1508,14 @@ const LicensesPage: React.FC = () => {
         initialPlan="professional"
         initialQuantity={1}
         onPurchaseComplete={handlePurchaseComplete}
+      />
+
+      {/* License Renewal Wizard */}
+      <LicenseRenewalWizard
+        open={renewalWizardOpen}
+        onClose={() => setRenewalWizardOpen(false)}
+        expiringLicenses={expiringLicenses}
+        onRenewalComplete={handleRenewalComplete}
       />
     </Box>
   );

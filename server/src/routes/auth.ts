@@ -34,18 +34,63 @@ router.post('/register', [
   body('name').trim().isLength({ min: 2 }),
   body('acceptTerms').custom((v) => v === true || v === 'true'),
   body('acceptPrivacy').custom((v) => v === true || v === 'true'),
+  // Address validation for KYC/billing purposes
+  body('firstName').trim().isLength({ min: 2 }).withMessage('First name required'),
+  body('lastName').trim().isLength({ min: 2 }).withMessage('Last name required'),
+  body('addressLine1').trim().notEmpty().withMessage('Address line 1 required'),
+  body('city').trim().notEmpty().withMessage('City required'),
+  body('state').trim().notEmpty().withMessage('State/Province required'),
+  body('postalCode').trim().notEmpty().withMessage('Postal code required'),
+  body('country').isLength({ min: 2, max: 3 }).withMessage('Valid country code required'),
+  body('company').optional().trim(),
+  body('addressLine2').optional().trim(),
+  body('phone').optional().trim(),
 ], asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) throw validationErrorHandler(errors.array());
 
-  const { email, password, name } = req.body;
+  const { 
+    email, 
+    password, 
+    name,
+    firstName,
+    lastName,
+    company,
+    addressLine1,
+    addressLine2,
+    city,
+    state,
+    postalCode,
+    country,
+    phone
+  } = req.body;
   const requestInfo = (req as any).requestInfo;
+
+  // Validate address information using compliance service
+  const addressData = {
+    firstName,
+    lastName,
+    company,
+    addressLine1,
+    addressLine2,
+    city,
+    state,
+    postalCode,
+    country
+  };
+
+  const addressValidation = await ComplianceService.validateBillingAddress(addressData);
+  if (!addressValidation.valid) {
+    throw createApiError(`Invalid address: ${addressValidation.errors.join(', ')}`, 400);
+  }
 
   // Use synchronized user creation to ensure Firebase Auth and Firestore consistency
   const syncResult = await UserSynchronizationService.createSynchronizedUser({
     email,
     password,
     name,
+    firstName,
+    lastName,
     role: 'USER'
   });
 
@@ -55,7 +100,7 @@ router.post('/register', [
 
   const user = syncResult.user!;
 
-  // Update user with additional registration data
+  // Update user with additional registration data including address
   await firestoreService.updateUser(user.id, {
     termsAcceptedAt: new Date(),
     termsVersionAccepted: config.legal.termsVersion,
@@ -64,6 +109,14 @@ router.post('/register', [
     ipAddress: requestInfo.ip,
     userAgent: requestInfo.userAgent,
     registrationSource: 'website',
+    // Store address information for KYC/billing purposes
+    billingAddress: {
+      ...addressData,
+      phone,
+      validated: true,
+      validatedAt: new Date(),
+      validationSource: 'registration',
+    },
   });
 
   await ComplianceService.recordConsent(user.id, 'TERMS_OF_SERVICE', true, config.legal.termsVersion, requestInfo.ip, requestInfo.userAgent);

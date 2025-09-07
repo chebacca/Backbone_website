@@ -1270,18 +1270,18 @@ class UnifiedDataService {
     if (!user) return [];
 
     const cacheKey = `org-team-members-${user.organization.id}`;
+    
     const cached = this.getFromCache<StreamlinedTeamMember[]>(cacheKey);
     if (cached) return cached;
 
     try {
       console.log('🔍 [UnifiedDataService] Fetching team members for organization:', user.organization.id);
       
-      // 🚀 COMPREHENSIVE: Fetch from all relevant collections and merge
-      // 🔧 FIX: Use email as the key for deduplication since same person has same email across collections
+      // 🚀 ENHANCED: Start with users collection as primary source since it has the real names
       const allUsers = new Map<string, StreamlinedTeamMember>();
 
-      // 1. Try users collection - includes account owners and some team members
-      console.log('🔍 [UnifiedDataService] Trying users collection...');
+      // 1. Start with users collection as the primary source (has real names and data)
+      console.log('🔍 [UnifiedDataService] Starting with users collection as primary source...');
       try {
         const usersResult = await firestoreCollectionManager.queryDocumentsWithFallback(
           'users',
@@ -1294,16 +1294,19 @@ class UnifiedDataService {
         for (const userDoc of usersResult.documents) {
           const userData = userDoc;
           
-          // Skip if this is the current user (to avoid duplication)
-          if (userData.id === user.id) continue;
+          // Skip users without proper email
+          if (!userData.email) continue;
+          
+          // Skip inactive users
+          if (userData.status === 'removed' || userData.status === 'suspended') continue;
           
           const teamMember: StreamlinedTeamMember = {
-            id: userData.id,
-            firstName: userData.firstName || userData.name?.split(' ')[0] || userData.email?.split('@')[0] || 'Unknown',
-            lastName: userData.lastName || userData.name?.split(' ')[1] || '',
+            id: userData.id || userDoc.id,
+            firstName: userData.firstName || '',
+            lastName: userData.lastName || '',
             email: userData.email,
             role: userData.role || 'member',
-            status: userData.status === 'active' ? 'active' : 'pending',
+            status: userData.status || 'active',
             organization: {
               id: userData.organizationId || user.organization.id,
               name: user.organization.name,
@@ -1315,27 +1318,25 @@ class UnifiedDataService {
               licenseType: userData.licenseAssignment.licenseType,
               assignedAt: userData.licenseAssignment.assignedAt
             } : undefined,
-            department: userData.department || 'General',
+            department: userData.department || '',
             assignedProjects: userData.assignedProjects || [],
             avatar: userData.avatar,
-            joinedAt: userData.createdAt || new Date(),
-            lastActive: userData.lastActive,
+            joinedAt: userData.joinedAt || userData.createdAt || new Date(),
+            lastActive: userData.lastActive ? (userData.lastActive instanceof Date ? userData.lastActive : new Date(userData.lastActive)) : undefined,
             invitedBy: userData.invitedBy || user.id,
             createdAt: userData.createdAt || new Date(),
             updatedAt: userData.updatedAt || new Date()
           };
           
-          // 🔧 FIX: Use email as key to prevent duplicates across collections
-          if (userData.email) {
-            allUsers.set(userData.email, teamMember);
-          }
+          allUsers.set(userData.email, teamMember);
+          console.log(`✅ [UnifiedDataService] Added user: ${userData.email} (${userData.firstName} ${userData.lastName})`);
         }
       } catch (error) {
         console.warn('⚠️ [UnifiedDataService] Users collection query failed:', error);
       }
 
-      // 2. Try teamMembers collection - dedicated team member records
-      console.log('🔍 [UnifiedDataService] Trying teamMembers collection...');
+      // 2. Now enhance with teamMembers collection data for additional metadata
+      console.log('🔍 [UnifiedDataService] Enhancing with teamMembers collection data...');
       try {
         const teamMembersResult = await firestoreCollectionManager.queryDocumentsWithFallback(
           'teamMembers',
@@ -1351,166 +1352,120 @@ class UnifiedDataService {
           // Skip inactive team members
           if (tmData.status === 'removed' || tmData.status === 'suspended') continue;
           
-          const teamMember: StreamlinedTeamMember = {
-            id: tmData.id,
-            firstName: tmData.firstName || tmData.name?.split(' ')[0] || tmData.email?.split('@')[0] || 'Unknown',
-            lastName: tmData.lastName || tmData.name?.split(' ')[1] || '',
-            email: tmData.email,
-            role: tmData.role || 'member',
-            status: tmData.status || 'active',
-            organization: {
-              id: tmData.organizationId || user.organization.id,
-              name: user.organization.name,
-              tier: user.organization.tier
-            },
-            licenseAssignment: tmData.licenseAssignment ? {
-              licenseId: tmData.licenseAssignment.licenseId,
-              licenseKey: tmData.licenseAssignment.licenseKey,
-              licenseType: tmData.licenseAssignment.licenseType,
-              assignedAt: tmData.licenseAssignment.assignedAt
-            } : undefined,
-            department: tmData.department || 'General',
-            assignedProjects: tmData.assignedProjects || [],
-            avatar: tmData.avatar,
-            joinedAt: tmData.joinedAt || tmData.createdAt || new Date(),
-            lastActive: tmData.lastActive,
-            invitedBy: tmData.invitedBy || user.id,
-            createdAt: tmData.createdAt || new Date(),
-            updatedAt: tmData.updatedAt || new Date()
-          };
-          
-          // 🔧 FIX: Use email as key to prevent duplicates across collections
-          // If we already have this user, merge the data (teamMembers might have more complete info)
-          if (tmData.email) {
-            const existingUser = allUsers.get(tmData.email);
-            if (existingUser) {
-              // Merge data, preferring teamMembers collection data
-              existingUser.role = tmData.role || existingUser.role;
-              existingUser.status = tmData.status || existingUser.status;
-              existingUser.department = tmData.department || existingUser.department;
-              existingUser.licenseAssignment = tmData.licenseAssignment || existingUser.licenseAssignment;
-              allUsers.set(tmData.email, existingUser);
-            } else {
-              allUsers.set(tmData.email, teamMember);
+          // Find matching user by email
+          if (tmData.email && allUsers.has(tmData.email)) {
+            const existingUser = allUsers.get(tmData.email)!;
+            
+            // Enhance with teamMembers data (prefer teamMembers for role, status, department)
+            existingUser.role = tmData.role || existingUser.role;
+            existingUser.status = tmData.status || existingUser.status;
+            existingUser.department = tmData.department || existingUser.department;
+            existingUser.avatar = tmData.avatar || existingUser.avatar;
+            
+            // Update license assignment if available
+            if (tmData.licenseAssignment) {
+              existingUser.licenseAssignment = {
+                licenseId: tmData.licenseAssignment.licenseId,
+                licenseKey: tmData.licenseAssignment.licenseKey,
+                licenseType: tmData.licenseAssignment.licenseType,
+                assignedAt: tmData.licenseAssignment.assignedAt
+              };
             }
+            
+            console.log(`✅ [UnifiedDataService] Enhanced user data for: ${tmData.email}`);
+          } else if (tmData.email) {
+            // This is a team member not in users collection, create from teamMembers data
+            const teamMember: StreamlinedTeamMember = {
+              id: tmData.id,
+              firstName: tmData.firstName || tmData.name?.split(' ')[0] || '',
+              lastName: tmData.lastName || tmData.name?.split(' ')[1] || '',
+              email: tmData.email,
+              role: tmData.role || 'member',
+              status: tmData.status || 'active',
+              organization: {
+                id: tmData.organizationId || user.organization.id,
+                name: user.organization.name,
+                tier: user.organization.tier
+              },
+              licenseAssignment: tmData.licenseAssignment ? {
+                licenseId: tmData.licenseAssignment.licenseId,
+                licenseKey: tmData.licenseAssignment.licenseKey,
+                licenseType: tmData.licenseAssignment.licenseType,
+                assignedAt: tmData.licenseAssignment.assignedAt
+              } : undefined,
+              department: tmData.department || '',
+              assignedProjects: tmData.assignedProjects || [],
+              avatar: tmData.avatar,
+              joinedAt: tmData.joinedAt || tmData.createdAt || new Date(),
+              lastActive: tmData.lastActive ? (tmData.lastActive instanceof Date ? tmData.lastActive : new Date(tmData.lastActive)) : undefined,
+              invitedBy: tmData.invitedBy || user.id,
+              createdAt: tmData.createdAt || new Date(),
+              updatedAt: tmData.updatedAt || new Date()
+            };
+            
+            allUsers.set(tmData.email, teamMember);
+            console.log(`✅ [UnifiedDataService] Added team member: ${tmData.email} (${teamMember.firstName} ${teamMember.lastName})`);
           }
         }
       } catch (error) {
         console.warn('⚠️ [UnifiedDataService] TeamMembers collection query failed:', error);
       }
 
-      // 3. Try orgMembers collection - organization membership records
-      console.log('🔍 [UnifiedDataService] Trying orgMembers collection...');
-      try {
-        const orgMembersResult = await firestoreCollectionManager.queryDocumentsWithFallback(
-          'orgMembers',
-          [{ field: 'orgId', operator: '==', value: user.organization.id }],
-          'createdAt',
-          'desc'
-        );
-        console.log(`📊 [UnifiedDataService] Found ${orgMembersResult.documents.length} org members in orgMembers collection`);
-        
-        for (const omDoc of orgMembersResult.documents) {
-          const omData = omDoc;
-          
-          // Skip inactive members
-          if (omData.status === 'removed' || omData.status === 'suspended') continue;
-          
-          // 🔧 FIX: Use email as key to prevent duplicates across collections
-          // If we already have this user, enhance the data
-          const existingUser = allUsers.get(omData.email);
-          if (existingUser) {
-            // Enhance existing data with org member info
-            existingUser.role = omData.role || existingUser.role;
-            existingUser.status = omData.status || existingUser.status;
-            existingUser.department = omData.department || existingUser.department;
-            existingUser.joinedAt = omData.joinedAt || existingUser.joinedAt;
-            allUsers.set(omData.email, existingUser);
-          } else {
-            // Create new team member from org member data
-            const teamMember: StreamlinedTeamMember = {
-              id: omData.userId,
-              firstName: omData.firstName || omData.name?.split(' ')[0] || omData.email?.split('@')[0] || 'Unknown',
-              lastName: omData.lastName || omData.name?.split(' ')[1] || '',
-              email: omData.email || omData.userEmail || '',
-              role: omData.role || 'member',
-              status: omData.status || 'active',
-              organization: {
-                id: omData.orgId || user.organization.id,
-                name: user.organization.name,
-                tier: user.organization.tier
-              },
-              licenseAssignment: undefined, // Will be enhanced if license data exists
-              department: omData.department || 'General',
-              assignedProjects: [],
-              avatar: omData.avatar,
-              joinedAt: omData.joinedAt || omData.createdAt || new Date(),
-              lastActive: omData.lastActive,
-              invitedBy: omData.invitedBy || user.id,
-              createdAt: omData.createdAt || new Date(),
-              updatedAt: omData.updatedAt || new Date()
-            };
-            
-            allUsers.set(omData.email || omData.userEmail || '', teamMember);
-          }
-        }
-      } catch (error) {
-        console.warn('⚠️ [UnifiedDataService] OrgMembers collection query failed:', error);
-      }
 
-      // 4. Try org_members collection (alternative naming)
-      console.log('🔍 [UnifiedDataService] Trying org_members collection...');
+      // 🔧 ENHANCED: Cross-reference licenses to find assignments
+      console.log('🔍 [UnifiedDataService] Cross-referencing licenses for assignments...');
       try {
-        const orgMembersAltResult = await firestoreCollectionManager.queryDocumentsWithFallback(
-          'org_members',
-          [{ field: 'orgId', operator: '==', value: user.organization.id }],
-          'createdAt',
-          'desc'
-        );
-        console.log(`📊 [UnifiedDataService] Found ${orgMembersAltResult.documents.length} org members in org_members collection`);
+        // Get licenses for the organization
+        const orgLicenses = await this.getLicensesForOrganization();
+        const assignedLicenses = orgLicenses?.filter(license => 
+          license.assignedTo && license.assignedTo.userId
+        ) || [];
         
-        for (const omDoc of orgMembersAltResult.documents) {
-          const omData = omDoc;
+        console.log(`📊 [UnifiedDataService] Found ${assignedLicenses.length} assigned licenses`);
+        if (assignedLicenses.length > 0) {
+          console.log('🔍 [UnifiedDataService] Sample assigned license:', JSON.stringify(assignedLicenses[0], null, 2));
+        }
+        
+        for (const license of assignedLicenses) {
+          const userId = license.assignedTo?.userId;
+          if (!userId) continue;
           
-          // Skip inactive members
-          if (omData.status === 'removed' || omData.status === 'suspended') continue;
+          // Find the user in our allUsers map
+          const userEmail = Array.from(allUsers.keys()).find(email => {
+            const user = allUsers.get(email);
+            return user && user.id === userId;
+          });
           
-          // 🔧 FIX: Use email as key to prevent duplicates across collections
-          // If we don't already have this user, add them
-          const userEmail = omData.email || omData.userEmail || '';
-          if (userEmail && !allUsers.has(userEmail)) {
-            const teamMember: StreamlinedTeamMember = {
-              id: omData.userId,
-              firstName: omData.firstName || omData.name?.split(' ')[0] || userEmail.split('@')[0] || 'Unknown',
-              lastName: omData.lastName || omData.name?.split(' ')[1] || '',
-              email: userEmail,
-              role: omData.role || 'member',
-              status: omData.status || 'active',
-              organization: {
-                id: omData.orgId || user.organization.id,
-                name: user.organization.name,
-                tier: user.organization.tier
-              },
-              licenseAssignment: undefined,
-              department: omData.department || 'General',
-              assignedProjects: [],
-              avatar: omData.avatar,
-              joinedAt: omData.joinedAt || omData.createdAt || new Date(),
-              lastActive: omData.lastActive,
-              invitedBy: omData.invitedBy || user.id,
-              createdAt: omData.createdAt || new Date(),
-              updatedAt: omData.updatedAt || new Date()
-            };
-            
-            allUsers.set(userEmail, teamMember);
+          if (userEmail) {
+            const user = allUsers.get(userEmail);
+            if (user && !user.licenseAssignment) {
+              // Add license assignment from licenses collection
+              user.licenseAssignment = {
+                licenseId: license.id,
+                licenseKey: license.key,
+                licenseType: license.tier,
+                assignedAt: license.assignedTo?.assignedAt || new Date()
+              };
+              console.log(`✅ [UnifiedDataService] Added license assignment for ${userEmail}:`, user.licenseAssignment);
+            }
           }
         }
       } catch (error) {
-        console.warn('⚠️ [UnifiedDataService] org_members collection query failed:', error);
+        console.warn('⚠️ [UnifiedDataService] License cross-reference failed:', error);
       }
 
       const uniqueUsers = Array.from(allUsers.values());
       console.log(`✅ [UnifiedDataService] Successfully fetched ${uniqueUsers.length} unique team members for organization: ${user.organization.id}`);
+      
+      // Debug: Log final team member data
+      uniqueUsers.forEach(member => {
+        console.log(`🔍 [UnifiedDataService] Final result - ${member.email}: ${member.firstName} ${member.lastName} (${member.role}) - Status: ${member.status}`);
+        if (member.licenseAssignment) {
+          console.log(`    └── License: ${member.licenseAssignment.licenseType} (${member.licenseAssignment.licenseKey})`);
+        } else {
+          console.log(`    └── No license assigned`);
+        }
+      });
       
       // Cache the results
       this.setCache(cacheKey, uniqueUsers);

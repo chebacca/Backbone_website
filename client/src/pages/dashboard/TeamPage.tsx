@@ -127,19 +127,57 @@ interface TeamStats {
 // HELPER FUNCTIONS
 // ============================================================================
 
-// Safe display name with fallbacks
+// Safe display name with fallbacks - Using the same successful pattern as LicensesPage
 const getDisplayName = (member: TeamMember): string => {
+  if (!member) return 'Unknown User';
+  
+  // First, check if we have proper first and last names
   if (member.firstName && member.lastName) {
     return `${member.firstName} ${member.lastName}`;
   }
-  return member.email;
+  
+  // If we only have first name
+  if (member.firstName) return member.firstName;
+  
+  // If we only have last name
+  if (member.lastName) return member.lastName;
+  
+  // If we have an email, create a name from it (same logic as LicensesPage)
+  if (member.email) {
+    const emailParts = member.email.split('@');
+    const username = emailParts[0];
+    return username
+      .replace(/[._-]/g, ' ')
+      .split(' ')
+      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+  
+  return 'Unknown User';
 };
 
-// Safe initials with fallbacks
+// Safe initials with fallbacks - Using the same successful pattern as LicensesPage
 const getUserInitials = (member: TeamMember): string => {
-  const firstInitial = member.firstName?.charAt(0) || member.email?.charAt(0) || 'U';
-  const lastInitial = member.lastName?.charAt(0) || '';
-  return firstInitial + lastInitial;
+  if (!member) return '?';
+  
+  const displayName = getDisplayName(member);
+  if (displayName === 'Unknown User') return '?';
+  
+  const words = displayName.split(' ');
+  if (words.length >= 2) {
+    return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+  }
+  return displayName.charAt(0).toUpperCase();
+};
+
+// Helper function to get team member display name - same as LicensesPage
+const getTeamMemberDisplayName = (member: TeamMember): string => {
+  if (member.firstName && member.lastName) {
+    return `${member.firstName} ${member.lastName}`;
+  }
+  if (member.firstName) return member.firstName;
+  if (member.lastName) return member.lastName;
+  return member.email.split('@')[0];
 };
 
 const getRoleColor = (role: TeamMember['role']) => {
@@ -329,6 +367,18 @@ const TeamPage: React.FC = () => {
       };
     }
 
+    // Debug: Log team member data summary
+    console.log(`🔍 [TeamPage] Processing ${teamMembers.length} team members`);
+    const sampleMember = teamMembers[0];
+    if (sampleMember) {
+      console.log('🔍 [TeamPage] Sample member:', {
+        email: sampleMember.email,
+        displayName: getDisplayName(sampleMember),
+        firstName: sampleMember.firstName,
+        lastName: sampleMember.lastName
+      });
+    }
+
     // Calculate stats from real team member and license data
     const activeMembers = teamMembers.filter(m => m.status?.toLowerCase() === 'active').length;
     const pendingInvites = teamMembers.filter(m => m.status?.toLowerCase() === 'pending').length;
@@ -352,8 +402,8 @@ const TeamPage: React.FC = () => {
     return { members: teamMembers, stats };
   }, [currentUser, orgContext, teamMembers, licenses]);
 
-  // 🔧 FIXED: Helper function to get license assignment for a team member
-  // Now uses the licenseAssignment field directly from team member record (properly synced)
+  // Note: License column removed - team members are licensed by default
+  // But we still need this function for other parts of the code
   const getMemberLicenseAssignment = (member: TeamMember): { licenseId: string; licenseType: string; licenseKey: string; status: string } | null => {
     if (!member.licenseAssignment) return null;
     
@@ -521,9 +571,6 @@ const TeamPage: React.FC = () => {
       try {
         const { unifiedDataService } = await import('@/services/UnifiedDataService');
         await unifiedDataService.forceRefreshLicenses();
-        // Clear team member cache to force fresh fetch
-        unifiedDataService['clearCacheByPattern']('org-team-members-');
-        unifiedDataService['clearCacheByPattern']('org-users-');
         console.log('🔄 Force refreshed team data via UnifiedDataService');
       } catch (error) {
         console.warn('⚠️ Failed to force refresh via UnifiedDataService:', error);
@@ -1013,7 +1060,6 @@ const TeamPage: React.FC = () => {
                   <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Department</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>License</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Last Active</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
@@ -1057,42 +1103,24 @@ const TeamPage: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        {member.department || 'Unassigned'}
+                        {member.department && member.department.trim() !== '' ? member.department : 'Unassigned'}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Box>
-                        {(() => {
-                          const licenseAssignment = getMemberLicenseAssignment(member);
-                          if (licenseAssignment) {
-                            return (
-                              <>
-                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                  {licenseAssignment.licenseType}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
-                                  {licenseAssignment.licenseKey.substring(0, 12)}...
-                                </Typography>
-                                <Chip
-                                  label={licenseAssignment.status}
-                                  size="small"
-                                  color={licenseAssignment.status === 'ACTIVE' ? 'success' : 'warning'}
-                                  sx={{ mt: 0.5 }}
-                                />
-                              </>
-                            );
-                          }
-                          return (
-                            <Typography variant="body2" color="text.secondary">
-                              None
-                            </Typography>
-                          );
-                        })()}
-                      </Box>
-                    </TableCell>
-                    <TableCell>
                       <Typography variant="body2" color="text.secondary">
-                        {member.lastActive ? new Date(member.lastActive).toLocaleDateString() : 'Never'}
+                        {member.lastActive ? (() => {
+                          try {
+                            const lastActiveDate = member.lastActive instanceof Date ? member.lastActive : new Date(member.lastActive);
+                            // Check if the date is valid
+                            if (isNaN(lastActiveDate.getTime())) {
+                              return 'Never';
+                            }
+                            return lastActiveDate.toLocaleDateString();
+                          } catch (error) {
+                            console.warn('Invalid lastActive date for member:', member.email, member.lastActive);
+                            return 'Never';
+                          }
+                        })() : 'Never'}
                       </Typography>
                     </TableCell>
                     <TableCell>

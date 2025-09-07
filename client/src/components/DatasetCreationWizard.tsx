@@ -75,9 +75,19 @@ import {
     VisibilityOff as VisibilityOffIcon,
     Launch as LaunchIcon,
     Dataset as DatasetIcon,
+    Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 import { cloudProjectIntegration, CloudDataset } from '../services/CloudProjectIntegration';
+import { useAuth } from '@/context/AuthContext';
+import { datasetConflictAnalyzer, DatasetCreationConflictCheck } from '../services/DatasetConflictAnalyzer';
+import { useDynamicCollections } from '../hooks/useDynamicCollections';
+import { 
+    DASHBOARD_COLLECTIONS_BY_CATEGORY as STATIC_COLLECTIONS, 
+    ALL_DASHBOARD_COLLECTIONS as STATIC_ALL_COLLECTIONS
+} from '../constants/dashboardCollections';
+
+// Collections are now imported from shared constants to ensure sync with EditDatasetDialog
 
 // Cloud Provider Types (following MPC library patterns)
 export type CloudProvider = 'firestore' | 'gcs' | 's3' | 'aws' | 'azure' | 'azure-blob' | 'local';
@@ -145,6 +155,19 @@ export interface DatasetCreationOptions {
         }>;
     };
     
+    // Collection Assignment (for Firestore datasets)
+    collectionAssignment?: {
+        selectedCollections: string[];
+        includeSubcollections?: boolean;
+        dataFilters?: Array<{
+            collection: string;
+            field: string;
+            operator: 'equals' | 'not-equals' | 'greater-than' | 'less-than' | 'contains';
+            value: any;
+        }>;
+        organizationScope?: boolean; // Whether to scope data to current organization
+    };
+    
     // Advanced Options
     advanced?: {
         encryption?: boolean;
@@ -168,6 +191,7 @@ const STEPS = [
     'Cloud Provider Selection',
     'Authentication Setup',
     'Storage Configuration',
+    'Collection Assignment', // New step for Firestore collection assignment
     'Advanced Options',
     'Review & Create'
 ];
@@ -261,6 +285,12 @@ const DEFAULT_FORM_DATA: DatasetCreationOptions = {
         template: 'custom',
         customFields: []
     },
+    collectionAssignment: {
+        selectedCollections: [],
+        includeSubcollections: false,
+        dataFilters: [],
+        organizationScope: true // Default to organization-scoped data for multi-tenancy
+    },
     advanced: {
         encryption: false,
         compression: false,
@@ -288,6 +318,23 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
         success: boolean;
         message: string;
     } | null>(null);
+    
+    // 🆕 NEW: Conflict detection state
+    const [conflictCheck, setConflictCheck] = useState<DatasetCreationConflictCheck | null>(null);
+    const [existingDatasets, setExistingDatasets] = useState<CloudDataset[]>([]);
+    const [loadingConflictCheck, setLoadingConflictCheck] = useState(false);
+
+    // 🔥 DYNAMIC COLLECTIONS: Real-time collection discovery
+    const { 
+        collections: DASHBOARD_COLLECTIONS_BY_CATEGORY, 
+        allCollections: ALL_DASHBOARD_COLLECTIONS,
+        loading: collectionsLoading,
+        error: collectionsError,
+        source: collectionsSource,
+        refresh: refreshCollections,
+        isValidCollection,
+        getCategoryForCollection 
+    } = useDynamicCollections();
 
     // Reset form when dialog opens - use useCallback to prevent unnecessary re-renders
     const resetForm = useCallback(() => {
@@ -375,6 +422,14 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                     errors.azureContainer = 'Azure container name is required';
                 }
                 break;
+            case 4: // Collection Assignment
+                if (formData.cloudProvider === 'firestore') {
+                    if (!formData.collectionAssignment?.selectedCollections?.length) {
+                        errors.collections = 'Please select at least one Firestore collection for this dataset';
+                    }
+                }
+                // For non-Firestore providers, collection assignment is optional/not applicable
+                break;
         }
 
         setValidationErrors(errors);
@@ -447,7 +502,9 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                 tags: formData.tags,
                 storage: formData.storage,
                 schema: formData.schema,
-                projectId: assignToProject || 'default-project'
+                projectId: assignToProject || 'default-project',
+                // Include collection assignment for Firestore datasets
+                collectionAssignment: formData.cloudProvider === 'firestore' ? formData.collectionAssignment : undefined
             });
 
             if (newDataset) {
@@ -462,6 +519,62 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
             setIsLoading(false);
         }
     }, [activeStep, validateStep, formData, onSuccess, onClose]);
+
+    // 🆕 NEW: Load existing datasets for conflict analysis
+    const loadExistingDatasets = useCallback(async () => {
+        try {
+            const datasets = await cloudProjectIntegration.listDatasets();
+            setExistingDatasets(datasets);
+            console.log('✅ [DatasetCreationWizard] Loaded existing datasets for conflict analysis:', datasets.length);
+        } catch (error) {
+            console.warn('⚠️ [DatasetCreationWizard] Failed to load existing datasets:', error);
+            setExistingDatasets([]);
+        }
+    }, []);
+
+    // 🆕 NEW: Check for conflicts when collection assignment changes
+    const checkConflicts = useCallback(async () => {
+        if (formData.cloudProvider !== 'firestore' || !formData.collectionAssignment?.selectedCollections?.length) {
+            setConflictCheck(null);
+            return;
+        }
+
+        setLoadingConflictCheck(true);
+        try {
+            const conflicts = await datasetConflictAnalyzer.checkDatasetCreationConflicts(
+                {
+                    name: formData.name,
+                    collectionAssignment: formData.collectionAssignment
+                },
+                existingDatasets
+            );
+            setConflictCheck(conflicts);
+            console.log('✅ [DatasetCreationWizard] Conflict check complete:', conflicts);
+        } catch (error) {
+            console.error('❌ [DatasetCreationWizard] Failed to check conflicts:', error);
+            setConflictCheck(null);
+        } finally {
+            setLoadingConflictCheck(false);
+        }
+    }, [formData.cloudProvider, formData.name, formData.collectionAssignment, existingDatasets]);
+
+    // Load existing datasets when dialog opens
+    useEffect(() => {
+        if (open) {
+            loadExistingDatasets();
+        }
+    }, [open, loadExistingDatasets]);
+
+    // Check conflicts when collection assignment changes
+    useEffect(() => {
+        if (activeStep === 4 && formData.collectionAssignment?.selectedCollections?.length) {
+            const timeoutId = setTimeout(() => {
+                checkConflicts();
+            }, 500); // Debounce conflict checking
+            
+            return () => clearTimeout(timeoutId);
+        }
+    }, [activeStep, formData.collectionAssignment?.selectedCollections, checkConflicts]);
 
     // Memoize step content rendering function
     const renderStepContent = useCallback((step: number) => {
@@ -839,6 +952,310 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                 return (
                     <Box>
                         <Typography variant="h6" gutterBottom>
+                            Collection Assignment
+                        </Typography>
+                        {formData.cloudProvider === 'firestore' ? (
+                            <Grid container spacing={3}>
+                                <Grid item xs={12}>
+                                    <Alert severity="info" sx={{ mb: 2 }}>
+                                        <Typography variant="body2">
+                                            Select which Firestore collections this dataset should include. 
+                                            Data will be automatically scoped to your organization for security.
+                                        </Typography>
+                                    </Alert>
+                                </Grid>
+                                <Grid item xs={12}>
+                                    <Box sx={{ mb: 2 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                                            <Typography variant="subtitle2" sx={{ color: 'white' }}>
+                                                Select Collections by Category
+                                            </Typography>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <Chip
+                                                    size="small"
+                                                    label={collectionsLoading ? 'Loading...' : `${ALL_DASHBOARD_COLLECTIONS.length} collections`}
+                                                    color={collectionsSource === 'dynamic' ? 'success' : collectionsSource === 'cached' ? 'info' : 'default'}
+                                                    variant="outlined"
+                                                    sx={{ 
+                                                        color: 'white',
+                                                        borderColor: 'rgba(255, 255, 255, 0.3)',
+                                                        '& .MuiChip-label': { fontSize: '0.75rem' }
+                                                    }}
+                                                />
+                                                {collectionsSource === 'dynamic' && (
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={refreshCollections}
+                                                        sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                                                        title="Refresh collections"
+                                                    >
+                                                        <RefreshIcon fontSize="small" />
+                                                    </IconButton>
+                                                )}
+                                            </Box>
+                                        </Box>
+                                        
+                                        {Object.entries(DASHBOARD_COLLECTIONS_BY_CATEGORY).map(([categoryName, category]) => (
+                                            <Box key={categoryName} sx={{ mb: 3 }}>
+                                                <Box sx={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: 1, 
+                                                    mb: 1,
+                                                    p: 1,
+                                                    bgcolor: 'rgba(255, 255, 255, 0.05)',
+                                                    borderRadius: 1,
+                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                                                }}>
+                                                    <Typography sx={{ fontSize: '1.2rem' }}>{category.icon}</Typography>
+                                                    <Box>
+                                                        <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600 }}>
+                                                            {categoryName}
+                                                        </Typography>
+                                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                            {category.description}
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                                
+                                                <Box sx={{ 
+                                                    display: 'grid', 
+                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+                                                    gap: 1,
+                                                    pl: 2
+                                                }}>
+                                                    {category.collections.map((collection) => {
+                                                        const isSelected = formData.collectionAssignment?.selectedCollections?.includes(collection) || false;
+                                                        return (
+                                                            <Box
+                                                                key={collection}
+                                                                onClick={() => {
+                                                                    const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+                                                                    const newSelections = isSelected
+                                                                        ? currentSelections.filter(c => c !== collection)
+                                                                        : [...currentSelections, collection];
+                                                                    
+                                                                    updateFormData({
+                                                                        collectionAssignment: {
+                                                                            ...formData.collectionAssignment,
+                                                                            selectedCollections: newSelections,
+                                                                            includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                                                                            dataFilters: formData.collectionAssignment?.dataFilters || [],
+                                                                            organizationScope: formData.collectionAssignment?.organizationScope !== false
+                                                                        }
+                                                                    });
+                                                                }}
+                                                                sx={{
+                                                                    p: 1.5,
+                                                                    border: isSelected 
+                                                                        ? '2px solid #8b5cf6' 
+                                                                        : '1px solid rgba(255, 255, 255, 0.2)',
+                                                                    borderRadius: 1,
+                                                                    bgcolor: isSelected 
+                                                                        ? 'rgba(139, 92, 246, 0.1)' 
+                                                                        : 'rgba(255, 255, 255, 0.02)',
+                                                                    cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease',
+                                                                    '&:hover': {
+                                                                        bgcolor: isSelected 
+                                                                            ? 'rgba(139, 92, 246, 0.2)' 
+                                                                            : 'rgba(255, 255, 255, 0.05)',
+                                                                        borderColor: isSelected 
+                                                                            ? '#8b5cf6' 
+                                                                            : 'rgba(255, 255, 255, 0.4)',
+                                                                        transform: 'translateY(-1px)'
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                    <StorageIcon 
+                                                                        fontSize="small" 
+                                                                        sx={{ 
+                                                                            color: isSelected ? '#8b5cf6' : 'rgba(255, 255, 255, 0.7)' 
+                                                                        }} 
+                                                                    />
+                                                                    <Typography 
+                                                                        variant="body2" 
+                                                                        sx={{ 
+                                                                            color: isSelected ? '#8b5cf6' : 'white',
+                                                                            fontWeight: isSelected ? 600 : 400,
+                                                                            fontSize: '0.85rem'
+                                                                        }}
+                                                                    >
+                                                                        {collection}
+                                                                    </Typography>
+                                                                    {isSelected && (
+                                                                        <CheckIcon 
+                                                                            fontSize="small" 
+                                                                            sx={{ color: '#8b5cf6', ml: 'auto' }} 
+                                                                        />
+                                                                    )}
+                                                                </Box>
+                                                            </Box>
+                                                        );
+                                                    })}
+                                                </Box>
+                                            </Box>
+                                        ))}
+                                    </Box>
+                                </Grid>
+                                <Grid item xs={12}>
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={formData.collectionAssignment?.includeSubcollections || false}
+                                                onChange={(e) => updateFormData({
+                                                    collectionAssignment: {
+                                                        selectedCollections: formData.collectionAssignment?.selectedCollections || [],
+                                                        includeSubcollections: e.target.checked,
+                                                        dataFilters: formData.collectionAssignment?.dataFilters || [],
+                                                        organizationScope: formData.collectionAssignment?.organizationScope || false
+                                                    }
+                                                })}
+                                            />
+                                        }
+                                        label="Include Subcollections"
+                                    />
+                                </Grid>
+                                <Grid item xs={12}>
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={formData.collectionAssignment?.organizationScope !== false}
+                                                onChange={(e) => updateFormData({
+                                                    collectionAssignment: {
+                                                        selectedCollections: formData.collectionAssignment?.selectedCollections || [],
+                                                        includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                                                        dataFilters: formData.collectionAssignment?.dataFilters || [],
+                                                        organizationScope: e.target.checked
+                                                    }
+                                                })}
+                                            />
+                                        }
+                                        label="Organization Scoped Data (Recommended for Multi-Tenancy)"
+                                    />
+                                </Grid>
+                                {(formData.collectionAssignment?.selectedCollections?.length || 0) > 0 && (
+                                    <Grid item xs={12}>
+                                        <Typography variant="subtitle2" gutterBottom>
+                                            Selected Collections Preview:
+                                        </Typography>
+                                        <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                                            {formData.collectionAssignment?.selectedCollections?.map((collection) => (
+                                                <Box key={collection} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                                    <DatasetIcon fontSize="small" color="primary" />
+                                                    <Typography variant="body2">
+                                                        {collection}
+                                                        {formData.collectionAssignment?.organizationScope && (
+                                                            <Chip 
+                                                                label="Org Scoped" 
+                                                                size="small" 
+                                                                color="primary" 
+                                                                sx={{ ml: 1, height: 20 }}
+                                                            />
+                                                        )}
+                                                    </Typography>
+                                                </Box>
+                                            ))}
+                                        </Paper>
+                                    </Grid>
+                                )}
+                                
+                                {/* 🆕 NEW: Conflict Analysis and Warnings */}
+                                {loadingConflictCheck && (
+                                    <Grid item xs={12}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'rgba(255, 255, 255, 0.05)', borderRadius: 1 }}>
+                                            <CircularProgress size={20} />
+                                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                Analyzing collection conflicts...
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                )}
+                                
+                                {conflictCheck && (conflictCheck.warnings.length > 0 || conflictCheck.suggestions.length > 0) && (
+                                    <Grid item xs={12}>
+                                        <Box sx={{ mt: 2 }}>
+                                            <Typography variant="subtitle2" gutterBottom sx={{ color: 'white', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <WarningIcon fontSize="small" color="warning" />
+                                                Smart Analysis Results
+                                            </Typography>
+                                            
+                                            {/* Conflict Warnings */}
+                                            {conflictCheck.warnings.map((warning, index) => (
+                                                <Alert 
+                                                    key={index}
+                                                    severity={warning.severity}
+                                                    sx={{ mb: 1, bgcolor: 'rgba(255, 255, 255, 0.05)' }}
+                                                >
+                                                    <Box>
+                                                        <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
+                                                            {warning.message}
+                                                        </Typography>
+                                                        {warning.affectedDatasets.length > 0 && (
+                                                            <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                                                                Affected datasets: {warning.affectedDatasets.join(', ')}
+                                                            </Typography>
+                                                        )}
+                                                        <Typography variant="caption" sx={{ fontStyle: 'italic' }}>
+                                                            💡 {warning.recommendation}
+                                                        </Typography>
+                                                    </Box>
+                                                </Alert>
+                                            ))}
+                                            
+                                            {/* Smart Suggestions */}
+                                            {conflictCheck.suggestions.length > 0 && (
+                                                <Box sx={{ mt: 2 }}>
+                                                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.8)', display: 'block', mb: 1 }}>
+                                                        💡 Smart Suggestions:
+                                                    </Typography>
+                                                    {conflictCheck.suggestions.map((suggestion, index) => (
+                                                        <Paper key={index} sx={{ p: 2, mb: 1, bgcolor: 'rgba(79, 70, 229, 0.1)', border: '1px solid rgba(79, 70, 229, 0.3)' }}>
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <Chip 
+                                                                    label={suggestion.type.toUpperCase()} 
+                                                                    size="small" 
+                                                                    sx={{ 
+                                                                        bgcolor: 'rgba(79, 70, 229, 0.2)', 
+                                                                        color: '#8b5cf6',
+                                                                        fontWeight: 600,
+                                                                        fontSize: '0.65rem'
+                                                                    }} 
+                                                                />
+                                                                <Typography variant="body2" sx={{ color: 'white' }}>
+                                                                    {suggestion.message}
+                                                                </Typography>
+                                                            </Box>
+                                                        </Paper>
+                                                    ))}
+                                                </Box>
+                                            )}
+                                            
+                                            {/* Conflict Summary */}
+                                            {conflictCheck.hasConflicts && (
+                                                <Alert severity="error" sx={{ mt: 2, bgcolor: 'rgba(239, 68, 68, 0.1)' }}>
+                                                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                                        ⚠️ High-priority conflicts detected. Please review and resolve before proceeding.
+                                                    </Typography>
+                                                </Alert>
+                                            )}
+                                        </Box>
+                                    </Grid>
+                                )}
+                            </Grid>
+                        ) : (
+                            <Alert severity="warning">
+                                Collection assignment is only available for Firestore datasets. 
+                                Please select Firestore as your cloud provider to configure collection assignment.
+                            </Alert>
+                        )}
+                    </Box>
+                );
+            case 5:
+                return (
+                    <Box>
+                        <Typography variant="h6" gutterBottom>
                             Advanced Options
                         </Typography>
                         <Grid container spacing={3}>
@@ -910,7 +1327,7 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                         </Grid>
                     </Box>
                 );
-            case 5:
+            case 6:
                 return (
                     <Box>
                         <Typography variant="h6" gutterBottom>
@@ -941,6 +1358,29 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                         Schema: <strong>Backbone Logic Unified Schema</strong>
                                     </Typography>
                                 </Grid>
+                                {formData.cloudProvider === 'firestore' && formData.collectionAssignment?.selectedCollections?.length && (
+                                    <Grid item xs={12}>
+                                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                                            <strong>Assigned Collections:</strong>
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+                                            {formData.collectionAssignment.selectedCollections.map((collection) => (
+                                                <Chip 
+                                                    key={collection} 
+                                                    label={collection} 
+                                                    size="small" 
+                                                    color="primary"
+                                                    icon={<DatasetIcon />}
+                                                />
+                                            ))}
+                                        </Box>
+                                        {formData.collectionAssignment.organizationScope && (
+                                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                                                ✓ Data will be automatically scoped to your organization for security
+                                            </Typography>
+                                        )}
+                                    </Grid>
+                                )}
                             </Grid>
                         </Paper>
                         

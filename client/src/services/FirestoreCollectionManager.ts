@@ -81,7 +81,70 @@ export const COLLECTIONS = {
   
   // Workflow & Diagrams
   WORKFLOW_DIAGRAMS: 'workflowDiagrams', // Standardized from 'workflow_diagrams'
-  WORKFLOW_DIAGRAMS_LEGACY: 'workflow_diagrams' // Legacy collection
+  WORKFLOW_DIAGRAMS_LEGACY: 'workflow_diagrams', // Legacy collection
+  
+  // Network Delivery & Deliverables Collections
+  NETWORK_DELIVERY_BIBLES: 'networkDeliveryBibles',
+  DELIVERABLES: 'deliverables',
+  NETWORK_DELIVERY_CHATS: 'networkDeliveryChats',
+  DELIVERY_SPECS: 'deliverySpecs',
+  DELIVERY_TEMPLATES: 'deliveryTemplates',
+  DELIVERY_TRACKING: 'deliveryTracking',
+  
+  // Additional Production Collections
+  SESSION_WORKFLOWS: 'sessionWorkflows',
+  SESSION_ASSIGNMENTS: 'sessionAssignments',
+  SESSION_PARTICIPANTS: 'sessionParticipants',
+  WORKFLOW_TEMPLATES: 'workflowTemplates',
+  WORKFLOW_INSTANCES: 'workflowInstances',
+  WORKFLOW_STEPS: 'workflowSteps',
+  WORKFLOW_ASSIGNMENTS: 'workflowAssignments',
+  SESSION_PHASE_TRANSITIONS: 'sessionPhaseTransitions',
+  SESSION_REVIEWS: 'sessionReviews',
+  SESSION_QC: 'sessionQc',
+  SESSION_TASKS: 'sessionTasks',
+  DEMO_SESSIONS: 'demoSessions',
+  
+  // Inventory & Equipment Collections
+  INVENTORY_ITEMS: 'inventoryItems',
+  INVENTORY: 'inventory',
+  NETWORK_IP_ASSIGNMENTS: 'networkIPAssignments',
+  NETWORK_IP_RANGES: 'networkIPRanges',
+  NETWORKS: 'networks',
+  INVENTORY_HISTORY: 'inventoryHistory',
+  SETUP_PROFILES: 'setupProfiles',
+  SCHEMAS: 'schemas',
+  SCHEMA_FIELDS: 'schemaFields',
+  MAP_LAYOUTS: 'mapLayouts',
+  MAP_LOCATIONS: 'mapLocations',
+  INVENTORY_MAPS: 'inventoryMaps',
+  MAP_DATA: 'mapData',
+  
+  // Timecard Collections
+  TIMECARD_ENTRIES: 'timecard_entries',
+  USER_TIMECARDS: 'user_timecards',
+  TIMECARD_APPROVALS: 'timecard_approvals',
+  TIMECARD_TEMPLATES: 'timecard_templates',
+  
+  // Media & Content Collections
+  MEDIA_FILES: 'mediaFiles',
+  POST_PRODUCTION_TASKS: 'postProductionTasks',
+  STAGES: 'stages',
+  NOTES: 'notes',
+  REPORTS: 'reports',
+  CALL_SHEETS: 'callSheets',
+  
+  // AI & Automation Collections
+  AI_AGENTS: 'aiAgents',
+  MESSAGES: 'messages',
+  CHATS: 'chats',
+  MESSAGE_SESSIONS: 'messageSessions',
+  
+  // PBM Collections
+  PBM_PROJECTS: 'pbmProjects',
+  PBM_SCHEDULES: 'pbmSchedules',
+  PBM_PAYSCALES: 'pbmPayscales',
+  PBM_DAILY_STATUS: 'pbmDailyStatus'
 } as const;
 
 // Collection mapping for transition period - handles both camelCase and snake_case
@@ -162,6 +225,151 @@ export interface FirestoreLicense {
   activationCount?: number;
   currentPeriodEnd?: Timestamp | Date;
   type?: string;
+}
+
+// Network Delivery & Deliverables Types
+export interface FirestoreDeliveryBible {
+  id: string;
+  organizationId: string;
+  projectId?: string;
+  title: string;
+  description?: string;
+  status: 'draft' | 'active' | 'completed' | 'archived';
+  uploadedAt: Timestamp | Date;
+  fileUrl?: string;
+  fileSize?: number;
+  mimeType?: string;
+  metadata?: Record<string, any>;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+export interface FirestoreDeliverable {
+  id: string;
+  bibleId: string;
+  organizationId: string;
+  projectId?: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'not_started' | 'in_progress' | 'completed' | 'blocked';
+  assignedTo?: string;
+  estimatedCompletion?: string;
+  actualCompletion?: string;
+  relatedSessions?: string[];
+  relatedMedia?: string[];
+  gaps?: string[];
+  recommendations?: string[];
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+export interface FirestoreNetworkDeliveryChat {
+  id: string;
+  organizationId: string;
+  projectId?: string;
+  deliverableId?: string;
+  messages: Array<{
+    id: string;
+    type: 'user' | 'bot' | 'system';
+    content: string;
+    timestamp: Timestamp | Date;
+    metadata?: Record<string, any>;
+  }>;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+export interface FirestoreDeliverySpec {
+  id: string;
+  organizationId: string;
+  projectId?: string;
+  name: string;
+  description: string;
+  specifications: Record<string, any>;
+  category: string;
+  isTemplate: boolean;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+export interface FirestoreDeliveryTemplate {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string;
+  template: Record<string, any>;
+  category: string;
+  isActive: boolean;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+export interface FirestoreDeliveryTracking {
+  id: string;
+  organizationId: string;
+  projectId?: string;
+  deliverableId: string;
+  status: string;
+  progress: number; // 0-100
+  milestones: Array<{
+    name: string;
+    completed: boolean;
+    completedAt?: Timestamp | Date;
+  }>;
+  notes?: string;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+// Session Types
+export interface FirestoreSession {
+  id: string;
+  organizationId: string;
+  projectId?: string;
+  name: string;
+  description?: string;
+  status: 'planned' | 'active' | 'completed' | 'cancelled';
+  startDate?: Timestamp | Date;
+  endDate?: Timestamp | Date;
+  participants: string[];
+  workflowId?: string;
+  metadata?: Record<string, any>;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+// Inventory Types
+export interface FirestoreInventoryItem {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  category: string;
+  status: 'available' | 'in_use' | 'maintenance' | 'retired';
+  location?: string;
+  assignedTo?: string;
+  metadata?: Record<string, any>;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
+}
+
+// Media Types
+export interface FirestoreMediaFile {
+  id: string;
+  organizationId: string;
+  projectId?: string;
+  sessionId?: string;
+  name: string;
+  description?: string;
+  fileType: string;
+  fileSize: number;
+  fileUrl: string;
+  mimeType: string;
+  metadata?: Record<string, any>;
+  createdAt: Timestamp | Date;
+  updatedAt: Timestamp | Date;
 }
 
 /**

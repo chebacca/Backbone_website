@@ -75,6 +75,16 @@ interface RegisterData {
   email: string;
   password: string;
   name: string;
+  firstName: string;
+  lastName: string;
+  company?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string;
   acceptTerms: boolean;
   acceptPrivacy: boolean;
   marketingConsent?: boolean;

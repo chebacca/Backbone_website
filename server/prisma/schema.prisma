@@ -548,7 +548,7 @@ model ProjectAssignment {
   id         String                @id @default(uuid())
   projectId  String
   userId     String
-  role       ProjectAssignmentRole @default(DO_ER)
+  role       ProjectAssignmentRole @default(MEMBER)
   assignedBy String
   assignedAt DateTime              @default(now())
   isActive   Boolean               @default(true)

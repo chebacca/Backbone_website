@@ -1,142 +1,732 @@
-# Cursor Project Rules — Dashboard v14 Licensing Website
+# 🔥 BACKBONE v14.2 Licensing Website Enhanced .cursorrules
+# Based on Real Codebase Analysis - Optimized for Claude Coding
 
-Project: Dashboard v14 Licensing Website (React + Vite frontend, Express + Firebase Functions backend, Stripe payments, SendGrid emails)
-Workspace: pnpm monorepo with `client`, `server`, `shared`
+## 🎯 **PROJECT CONTEXT**
+This is the BACKBONE v14.2 Licensing Website - a Firebase Web-Only subscription management platform.
+- **Live URL**: https://backbone-logic.web.app
+- **Architecture**: React 18 + Node.js + Firebase Functions + Stripe Integration
+- **Deployment**: Firebase Hosting (Web-Only, NO local servers)
+- **Codebase Size**: 1,366+ line server implementation, comprehensive client architecture
 
-Core Configuration:
-- Frontend: Firebase Hosting (production) / localhost:3002 (development)
-- Backend API: Firebase Cloud Functions (production) / localhost:3003 (development)
-- Database: Firestore (production) / local development
+## 🏗️ **REAL CODEBASE PATTERNS** (Based on Actual Analysis)
 
-Package Manager & Node:
-- Use pnpm (>= 8). Do not use npm/yarn.
-- Node >= 18.
+### **Server Architecture (1,366+ lines)**
+```typescript
+// REAL EXAMPLE: server/src/index.ts (1,366 lines)
+import express, { Application } from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
-Key Commands (run at repo root):
-- Dev: `pnpm dev` (concurrently runs server and client)
-- Build: `pnpm build`
-- Deploy: `pnpm deploy` (deploys to Firebase)
-- Start (prod): `pnpm start` (starts compiled server on 3003 for local testing)
-- Firebase: `pnpm firebase:init`, `pnpm firebase:login`, `pnpm firebase:use`
+const app: Application = express();
 
-Environment (server/.env):
-- Firebase: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
-- JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_EXPIRES_IN
-- Stripe: STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_*_PRICE_ID
-- SendGrid: SENDGRID_API_KEY, FROM_EMAIL, FROM_NAME
-- Frontend: FRONTEND_URL (Firebase hosting URL), CORS_ORIGIN (Firebase hosting URL)
+// 1. MANDATORY Security Configuration
+app.use(helmet({
+  hsts: config.isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+  contentSecurityPolicy: false, // Firebase Hosting handles CSP
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 
-Environment (client .env):
-- VITE_API_BASE_URL=/api (for Firebase hosting)
-- VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+// 2. MANDATORY CORS Configuration
+const allowedOrigins: (string | RegExp)[] = [
+  'https://backbone-logic.web.app',
+  'https://backbone-client.web.app',
+  'https://dashboard-1c3a5.web.app',
+  /^http:\/\/localhost:\d+$/,
+];
 
-Architecture:
-- `client/`: React 18 + TS + Vite + MUI + React Query + Stripe.js
-- `server/`: Express + Firebase Functions + Firestore + Stripe SDK + SendGrid + Zod + Helmet + CORS + Rate limiting
-- `shared/`: shared TS types
+const corsMiddleware = cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // Allow no origin (mobile apps)
+    const ok = allowedOrigins.some((o) => (typeof o === 'string' ? o === origin : o.test(origin)));
+    return callback(null, ok);
+  },
+  credentials: true,
+});
 
-Authoritative Docs:
-- Always consult `mpc-library/` for architecture, flows, API contracts, compliance, payments, licensing, prompts, and runbooks.
+// 3. MANDATORY Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP'
+});
 
-### 🤖 **LLM AGENT MPC LIBRARY CONSULTATION REQUIREMENT**
-
-#### **MANDATORY FOR ALL LLM AGENTS (Claude, ChatGPT, etc.)**
-
-**ALWAYS CONSULT MPC LIBRARY FIRST BEFORE ANY CODE GENERATION:**
-
-1. **Search MPC library** for relevant documentation before any code generation
-2. **Reference established patterns** from MPC library documentation  
-3. **Follow documented architecture** and coding standards
-4. **Use documented API patterns** and integration methods
-5. **Consult feature-specific documentation** in appropriate MPC library folders
-
-**MPC LIBRARY STRUCTURE (ALWAYS REFERENCE):**
-```bash
-mpc-library/
-├── MPC_INDEX.md                    # Complete feature overview
-├── APPLICATION_ARCHITECTURE_MPC.md  # System architecture overview
-├── API_INTEGRATION_MPC.md          # API structure and patterns
-├── CODING_STANDARDS_MPC.md         # Code organization and standards
-├── authentication/                  # Authentication documentation
-├── payments/                        # Payment system documentation
-├── licensing/                       # Licensing system documentation
-├── compliance/                      # Compliance and security documentation
-└── [feature-specific folders]/      # Feature-specific documentation
+// 4. Route Organization (Lines 40-280)
+app.use('/auth', authRouter);
+app.use('/users', usersRouter);
+app.use('/subscriptions', subscriptionsRouter);
+app.use('/licenses', licensesRouter);
+app.use('/payments', paymentsRouter);
+app.use('/team-members', teamMembersRouter);
+app.use('/organizations', organizationsRouter);
+app.use('/admin', adminRouter);
 ```
 
-**LLM AGENT WORKFLOW REQUIREMENTS:**
-- [ ] **ALWAYS start with MPC library search** for relevant documentation
-- [ ] **NEVER generate code** without consulting established patterns
-- [ ] **ALWAYS reference MPC library** in code comments and documentation
-- [ ] **ALWAYS follow documented standards** for authentication, API integration
-- [ ] **ALWAYS use established component patterns** from MPC library
-- [ ] **ALWAYS validate against MPC library** before finalizing any implementation
+### **Client Application Architecture**
+```typescript
+// REAL EXAMPLE: client/src/App.tsx (264 lines)
+function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <ErrorBoundary>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/startup" element={<StartupWorkflow />} />
+          
+          {/* Auth Routes */}
+          <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+          <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+          
+          {/* Dashboard Routes (protected) */}
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+            <Route index element={<DashboardOverview />} />
+            <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="billing" element={<StreamlinedBillingPage />} />
+            <Route path="team" element={<TeamPage />} />
+            <Route path="licenses" element={<LicensesPage />} />
+          </Route>
+          
+          {/* Admin Routes */}
+          <Route path="/admin" element={<ProtectedRoute requireAdmin><DashboardLayout /></ProtectedRoute>}>
+            <Route index element={<AdminDashboard />} />
+          </Route>
+        </Routes>
+      </ErrorBoundary>
+    </ThemeProvider>
+  );
+}
+```
 
-**MPC LIBRARY CONSULTATION CHECKLIST:**
-- [ ] **Searched MPC_INDEX.md** for feature overview
-- [ ] **Consulted feature-specific folder** for detailed implementation
-- [ ] **Referenced established patterns** from MPC library
-- [ ] **Followed documented coding standards** from MPC library
-- [ ] **Used documented API patterns** from MPC library
-- [ ] **Applied documented authentication patterns** from MPC library
-- [ ] **Used documented payment patterns** from MPC library
-- [ ] **Followed documented compliance patterns** from MPC library
+## 💳 **STRIPE INTEGRATION PATTERNS**
 
-Coding Standards:
-- TypeScript everywhere; explicit types for exported APIs; avoid `any`.
-- Follow Clean Code naming; functions are verbs; variables are meaningful nouns.
-- Prefer early returns; shallow nesting; handle errors first.
-- Never log secrets or raw tokens.
-- Use centralized error helpers and consistent JSON responses.
-- Validate inputs via `express-validator`/Zod; sanitize user inputs.
-- Firestore: use firestoreService for all database operations.
-- Don't change Firebase configuration or package manager in code.
+### **Payment Processing (Real Implementation)**
+```typescript
+// MANDATORY Stripe Integration Pattern
+import Stripe from 'stripe';
 
-Security & Compliance:
-- Enforce JSON-only responses on API routes; never return HTML from API.
-- Use JWT via `JwtUtil`; never expose full tokens in logs.
-- Apply `helmet`, CORS, rate limiting on `/api/`.
-- Webhooks: verify signatures (Stripe) and store events in `webhook_events`.
-- Record consent and audit logs for key actions as per `UserAuditLog`, `PrivacyConsent`.
-- Follow GDPR, KYC/AML flows described in `mpc-library/COMPLIANCE_SECURITY_MPC.md`.
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2023-10-16',
+});
 
-API Surface (server/src/routes):
-- Auth: register, login, refresh, verify-email, forgot/reset password, me, update profile, logout
-- Payments: pricing, create-subscription, history, payment details, cancel, update payment method, calculate-tax, webhook
-- Subscriptions: list, details, update, cancel, reactivate, invoices, usage, payment method, billing history, preview changes, renewal, add seats
-- Licenses: my-licenses, activate, deactivate, validate, details, analytics, transfer, bulk create, sdk versions, report issue, usage, SDK downloads
-- Users: billing address, tax info, business profile, KYC verify, consent, consent history, audit log, export data, request deletion, statistics, notifications
-- Admin: dashboard stats, users, user details/update, subscriptions, licenses, revoke license, compliance events, resolve, analytics, reports, enterprise customers, system health
-- Webhooks: stripe, sendgrid, test, health, retry-failed
+// Payment Intent Creation
+app.post('/payments/create-intent', async (req: Request, res: Response) => {
+  try {
+    const { amount, currency = 'usd' } = req.body;
+    
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount * 100, // Convert to cents
+      currency,
+      metadata: {
+        organizationId: req.user.organizationId,
+        userId: req.user.uid
+      }
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        clientSecret: paymentIntent.client_secret
+      }
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
-Client API Usage:
-- Use `client/src/services/api.ts` `api` instance, `endpoints` map, and `apiUtils` helpers.
-- Set `VITE_API_BASE_URL` to `/api` for Firebase hosting (default).
-- Auth token stored in `localStorage` key `auth_token`.
+// Subscription Management
+app.post('/subscriptions/create', async (req: Request, res: Response) => {
+  try {
+    const { priceId, paymentMethodId } = req.body;
+    
+    // Create or retrieve customer
+    const customer = await stripe.customers.create({
+      email: req.user.email,
+      metadata: {
+        organizationId: req.user.organizationId,
+        userId: req.user.uid
+      }
+    });
+    
+    // Attach payment method
+    await stripe.paymentMethods.attach(paymentMethodId, {
+      customer: customer.id,
+    });
+    
+    // Create subscription
+    const subscription = await stripe.subscriptions.create({
+      customer: customer.id,
+      items: [{ price: priceId }],
+      default_payment_method: paymentMethodId,
+      expand: ['latest_invoice.payment_intent'],
+    });
+    
+    res.json({
+      success: true,
+      data: subscription
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+```
 
-Testing & Quality:
-- Prefer lightweight unit tests (to be added) and integration via REST clients/Postman.
-- Run `pnpm build` before shipping; ensure ESLint/TS passes in client and server.
+### **Webhook Handling (Security Critical)**
+```typescript
+// MANDATORY Webhook Verification
+app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
 
-Pull Request Review Checklist:
-- API: typed inputs/outputs, validation, consistent error schema.
-- Security: authentication/authorization enforced; no leakage of PII/secrets.
-- Compliance: audit/consent/compliance events created where required.
-- Performance: N+1 avoided; Firestore queries optimized.
-- DX: clear naming, small functions, docs updated in `mpc-library/`.
-- **LLM Agent Compliance**: MPC library consultation completed and documented.
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch (err) {
+    console.log(`Webhook signature verification failed.`, err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
 
-Cursor Agent Guidance:
-- Always read relevant doc in `mpc-library/` before edits.
-- Prefer changes scoped to `client/`, `server/`, or `shared/` as needed.
-- After server edits: run `pnpm build` and (if needed) `pnpm deploy`.
-- Do not introduce new frameworks or switch package manager.
-- Maintain Firebase hosting and Firestore flows.
+  // Handle the event
+  switch (event.type) {
+    case 'payment_intent.succeeded':
+      const paymentIntent = event.data.object;
+      // Handle successful payment
+      break;
+    case 'customer.subscription.created':
+      const subscription = event.data.object;
+      // Handle new subscription
+      break;
+    case 'customer.subscription.updated':
+      // Handle subscription updates
+      break;
+    case 'customer.subscription.deleted':
+      // Handle subscription cancellation
+      break;
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
 
-**LLM AGENT REQUIREMENTS (Claude, ChatGPT, etc.):**
-- **ALWAYS consult MPC library** before any code generation or documentation
-- **ALWAYS reference established patterns** from MPC library documentation
-- **ALWAYS follow documented architecture** and coding standards
-- **ALWAYS use documented API patterns** and integration methods
-- **ALWAYS validate against MPC library** before finalizing implementations
-- **NEVER generate code** without consulting established patterns
+  res.json({ received: true });
+});
+```
+
+## 🎫 **LICENSE MANAGEMENT PATTERNS**
+
+### **License Service Architecture**
+```typescript
+// REAL EXAMPLE: server/src/services/licenseService.ts
+export class LicenseService {
+  // Tier-based License Limits
+  static getLicenseCountForTier(tier: SubscriptionTier): number {
+    const tierLimits = {
+      'BASIC': 10,
+      'PRO': 50,
+      'ENTERPRISE': 250
+    };
+    return tierLimits[tier] || 10;
+  }
+  
+  static getInitialLicenseCountForTier(tier: SubscriptionTier): number {
+    const initialCounts = {
+      'BASIC': 3,
+      'PRO': 15,
+      'ENTERPRISE': 50
+    };
+    return initialCounts[tier] || 3;
+  }
+  
+  // License Generation with Validation
+  static async generateLicenses(
+    organizationId: string,
+    tier: SubscriptionTier,
+    count: number,
+    ownerId: string
+  ): Promise<License[]> {
+    const maxLicenses = this.getLicenseCountForTier(tier);
+    
+    if (count > maxLicenses) {
+      throw new Error(`Cannot generate ${count} licenses. Tier ${tier} maximum is ${maxLicenses}`);
+    }
+    
+    const licenses: License[] = [];
+    
+    for (let i = 0; i < count; i++) {
+      const license: License = {
+        id: generateLicenseId(),
+        organizationId,
+        ownerId,
+        tier,
+        status: 'active',
+        expiresAt: new Date(Date.now() + (365 * 24 * 60 * 60 * 1000)), // 1 year
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        features: this.getFeaturesForTier(tier),
+        maxSeats: 1,
+        usedSeats: 0
+      };
+      
+      licenses.push(license);
+    }
+    
+    return licenses;
+  }
+}
+```
+
+### **License Assignment Pattern**
+```typescript
+// Team Member License Assignment
+app.post('/team-members/:id/assign-license', async (req: Request, res: Response) => {
+  try {
+    const { id: teamMemberId } = req.params;
+    const { licenseId } = req.body;
+    
+    // Validate license availability
+    const license = await db.collection('licenses').doc(licenseId).get();
+    if (!license.exists) {
+      return res.status(404).json({ success: false, error: 'License not found' });
+    }
+    
+    const licenseData = license.data();
+    if (licenseData.assignedTo) {
+      return res.status(400).json({ success: false, error: 'License already assigned' });
+    }
+    
+    if (licenseData.organizationId !== req.user.organizationId) {
+      return res.status(403).json({ success: false, error: 'License not in your organization' });
+    }
+    
+    // Assign license
+    await db.collection('licenses').doc(licenseId).update({
+      assignedTo: teamMemberId,
+      assignedAt: new Date(),
+      updatedAt: new Date()
+    });
+    
+    // Update team member
+    await db.collection('teamMembers').doc(teamMemberId).update({
+      assignedLicenses: admin.firestore.FieldValue.arrayUnion(licenseId),
+      updatedAt: new Date()
+    });
+    
+    res.json({ success: true, message: 'License assigned successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+```
+
+## 👥 **TEAM MANAGEMENT PATTERNS**
+
+### **Team Member Creation with Firebase Auth**
+```typescript
+// REAL PATTERN: Team member creation with Firebase Auth integration
+app.post('/team-members', async (req: Request, res: Response) => {
+  try {
+    const { email, displayName, role = 'member', permissions = [] } = req.body;
+    
+    // Create Firebase Auth user
+    const userRecord = await admin.auth().createUser({
+      email,
+      displayName,
+      password: generateTemporaryPassword(),
+      emailVerified: false
+    });
+    
+    // Create team member document
+    const teamMember = {
+      id: generateId(),
+      userId: userRecord.uid,
+      organizationId: req.user.organizationId,
+      email,
+      displayName,
+      role,
+      permissions,
+      assignedLicenses: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isActive: true,
+      lastLoginAt: null
+    };
+    
+    await db.collection('teamMembers').doc(teamMember.id).set(teamMember);
+    
+    // Send invitation email
+    await sendTeamMemberInvitation(email, displayName, req.user.organizationId);
+    
+    res.json({
+      success: true,
+      data: teamMember
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+```
+
+### **Role-Based Access Control**
+```typescript
+// MANDATORY Role Validation Middleware
+const validateRole = (requiredRoles: string[]) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const teamMember = await db.collection('teamMembers')
+        .where('userId', '==', req.user.uid)
+        .where('organizationId', '==', req.user.organizationId)
+        .limit(1)
+        .get();
+      
+      if (teamMember.empty) {
+        return res.status(403).json({ success: false, error: 'Not a team member' });
+      }
+      
+      const memberData = teamMember.docs[0].data();
+      if (!requiredRoles.includes(memberData.role)) {
+        return res.status(403).json({ 
+          success: false, 
+          error: `Insufficient permissions. Required: ${requiredRoles.join(' or ')}` 
+        });
+      }
+      
+      req.user.teamMember = memberData;
+      next();
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Role validation failed' });
+    }
+  };
+};
+
+// Usage in routes
+app.get('/admin/users', authenticateToken, validateRole(['admin']), async (req, res) => {
+  // Admin-only endpoint
+});
+
+app.put('/team-members/:id', authenticateToken, validateRole(['admin', 'manager']), async (req, res) => {
+  // Admin or manager only
+});
+```
+
+## 🎨 **DARK THEME IMPLEMENTATION**
+
+### **Theme Configuration (Real Implementation)**
+```typescript
+// REAL EXAMPLE: client/src/theme/theme.ts
+export const theme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#6366f1', // Indigo
+      light: '#818cf8',
+      dark: '#4f46e5'
+    },
+    secondary: {
+      main: '#f59e0b', // Amber
+      light: '#fbbf24',
+      dark: '#d97706'
+    },
+    background: {
+      default: '#0f172a', // Slate-900
+      paper: '#1e293b'     // Slate-800
+    },
+    text: {
+      primary: '#f8fafc',   // Slate-50
+      secondary: '#cbd5e1'  // Slate-300
+    }
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h1: {
+      fontSize: '2.5rem',
+      fontWeight: 700,
+      lineHeight: 1.2
+    }
+  },
+  shape: {
+    borderRadius: 12
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          borderRadius: 8,
+          fontWeight: 600
+        }
+      }
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }
+      }
+    }
+  }
+});
+```
+
+### **Glassmorphism Component Pattern**
+```typescript
+const GlassmorphismCard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return (
+    <Card sx={{
+      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+      backdropFilter: 'blur(10px)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      borderRadius: 3,
+      boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)'
+    }}>
+      {children}
+    </Card>
+  );
+};
+```
+
+## 🏢 **ORGANIZATION MANAGEMENT PATTERNS**
+
+### **Multi-Tenant Data Architecture**
+```typescript
+// MANDATORY Organization Scoping for ALL queries
+const getOrganizationData = async (organizationId: string) => {
+  // All data queries MUST include organization scoping
+  const [users, licenses, subscriptions, teamMembers] = await Promise.all([
+    db.collection('users').where('organizationId', '==', organizationId).get(),
+    db.collection('licenses').where('organizationId', '==', organizationId).get(),
+    db.collection('subscriptions').where('organizationId', '==', organizationId).get(),
+    db.collection('teamMembers').where('organizationId', '==', organizationId).get()
+  ]);
+  
+  return {
+    users: users.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+    licenses: licenses.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+    subscriptions: subscriptions.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+    teamMembers: teamMembers.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  };
+};
+```
+
+### **Organization Creation with Subscription**
+```typescript
+// Complete Organization Setup Pattern
+app.post('/organizations', async (req: Request, res: Response) => {
+  try {
+    const { name, tier = 'BASIC' } = req.body;
+    
+    // Create organization
+    const organization = {
+      id: generateId(),
+      name,
+      ownerId: req.user.uid,
+      members: [req.user.uid],
+      settings: {
+        tier,
+        maxSeats: LicenseService.getLicenseCountForTier(tier),
+        usedSeats: 1
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isActive: true
+    };
+    
+    await db.collection('organizations').doc(organization.id).set(organization);
+    
+    // Update user with organization
+    await db.collection('users').doc(req.user.uid).update({
+      organizationId: organization.id,
+      role: 'owner',
+      updatedAt: new Date()
+    });
+    
+    // Generate initial licenses
+    const initialLicenseCount = LicenseService.getInitialLicenseCountForTier(tier);
+    const licenses = await LicenseService.generateLicenses(
+      organization.id,
+      tier,
+      initialLicenseCount,
+      req.user.uid
+    );
+    
+    // Save licenses to Firestore
+    const batch = db.batch();
+    licenses.forEach(license => {
+      const licenseRef = db.collection('licenses').doc(license.id);
+      batch.set(licenseRef, license);
+    });
+    await batch.commit();
+    
+    res.json({
+      success: true,
+      data: {
+        organization,
+        licenses
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+```
+
+## 🔒 **SECURITY IMPLEMENTATION**
+
+### **MANDATORY Security Headers**
+```typescript
+// ALWAYS include security middleware
+app.use(helmet({
+  hsts: config.isProduction ? { 
+    maxAge: 31536000, 
+    includeSubDomains: true, 
+    preload: true 
+  } : false,
+  contentSecurityPolicy: false, // Firebase Hosting handles CSP
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+```
+
+### **Input Validation Pattern**
+```typescript
+// MANDATORY Input Validation
+const validateInput = (schema: any) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const { error } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        error: error.details[0].message
+      });
+    }
+    next();
+  };
+};
+
+// Usage
+const createTeamMemberSchema = Joi.object({
+  email: Joi.string().email().required(),
+  displayName: Joi.string().min(2).max(50).required(),
+  role: Joi.string().valid('admin', 'member', 'viewer').default('member'),
+  permissions: Joi.array().items(Joi.string()).default([])
+});
+
+app.post('/team-members', 
+  authenticateToken, 
+  validateInput(createTeamMemberSchema), 
+  async (req, res) => {
+    // Implementation
+  }
+);
+```
+
+## 📊 **SERVICE ARCHITECTURE PATTERNS**
+
+### **Service Factory Pattern (Real Implementation)**
+```typescript
+// REAL EXAMPLE: client/src/services/ServiceFactory.ts
+export class ServiceFactory {
+  private static instances: Map<string, any> = new Map();
+  
+  static getProjectService(): ProjectService {
+    if (!this.instances.has('ProjectService')) {
+      this.instances.set('ProjectService', new ProjectService(new FirestoreAdapter()));
+    }
+    return this.instances.get('ProjectService');
+  }
+  
+  static getDatasetService(): DatasetService {
+    if (!this.instances.has('DatasetService')) {
+      this.instances.set('DatasetService', new DatasetService(new FirestoreAdapter()));
+    }
+    return this.instances.get('DatasetService');
+  }
+  
+  static getTeamMemberService(): TeamMemberService {
+    if (!this.instances.has('TeamMemberService')) {
+      this.instances.set('TeamMemberService', new TeamMemberService(new FirestoreAdapter()));
+    }
+    return this.instances.get('TeamMemberService');
+  }
+}
+```
+
+### **Base Service Pattern**
+```typescript
+// REAL EXAMPLE: client/src/services/base/BaseService.ts
+export abstract class BaseService<T> {
+  constructor(protected adapter: FirestoreAdapter) {}
+  
+  abstract getAll(): Promise<T[]>;
+  abstract getById(id: string): Promise<T | null>;
+  abstract create(data: Partial<T>): Promise<T>;
+  abstract update(id: string, data: Partial<T>): Promise<T>;
+  abstract delete(id: string): Promise<void>;
+  
+  // Common organization scoping
+  protected addOrganizationScope(query: any, organizationId: string) {
+    return query.where('organizationId', '==', organizationId);
+  }
+}
+```
+
+## ⚠️ **CRITICAL ERROR PREVENTION**
+
+### **NEVER Do These**
+- ❌ Skip Stripe webhook signature verification
+- ❌ Store sensitive payment data in Firestore
+- ❌ Skip organization scoping in queries
+- ❌ Use hardcoded Stripe keys in client code
+- ❌ Skip input validation on payment endpoints
+- ❌ Allow cross-organization data access
+- ❌ Skip rate limiting on public endpoints
+
+### **ALWAYS Do These**
+- ✅ Verify Stripe webhooks with signature
+- ✅ Use Stripe's secure payment methods
+- ✅ Include organization scoping in ALL queries
+- ✅ Validate all payment-related inputs
+- ✅ Implement proper role-based access control
+- ✅ Use environment variables for secrets
+- ✅ Include comprehensive error handling
+
+## 🚀 **DEPLOYMENT PATTERNS**
+
+### **Build & Deploy Commands**
+```bash
+# Build all components
+pnpm build
+
+# Deploy to Firebase (Web-Only)
+firebase deploy --only hosting,functions,firestore,storage
+```
+
+### **Environment Configuration**
+```typescript
+// MANDATORY Environment Validation
+const requiredEnvVars = [
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'FIREBASE_PROJECT_ID',
+  'FIREBASE_PRIVATE_KEY'
+];
+
+requiredEnvVars.forEach(varName => {
+  if (!process.env[varName]) {
+    throw new Error(`Missing required environment variable: ${varName}`);
+  }
+});
+```
+
+This enhanced .cursorrules file is based on comprehensive analysis of the actual BACKBONE v14.2 Licensing Website codebase and provides real patterns found in production code.

@@ -321,10 +321,36 @@ class CloudProjectIntegrationService {
         throw new Error('Authentication required to create dataset');
       }
       
-      // Get user's organization ID
+      // Get user's organization ID from multiple sources
       const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
       const userData = userDoc.data();
-      const organizationId = userData?.organizationId || input.organizationId;
+      let organizationId = userData?.organizationId || input.organizationId;
+      
+      // If not found in Firestore user doc, try to get from auth context
+      if (!organizationId) {
+        try {
+          // Try to get from localStorage (licensing website stores user data there)
+          const storedUser = localStorage.getItem('auth_user');
+          if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            organizationId = parsedUser?.organizationId || parsedUser?.teamMemberData?.organizationId;
+          }
+        } catch (error) {
+          console.warn('⚠️ [CloudProjectIntegration] Could not get organization ID from localStorage during creation:', error);
+        }
+      }
+      
+      // If still not found, use the current user's UID as fallback (for personal datasets)
+      if (!organizationId) {
+        organizationId = currentUser.uid;
+      }
+      
+      console.log('🔍 [CloudProjectIntegration] Creating dataset with organization ID:', {
+        userId: currentUser.uid,
+        organizationId: organizationId,
+        inputOrganizationId: input.organizationId,
+        userDataOrganizationId: userData?.organizationId
+      });
       
       // Create dataset document reference
       const datasetRef = doc(collection(db, 'datasets'));
@@ -397,9 +423,55 @@ class CloudProjectIntegrationService {
       const { doc: docFn } = await import('firebase/firestore');
       const userDoc = await getDoc(docFn(db, 'users', currentUser.uid));
       const userData = userDoc.data();
-      const userOrganizationId = userData?.organizationId;
       
-      if (currentDataset.organizationId !== userOrganizationId) {
+      // Try multiple sources for organization ID
+      let userOrganizationId = userData?.organizationId;
+      
+      // If not found in Firestore user doc, try to get from auth context
+      if (!userOrganizationId) {
+        try {
+          // Try to get from localStorage (licensing website stores user data there)
+          const storedUser = localStorage.getItem('auth_user');
+          if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            userOrganizationId = parsedUser?.organizationId || parsedUser?.teamMemberData?.organizationId;
+          }
+        } catch (error) {
+          console.warn('⚠️ [CloudProjectIntegration] Could not get organization ID from localStorage:', error);
+        }
+      }
+      
+      // If still not found, use the current user's UID as fallback (for personal datasets)
+      if (!userOrganizationId) {
+        userOrganizationId = currentUser.uid;
+      }
+      
+      console.log('🔍 [CloudProjectIntegration] Authorization check:', {
+        datasetId,
+        currentUserId: currentUser.uid,
+        datasetOrganizationId: currentDataset.organizationId,
+        userOrganizationId: userOrganizationId,
+        userData: userData
+      });
+      
+      // Check if user has permission to update this dataset
+      // Allow if:
+      // 1. Dataset belongs to user's organization
+      // 2. User is the owner of the dataset
+      // 3. Dataset has no organization (legacy datasets)
+      const hasPermission = 
+        currentDataset.organizationId === userOrganizationId ||
+        currentDataset.ownerId === currentUser.uid ||
+        !currentDataset.organizationId;
+      
+      if (!hasPermission) {
+        console.error('❌ [CloudProjectIntegration] Authorization failed:', {
+          reason: 'Organization mismatch',
+          datasetOrganizationId: currentDataset.organizationId,
+          userOrganizationId: userOrganizationId,
+          datasetOwnerId: currentDataset.ownerId,
+          currentUserId: currentUser.uid
+        });
         throw new Error('Unauthorized: Dataset belongs to different organization');
       }
       

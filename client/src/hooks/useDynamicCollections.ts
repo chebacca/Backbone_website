@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { authService } from '@/services/authService';
 import { 
     dynamicCollectionDiscovery, 
     CollectionDiscoveryResult, 
@@ -60,8 +61,13 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
             setError(null);
             
             console.log('🔍 [useDynamicCollections] Discovering collections...');
+            
+            // Get auth token from authService
+            const authToken = authService.getStoredToken() || undefined;
+            
             const result = await dynamicCollectionDiscovery.discoverCollections(
-                organizationId || user.uid
+                organizationId || user.organizationId || user.id,
+                authToken
             );
             
             setDiscoveryResult(result);

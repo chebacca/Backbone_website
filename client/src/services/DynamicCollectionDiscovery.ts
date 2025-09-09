@@ -137,7 +137,7 @@ class DynamicCollectionDiscoveryService {
     /**
      * Discover collections dynamically from Firebase with intelligent caching
      */
-    public async discoverCollections(organizationId?: string): Promise<CollectionDiscoveryResult> {
+    public async discoverCollections(organizationId?: string, authToken?: string): Promise<CollectionDiscoveryResult> {
         const cacheKey = `collections_${organizationId || 'global'}`;
         
         // Check cache first
@@ -148,11 +148,13 @@ class DynamicCollectionDiscoveryService {
         }
 
         try {
-            // Try dynamic discovery first
-            const dynamicResult = await this.discoverFromFirebase(organizationId);
-            if (dynamicResult) {
-                this.setCachedResult(cacheKey, dynamicResult);
-                return dynamicResult;
+            // Try dynamic discovery first if we have auth token
+            if (authToken) {
+                const dynamicResult = await this.discoverFromFirebase(organizationId, authToken);
+                if (dynamicResult) {
+                    this.setCachedResult(cacheKey, dynamicResult);
+                    return dynamicResult;
+                }
             }
         } catch (error) {
             console.warn('⚠️ [DynamicCollectionDiscovery] Dynamic discovery failed, falling back to static:', error);
@@ -173,29 +175,24 @@ class DynamicCollectionDiscoveryService {
     /**
      * Discover collections from Firebase backend API
      */
-    private async discoverFromFirebase(organizationId?: string): Promise<CollectionDiscoveryResult | null> {
+    private async discoverFromFirebase(organizationId?: string, authToken?: string): Promise<CollectionDiscoveryResult | null> {
         try {
             console.log('🔍 [DynamicCollectionDiscovery] Discovering collections from Firebase...');
             
-            // Get auth token for API call
-            const auth = useAuth();
-            const user = auth?.user;
-            if (!user) {
-                console.warn('⚠️ [DynamicCollectionDiscovery] No authenticated user for collection discovery');
+            if (!authToken) {
+                console.warn('⚠️ [DynamicCollectionDiscovery] No auth token provided for collection discovery');
                 return null;
             }
-
-            const idToken = await user.getIdToken();
             
             // Call backend collection discovery API
             const response = await fetch(this.DISCOVERY_ENDPOINT, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
+                    'Authorization': `Bearer ${authToken}`
                 },
                 body: JSON.stringify({
-                    organizationId: organizationId || user.uid,
+                    organizationId: organizationId,
                     includeMetadata: true,
                     categorize: true
                 })

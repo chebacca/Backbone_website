@@ -406,28 +406,78 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                                         </Alert>
                                     )}
                                     
-                                    {Object.entries(DASHBOARD_COLLECTIONS_BY_CATEGORY).map(([categoryName, category]) => (
-                                        <Box key={categoryName} sx={{ mb: 3 }}>
-                                            <Box sx={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                gap: 1, 
-                                                mb: 1,
-                                                p: 1,
-                                                bgcolor: 'rgba(255, 255, 255, 0.05)',
-                                                borderRadius: 1,
-                                                border: '1px solid rgba(255, 255, 255, 0.1)'
-                                            }}>
-                                                <Typography sx={{ fontSize: '1.2rem' }}>{category.icon}</Typography>
-                                                <Box>
-                                                    <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600 }}>
-                                                        {categoryName}
-                                                    </Typography>
-                                                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                                                        {category.description}
-                                                    </Typography>
+                                    {Object.entries(DASHBOARD_COLLECTIONS_BY_CATEGORY).map(([categoryName, category]) => {
+                                        // Calculate selection state for this category
+                                        const categoryCollections = category.collections;
+                                        const selectedInCategory = formData.collectionAssignment?.selectedCollections?.filter(
+                                            (collection: string) => categoryCollections.includes(collection)
+                                        ) || [];
+                                        const allSelected = selectedInCategory.length === categoryCollections.length;
+                                        const someSelected = selectedInCategory.length > 0 && selectedInCategory.length < categoryCollections.length;
+                                        
+                                        // Handle select all/remove all for this category
+                                        const handleCategorySelection = () => {
+                                            const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+                                            const otherCategorySelections = currentSelections.filter(
+                                                (collection: string) => !categoryCollections.includes(collection)
+                                            );
+                                            
+                                            if (allSelected) {
+                                                // Remove all from this category
+                                                handleCollectionChange(otherCategorySelections);
+                                            } else {
+                                                // Add all from this category
+                                                handleCollectionChange([...otherCategorySelections, ...categoryCollections]);
+                                            }
+                                        };
+
+                                        return (
+                                            <Box key={categoryName} sx={{ mb: 3 }}>
+                                                <Box sx={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    gap: 1, 
+                                                    mb: 1,
+                                                    p: 1,
+                                                    bgcolor: 'rgba(255, 255, 255, 0.05)',
+                                                    borderRadius: 1,
+                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                                                }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <Typography sx={{ fontSize: '1.2rem' }}>{category.icon}</Typography>
+                                                        <Box>
+                                                            <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600 }}>
+                                                                {categoryName}
+                                                            </Typography>
+                                                            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                                {category.description}
+                                                            </Typography>
+                                                        </Box>
+                                                    </Box>
+                                                    
+                                                    {/* Add All Collections Button */}
+                                                    <Button
+                                                        size="small"
+                                                        variant="outlined"
+                                                        onClick={handleCategorySelection}
+                                                        sx={{
+                                                            borderColor: allSelected ? 'rgba(255, 255, 255, 0.3)' : '#8b5cf6',
+                                                            color: allSelected ? 'rgba(255, 255, 255, 0.8)' : '#8b5cf6',
+                                                            bgcolor: allSelected ? 'rgba(255, 255, 255, 0.05)' : 'rgba(139, 92, 246, 0.1)',
+                                                            '&:hover': {
+                                                                borderColor: allSelected ? 'rgba(255, 255, 255, 0.5)' : '#7c3aed',
+                                                                bgcolor: allSelected ? 'rgba(255, 255, 255, 0.1)' : 'rgba(139, 92, 246, 0.2)'
+                                                            },
+                                                            fontSize: '0.75rem',
+                                                            px: 1.5,
+                                                            py: 0.5,
+                                                            minWidth: 'auto'
+                                                        }}
+                                                    >
+                                                        {allSelected ? 'Remove All' : someSelected ? 'Add Remaining' : 'Add All'}
+                                                    </Button>
                                                 </Box>
-                                            </Box>
                                             
                                             <Box sx={{ 
                                                 display: 'grid', 
@@ -498,7 +548,8 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                                                 })}
                                             </Box>
                                         </Box>
-                                    ))}
+                                        );
+                                    })}
                                 </Box>
                             </Grid>
 
@@ -535,26 +586,62 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                             {/* Selected Collections Preview */}
                             {formData.collectionAssignment?.selectedCollections?.length > 0 && (
                                 <Grid item xs={12}>
-                                    <Paper sx={{ p: 2, bgcolor: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                                        <Typography variant="subtitle2" sx={{ mb: 1, color: 'white' }}>
-                                            Selected Collections ({formData.collectionAssignment.selectedCollections.length})
-                                        </Typography>
-                                        {formData.collectionAssignment.selectedCollections.map((collection: string) => (
-                                            <Box key={collection} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                                <DatasetIcon fontSize="small" color="primary" />
-                                                <Typography variant="body2" sx={{ color: 'white' }}>
-                                                    {collection}
-                                                    {formData.collectionAssignment?.organizationScope && (
-                                                        <Chip 
-                                                            label="Org Scoped" 
-                                                            size="small" 
-                                                            color="primary" 
-                                                            sx={{ ml: 1, height: 20 }}
-                                                        />
-                                                    )}
-                                                </Typography>
-                                            </Box>
-                                        ))}
+                                    <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'white' }}>
+                                        Selected Collections Preview 
+                                        <Chip 
+                                            label={`${formData.collectionAssignment.selectedCollections.length} selected`}
+                                            size="small" 
+                                            color="primary" 
+                                            variant="outlined"
+                                        />
+                                    </Typography>
+                                    <Paper sx={{ 
+                                        p: 2, 
+                                        bgcolor: 'rgba(139, 92, 246, 0.08)',
+                                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                                        borderRadius: 2
+                                    }}>
+                                        <Box sx={{ 
+                                            display: 'flex', 
+                                            flexWrap: 'wrap', 
+                                            gap: 1,
+                                            alignItems: 'center'
+                                        }}>
+                                            {formData.collectionAssignment.selectedCollections.map((collection: string) => (
+                                                <Chip
+                                                    key={collection}
+                                                    icon={<DatasetIcon fontSize="small" />}
+                                                    label={collection}
+                                                    variant="filled"
+                                                    color="secondary"
+                                                    size="small"
+                                                    sx={{
+                                                        bgcolor: 'rgba(139, 92, 246, 0.12)',
+                                                        color: 'secondary.main',
+                                                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                                                        '& .MuiChip-icon': {
+                                                            color: 'secondary.main'
+                                                        },
+                                                        '&:hover': {
+                                                            bgcolor: 'rgba(139, 92, 246, 0.16)'
+                                                        }
+                                                    }}
+                                                />
+                                            ))}
+                                            {formData.collectionAssignment?.organizationScope && (
+                                                <Chip 
+                                                    label="Organization Scoped" 
+                                                    size="small" 
+                                                    color="success"
+                                                    variant="outlined"
+                                                    sx={{ 
+                                                        ml: 1,
+                                                        fontWeight: 600,
+                                                        bgcolor: 'rgba(46, 125, 50, 0.04)'
+                                                    }}
+                                                />
+                                            )}
+                                        </Box>
                                     </Paper>
                                 </Grid>
                             )}

@@ -58,6 +58,7 @@ import {
     TableContainer,
     TableHead,
     TableRow,
+    TableSortLabel,
       Paper,
   InputAdornment,
   TablePagination,
@@ -95,7 +96,7 @@ import {
     Edit as EditIcon
 } from '@mui/icons-material';
 
-import { cloudProjectIntegration, ProjectStatus, CloudDataset } from '../services/CloudProjectIntegration';
+import { cloudProjectIntegration, CloudDataset } from '../services/CloudProjectIntegration';
 import { simplifiedStartupSequencer } from '../services/SimplifiedStartupSequencer';
 import { datasetConflictAnalyzer, DatasetConflictAnalysis } from '../services/DatasetConflictAnalyzer';
 import UnifiedProjectCreationDialog from './UnifiedProjectCreationDialog';
@@ -128,7 +129,7 @@ interface CloudProject {
     maxCollaborators?: number;
     realTimeEnabled?: boolean;
     // Enhanced project status management
-    status: 'draft' | 'active' | 'in-progress' | 'completed' | 'archived' | 'paused';
+    status: UnifiedProjectStatus;
     completionPercentage?: number;
     lastActivityAt?: string;
     teamMemberCount?: number;
@@ -198,59 +199,12 @@ const getCollaborationLimit = (user: any): number => {
     return Math.max(minLimit, Math.min(totalActiveLicenses, maxLimit));
 };
 
+// Import unified status utilities
+import { calculateEnhancedStatus, getStatusColor, getStatusDisplayText, countProjectsByStatus, type ProjectStatus as UnifiedProjectStatus } from '../../../../shared-mpc-library/status-utils';
+
 // Helper functions for project status and collaboration management
-const getProjectStatus = (project: any, teamMemberCount: number = 0, datasetCount: number = 0): 'draft' | 'active' | 'in-progress' | 'completed' | 'archived' | 'paused' => {
-    // Check for extended status in metadata first
-    if (project.metadata?.extendedStatus) {
-        const extendedStatus = project.metadata.extendedStatus;
-        if (['draft', 'active', 'in-progress', 'completed', 'archived', 'paused'].includes(extendedStatus)) {
-            return extendedStatus;
-        }
-    }
-    
-    // If explicitly archived
-    if (project.isArchived || project.status === 'archived') {
-        return 'archived';
-    }
-    
-    // If explicitly paused (legacy check)
-    if (project.status === 'paused') {
-        return 'paused';
-    }
-    
-    // If explicitly completed (legacy check)
-    if (project.status === 'completed') {
-        return 'completed';
-    }
-    
-    // If explicitly draft
-    if (project.status === 'draft') {
-        return 'draft';
-    }
-    
-    // Determine status based on activity and setup
-    const hasTeamMembers = teamMemberCount > 0;
-    const hasDatasets = datasetCount > 0;
-    const hasRecentActivity = project.lastAccessedAt && 
-        (new Date().getTime() - new Date(project.lastAccessedAt).getTime()) < (7 * 24 * 60 * 60 * 1000); // 7 days
-    
-    // If project has team members and datasets and recent activity, it's in progress
-    if (hasTeamMembers && hasDatasets && hasRecentActivity) {
-        return 'in-progress';
-    }
-    
-    // If project has some setup but no recent activity, it's active but not progressing
-    if ((hasTeamMembers || hasDatasets) && !hasRecentActivity) {
-        return 'active';
-    }
-    
-    // If project has recent activity but minimal setup, it's active
-    if (hasRecentActivity) {
-        return 'active';
-    }
-    
-    // Default to draft for new projects with minimal setup
-    return 'draft';
+const getProjectStatus = (project: any, teamMemberCount: number = 0, datasetCount: number = 0): UnifiedProjectStatus => {
+    return calculateEnhancedStatus(project, teamMemberCount, datasetCount);
 };
 
 const shouldEnableCollaboration = (project: any, teamMemberCount: number = 0): boolean => {
@@ -320,17 +274,8 @@ const calculateCompletionPercentage = (project: any, teamMemberCount: number = 0
     return Math.min(100, Math.round((completionScore / totalCriteria) * 100));
 };
 
-const getStatusColor = (status: string): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
-    switch (status) {
-        case 'draft': return 'default';
-        case 'active': return 'primary';
-        case 'in-progress': return 'info';
-        case 'completed': return 'success';
-        case 'archived': return 'default';
-        case 'paused': return 'warning';
-        default: return 'default';
-    }
-};
+// Use unified status color function
+const getStatusColorLocal = (status: string) => getStatusColor(status as UnifiedProjectStatus);
 
 const getStatusIcon = (status: string) => {
     switch (status) {
@@ -675,6 +620,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
+  // Table Sorting State
+  const [orderBy, setOrderBy] = useState<keyof CloudProject>('lastAccessedAt');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+
   // Enhanced project tracking state
   const [projectTeamMemberCounts, setProjectTeamMemberCounts] = useState<Record<string, number>>({});
   const [projectStatusUpdating, setProjectStatusUpdating] = useState<Record<string, boolean>>({});
@@ -860,18 +809,59 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         return () => window.removeEventListener('project:created' as any, onCreated);
     }, []);
 
-    // Filter projects based on search query - optimized with useMemo
-    const filteredProjects = useMemo(() => {
-        if (!searchQuery.trim()) return projects;
+    // Sorting function
+    const getComparator = <Key extends keyof CloudProject>(
+        order: 'asc' | 'desc',
+        orderBy: Key,
+    ): ((a: CloudProject, b: CloudProject) => number) => {
+        return order === 'desc'
+            ? (a, b) => descendingComparator(a, b, orderBy)
+            : (a, b) => -descendingComparator(a, b, orderBy);
+    };
+
+    const descendingComparator = <T,>(a: T, b: T, orderBy: keyof T) => {
+        const aValue = a[orderBy];
+        const bValue = b[orderBy];
         
-        const searchLower = searchQuery.toLowerCase();
-        return projects.filter(project => (
-            project.name.toLowerCase().includes(searchLower) ||
-            (project.description && project.description.toLowerCase().includes(searchLower)) ||
-            project.storageBackend.toLowerCase().includes(searchLower) ||
-            project.applicationMode.toLowerCase().includes(searchLower)
-        ));
-    }, [projects, searchQuery]);
+        // Handle undefined/null values
+        if (aValue == null && bValue == null) return 0;
+        if (aValue == null) return 1;
+        if (bValue == null) return -1;
+        
+        if (bValue < aValue) {
+            return -1;
+        }
+        if (bValue > aValue) {
+            return 1;
+        }
+        return 0;
+    };
+
+    // Handle sort request
+    const handleRequestSort = (property: keyof CloudProject) => {
+        const isAsc = orderBy === property && order === 'asc';
+        setOrder(isAsc ? 'desc' : 'asc');
+        setOrderBy(property);
+    };
+
+    // Filter and sort projects - optimized with useMemo
+    const filteredProjects = useMemo(() => {
+        let filtered = projects;
+        
+        // Apply search filter
+        if (searchQuery.trim()) {
+            const searchLower = searchQuery.toLowerCase();
+            filtered = projects.filter(project => (
+                project.name.toLowerCase().includes(searchLower) ||
+                (project.description && project.description.toLowerCase().includes(searchLower)) ||
+                project.storageBackend.toLowerCase().includes(searchLower) ||
+                project.applicationMode.toLowerCase().includes(searchLower)
+            ));
+        }
+        
+        // Apply sorting
+        return filtered.sort(getComparator(order, orderBy));
+    }, [projects, searchQuery, order, orderBy]);
 
     // Reset page when search changes
     useEffect(() => {
@@ -1361,7 +1351,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     };
 
     // Function to update project status
-    const updateProjectStatus = useCallback(async (projectId: string, newStatus: 'draft' | 'active' | 'in-progress' | 'completed' | 'archived' | 'paused') => {
+    const updateProjectStatus = useCallback(async (projectId: string, newStatus: UnifiedProjectStatus) => {
         try {
             setProjectStatusUpdating(prev => ({ ...prev, [projectId]: true }));
             
@@ -1471,14 +1461,27 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         return date.toLocaleDateString();
     };
 
-    const activeProjects = projects.filter(p => p.isActive && !p.isArchived);
-    const archivedProjects = projects.filter(p => p.isArchived);
+    // Use unified status counting for consistent statistics
+    const statusCounts = countProjectsByStatus(projects, projectTeamMemberCounts, projectDatasetCounts);
+    
+    const activeProjects = projects.filter(p => {
+        const teamMemberCount = projectTeamMemberCounts[p.id] || 0;
+        const datasetCount = projectDatasetCounts[p.id] || 0;
+        const status = getProjectStatus(p, teamMemberCount, datasetCount);
+        return status === 'active' || status === 'in-progress';
+    });
+    const archivedProjects = projects.filter(p => {
+        const teamMemberCount = projectTeamMemberCounts[p.id] || 0;
+        const datasetCount = projectDatasetCounts[p.id] || 0;
+        const status = getProjectStatus(p, teamMemberCount, datasetCount);
+        return status === 'archived';
+    });
 
-    // Calculate analytics data
+    // Calculate analytics data using unified status counting
     const analyticsData = {
         totalProjects: projects.length,
-        activeProjects: activeProjects.length,
-        archivedProjects: archivedProjects.length,
+        activeProjects: statusCounts.active + statusCounts['in-progress'],
+        archivedProjects: statusCounts.archived,
         collaborativeProjects: projects.filter(p => p.allowCollaboration).length,
         totalDatasets: Object.values(projectDatasetCounts).reduce((sum, count) => sum + count, 0),
         storageBreakdown: {
@@ -2149,17 +2152,62 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             <Table sx={{ width: '100%' }} stickyHeader>
                                 <TableHead>
                                     <TableRow sx={{ backgroundColor: 'primary.main' }}>
-                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Project</TableCell>
-                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Status</TableCell>
-                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Mode</TableCell>
-                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Storage</TableCell>
+                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
+                                            <TableSortLabel
+                                                active={orderBy === 'name'}
+                                                direction={orderBy === 'name' ? order : 'asc'}
+                                                onClick={() => handleRequestSort('name')}
+                                                sx={{ color: 'white', '& .MuiTableSortLabel-icon': { color: 'white' } }}
+                                            >
+                                                Project
+                                            </TableSortLabel>
+                                        </TableCell>
+                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
+                                            <TableSortLabel
+                                                active={orderBy === 'status'}
+                                                direction={orderBy === 'status' ? order : 'asc'}
+                                                onClick={() => handleRequestSort('status')}
+                                                sx={{ color: 'white', '& .MuiTableSortLabel-icon': { color: 'white' } }}
+                                            >
+                                                Status
+                                            </TableSortLabel>
+                                        </TableCell>
+                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
+                                            <TableSortLabel
+                                                active={orderBy === 'applicationMode'}
+                                                direction={orderBy === 'applicationMode' ? order : 'asc'}
+                                                onClick={() => handleRequestSort('applicationMode')}
+                                                sx={{ color: 'white', '& .MuiTableSortLabel-icon': { color: 'white' } }}
+                                            >
+                                                Mode
+                                            </TableSortLabel>
+                                        </TableCell>
+                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
+                                            <TableSortLabel
+                                                active={orderBy === 'storageBackend'}
+                                                direction={orderBy === 'storageBackend' ? order : 'asc'}
+                                                onClick={() => handleRequestSort('storageBackend')}
+                                                sx={{ color: 'white', '& .MuiTableSortLabel-icon': { color: 'white' } }}
+                                            >
+                                                Storage
+                                            </TableSortLabel>
+                                        </TableCell>
                                         {isTeamMember() && (
                                             <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Your Role</TableCell>
                                         )}
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Team</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Datasets</TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Collaboration</TableCell>
-                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Last Accessed</TableCell>
+                                        <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
+                                            <TableSortLabel
+                                                active={orderBy === 'lastAccessedAt'}
+                                                direction={orderBy === 'lastAccessedAt' ? order : 'asc'}
+                                                onClick={() => handleRequestSort('lastAccessedAt')}
+                                                sx={{ color: 'white', '& .MuiTableSortLabel-icon': { color: 'white' } }}
+                                            >
+                                                Last Accessed
+                                            </TableSortLabel>
+                                        </TableCell>
                                         <TableCell sx={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Actions</TableCell>
                                     </TableRow>
                                 </TableHead>
@@ -2185,7 +2233,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                     size="small"
                                                     icon={getStatusIcon(project.status)}
                                                     label={project.status.charAt(0).toUpperCase() + project.status.slice(1).replace('-', ' ')}
-                                                    color={getStatusColor(project.status)}
+                                                    color={getStatusColorLocal(project.status)}
                                                     variant="filled"
                                                     sx={{ fontWeight: 600 }}
                                                 />
@@ -2257,11 +2305,11 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                         <Chip
                                                             size="small"
                                                             icon={<GroupIcon />}
-                                                            label={`${project.maxCollaborators || getCollaborationLimit(completeUser)} licenses`}
+                                                            label="Enabled"
                                                             variant="outlined"
                                                             color="success"
                                                             sx={{ fontWeight: 600 }}
-                                                            title={`Based on your active licenses: ${project.maxCollaborators || getCollaborationLimit(completeUser)} users can collaborate`}
+                                                            title="Collaboration is enabled for this project"
                                                         />
                                                         {project.realTimeEnabled && (
                                                             <Chip

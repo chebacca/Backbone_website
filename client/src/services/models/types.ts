@@ -78,7 +78,7 @@ export interface CloudProject extends BaseEntity {
   description?: string;
   ownerId: string;
   organizationId?: string;
-  status: ProjectStatus;
+  status: 'draft' | 'active' | 'in-progress' | 'completed' | 'archived' | 'paused';
   type?: string;
   settings?: Record<string, any>;
   metadata?: Record<string, any>;

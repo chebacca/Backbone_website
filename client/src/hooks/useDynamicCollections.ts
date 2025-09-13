@@ -36,6 +36,9 @@ export interface UseDynamicCollectionsResult {
     // Actions
     refresh: () => Promise<void>;
     clearCache: () => void;
+    startRealTimeMonitoring: () => void;
+    stopRealTimeMonitoring: () => void;
+    triggerSync: () => Promise<void>;
     
     // Helper functions
     getCollectionsByCategory: (categoryName: string) => string[];
@@ -48,6 +51,7 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
     const [discoveryResult, setDiscoveryResult] = useState<CollectionDiscoveryResult | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [realTimeCleanup, setRealTimeCleanup] = useState<(() => void) | null>(null);
 
     // Discover collections
     const discoverCollections = useCallback(async () => {
@@ -108,6 +112,44 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
         dynamicCollectionDiscovery.clearCache();
     }, []);
 
+    // Real-time monitoring functions
+    const startRealTimeMonitoring = useCallback(() => {
+        if (realTimeCleanup) {
+            console.log('🔄 [useDynamicCollections] Real-time monitoring already active');
+            return;
+        }
+
+        console.log('🔄 [useDynamicCollections] Starting real-time collection monitoring...');
+        const authToken = authService.getStoredToken() || undefined;
+        
+        const cleanup = dynamicCollectionDiscovery.setupRealTimeMonitoring(
+            organizationId || user?.organizationId || user?.id,
+            authToken,
+            (newResult) => {
+                console.log('🔄 [useDynamicCollections] Collections updated via real-time monitoring');
+                setDiscoveryResult(newResult);
+                setError(null);
+            }
+        );
+        
+        setRealTimeCleanup(() => cleanup);
+    }, [realTimeCleanup, organizationId, user]);
+
+    const stopRealTimeMonitoring = useCallback(() => {
+        if (realTimeCleanup) {
+            console.log('🛑 [useDynamicCollections] Stopping real-time collection monitoring...');
+            realTimeCleanup();
+            setRealTimeCleanup(null);
+        }
+    }, [realTimeCleanup]);
+
+    // Trigger sync function
+    const triggerSync = useCallback(async () => {
+        console.log('🔄 [useDynamicCollections] Manually triggering collection sync...');
+        const authToken = authService.getStoredToken() || undefined;
+        await dynamicCollectionDiscovery.triggerSync(authToken);
+    }, []);
+
     // Helper functions bound to current collections
     const getCollectionsByCategoryBound = useCallback((categoryName: string): string[] => {
         if (!discoveryResult) return [];
@@ -123,6 +165,15 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
         if (!discoveryResult) return false;
         return isValidCollection(discoveryResult.collections, collectionName);
     }, [discoveryResult]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (realTimeCleanup) {
+                realTimeCleanup();
+            }
+        };
+    }, [realTimeCleanup]);
 
     // Return hook result
     return {
@@ -140,6 +191,9 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
         // Actions
         refresh,
         clearCache,
+        startRealTimeMonitoring,
+        stopRealTimeMonitoring,
+        triggerSync,
         
         // Helper functions
         getCollectionsByCategory: getCollectionsByCategoryBound,

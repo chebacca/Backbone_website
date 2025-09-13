@@ -82,6 +82,8 @@ import { cloudProjectIntegration, CloudDataset } from '../services/CloudProjectI
 import { useAuth } from '@/context/AuthContext';
 import { datasetConflictAnalyzer, DatasetCreationConflictCheck } from '../services/DatasetConflictAnalyzer';
 import { useDynamicCollections } from '../hooks/useDynamicCollections';
+import { useFirebaseCollectionSearch } from '../hooks/useCollectionSearch';
+import CollectionSearchFilter from './CollectionSearchFilter';
 import { 
     DASHBOARD_COLLECTIONS_BY_CATEGORY as STATIC_COLLECTIONS, 
     ALL_DASHBOARD_COLLECTIONS as STATIC_ALL_COLLECTIONS
@@ -324,7 +326,7 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
     const [existingDatasets, setExistingDatasets] = useState<CloudDataset[]>([]);
     const [loadingConflictCheck, setLoadingConflictCheck] = useState(false);
 
-    // 🔥 DYNAMIC COLLECTIONS: Real-time collection discovery
+    // 🔥 DYNAMIC COLLECTIONS: Real-time collection discovery with auto-monitoring
     const { 
         collections: DASHBOARD_COLLECTIONS_BY_CATEGORY, 
         allCollections: ALL_DASHBOARD_COLLECTIONS,
@@ -332,9 +334,27 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
         error: collectionsError,
         source: collectionsSource,
         refresh: refreshCollections,
+        startRealTimeMonitoring,
+        stopRealTimeMonitoring,
         isValidCollection,
         getCategoryForCollection 
     } = useDynamicCollections();
+
+    // 🔍 COLLECTION SEARCH: Advanced search and filtering for collections
+    const {
+        state: searchState,
+        actions: searchActions,
+        filteredCollections,
+        getStatistics
+    } = useFirebaseCollectionSearch(
+        DASHBOARD_COLLECTIONS_BY_CATEGORY,
+        formData.collectionAssignment?.selectedCollections || [],
+        {
+            initialSearchQuery: '',
+            initialCategory: 'all',
+            initialShowSelectedOnly: false
+        }
+    );
 
     // Reset form when dialog opens - use useCallback to prevent unnecessary re-renders
     const resetForm = useCallback(() => {
@@ -361,6 +381,19 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
             resetForm();
         }
     }, [open, resetForm]);
+
+    // 🔄 REAL-TIME COLLECTION MONITORING: Start monitoring when dialog opens
+    useEffect(() => {
+        if (open) {
+            console.log('🔄 [DatasetCreationWizard] Starting real-time collection monitoring...');
+            startRealTimeMonitoring();
+            
+            return () => {
+                console.log('🛑 [DatasetCreationWizard] Stopping real-time collection monitoring...');
+                stopRealTimeMonitoring();
+            };
+        }
+    }, [open, startRealTimeMonitoring, stopRealTimeMonitoring]);
 
     // Memoize form data updates to prevent unnecessary re-renders
     const updateFormData = useCallback((updates: Partial<DatasetCreationOptions>) => {
@@ -557,6 +590,50 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
             setLoadingConflictCheck(false);
         }
     }, [formData.cloudProvider, formData.name, formData.collectionAssignment, existingDatasets]);
+
+    // Handle collection toggle for search filter
+    const handleCollectionToggle = useCallback((collection: string) => {
+        const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+        const newSelections = currentSelections.includes(collection)
+            ? currentSelections.filter(c => c !== collection)
+            : [...currentSelections, collection];
+        
+        updateFormData({
+            collectionAssignment: {
+                ...formData.collectionAssignment,
+                selectedCollections: newSelections,
+                includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                dataFilters: formData.collectionAssignment?.dataFilters || [],
+                organizationScope: formData.collectionAssignment?.organizationScope !== false
+            }
+        });
+    }, [formData.collectionAssignment, updateFormData]);
+
+    // Handle select all collections
+    const handleSelectAll = useCallback(() => {
+        updateFormData({
+            collectionAssignment: {
+                ...formData.collectionAssignment,
+                selectedCollections: ALL_DASHBOARD_COLLECTIONS,
+                includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                dataFilters: formData.collectionAssignment?.dataFilters || [],
+                organizationScope: formData.collectionAssignment?.organizationScope !== false
+            }
+        });
+    }, [formData.collectionAssignment, updateFormData, ALL_DASHBOARD_COLLECTIONS]);
+
+    // Handle deselect all collections
+    const handleDeselectAll = useCallback(() => {
+        updateFormData({
+            collectionAssignment: {
+                ...formData.collectionAssignment,
+                selectedCollections: [],
+                includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                dataFilters: formData.collectionAssignment?.dataFilters || [],
+                organizationScope: formData.collectionAssignment?.organizationScope !== false
+            }
+        });
+    }, [formData.collectionAssignment, updateFormData]);
 
     // Load existing datasets when dialog opens
     useEffect(() => {
@@ -965,220 +1042,27 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                     </Alert>
                                 </Grid>
                                 <Grid item xs={12}>
-                                    <Box sx={{ mb: 2 }}>
-                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                                            <Typography variant="subtitle2" sx={{ color: 'white' }}>
-                                                Select Collections by Category
-                                            </Typography>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                <Chip
-                                                    size="small"
-                                                    label={collectionsLoading ? 'Loading...' : `${ALL_DASHBOARD_COLLECTIONS.length} collections`}
-                                                    color={collectionsSource === 'dynamic' ? 'success' : collectionsSource === 'cached' ? 'info' : 'default'}
-                                                    variant="outlined"
-                                                    sx={{ 
-                                                        color: 'white',
-                                                        borderColor: 'rgba(255, 255, 255, 0.3)',
-                                                        '& .MuiChip-label': { fontSize: '0.75rem' }
-                                                    }}
-                                                />
-                                                {collectionsSource === 'dynamic' && (
-                                                    <IconButton
-                                                        size="small"
-                                                        onClick={refreshCollections}
-                                                        sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
-                                                        title="Refresh collections"
-                                                    >
-                                                        <RefreshIcon fontSize="small" />
-                                                    </IconButton>
-                                                )}
-                                            </Box>
-                                        </Box>
-                                        
-                                        {Object.entries(DASHBOARD_COLLECTIONS_BY_CATEGORY).map(([categoryName, category]) => {
-                                            const currentSelections = formData.collectionAssignment?.selectedCollections || [];
-                                            const categoryCollections = category.collections;
-                                            const selectedInCategory = categoryCollections.filter(collection => 
-                                                currentSelections.includes(collection)
-                                            );
-                                            const allSelected = selectedInCategory.length === categoryCollections.length;
-                                            const someSelected = selectedInCategory.length > 0;
-
-                                            const handleAddAllCollections = () => {
-                                                let newSelections;
-                                                if (allSelected) {
-                                                    // Remove all collections from this category
-                                                    newSelections = currentSelections.filter(collection => 
-                                                        !categoryCollections.includes(collection)
-                                                    );
-                                                } else {
-                                                    // Add all collections from this category
-                                                    const collectionsToAdd = categoryCollections.filter(collection => 
-                                                        !currentSelections.includes(collection)
-                                                    );
-                                                    newSelections = [...currentSelections, ...collectionsToAdd];
-                                                }
-                                                
-                                                updateFormData({
-                                                    collectionAssignment: {
-                                                        ...formData.collectionAssignment,
-                                                        selectedCollections: newSelections,
-                                                        includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
-                                                        dataFilters: formData.collectionAssignment?.dataFilters || [],
-                                                        organizationScope: formData.collectionAssignment?.organizationScope !== false
-                                                    }
-                                                });
-                                            };
-
-                                            return (
-                                            <Box key={categoryName} sx={{ mb: 3 }}>
-                                                <Box sx={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    gap: 1, 
-                                                    mb: 1,
-                                                    p: 1,
-                                                    bgcolor: 'rgba(255, 255, 255, 0.05)',
-                                                    borderRadius: 1,
-                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                                                }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                        <Typography sx={{ fontSize: '1.2rem' }}>{category.icon}</Typography>
-                                                        <Box>
-                                                            <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600 }}>
-                                                                {categoryName}
-                                                            </Typography>
-                                                            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                                                                {category.description}
-                                                            </Typography>
-                                                        </Box>
-                                                    </Box>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                        <Typography variant="caption" sx={{ 
-                                                            color: 'rgba(255, 255, 255, 0.6)',
-                                                            minWidth: '80px',
-                                                            textAlign: 'right'
-                                                        }}>
-                                                            {selectedInCategory.length}/{categoryCollections.length} selected
-                                                        </Typography>
-                                                        <Button
-                                                            variant={allSelected ? "outlined" : "contained"}
-                                                            size="small"
-                                                            onClick={handleAddAllCollections}
-                                                            sx={{
-                                                                minWidth: '100px',
-                                                                textTransform: 'none',
-                                                                fontSize: '0.75rem',
-                                                                py: 0.5,
-                                                                px: 1.5,
-                                                                ...(allSelected ? {
-                                                                    borderColor: 'rgba(239, 68, 68, 0.5)',
-                                                                    color: '#ef4444',
-                                                                    '&:hover': {
-                                                                        borderColor: '#ef4444',
-                                                                        backgroundColor: 'rgba(239, 68, 68, 0.1)'
-                                                                    }
-                                                                } : {
-                                                                    background: someSelected 
-                                                                        ? 'linear-gradient(135deg, #f59e0b, #f97316)'
-                                                                        : 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-                                                                    color: 'white',
-                                                                    '&:hover': {
-                                                                        background: someSelected
-                                                                            ? 'linear-gradient(135deg, #d97706, #ea580c)'
-                                                                            : 'linear-gradient(135deg, #7c3aed, #9333ea)',
-                                                                        transform: 'translateY(-1px)'
-                                                                    }
-                                                                })
-                                                            }}
-                                                        >
-                                                            {allSelected ? 'Remove All' : someSelected ? 'Add Remaining' : 'Add All'}
-                                                        </Button>
-                                                    </Box>
-                                                </Box>
-                                                
-                                                <Box sx={{ 
-                                                    display: 'grid', 
-                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
-                                                    gap: 1,
-                                                    pl: 2
-                                                }}>
-                                                    {category.collections.map((collection) => {
-                                                        const isSelected = formData.collectionAssignment?.selectedCollections?.includes(collection) || false;
-                                                        return (
-                                                            <Box
-                                                                key={collection}
-                                                                onClick={() => {
-                                                                    const currentSelections = formData.collectionAssignment?.selectedCollections || [];
-                                                                    const newSelections = isSelected
-                                                                        ? currentSelections.filter(c => c !== collection)
-                                                                        : [...currentSelections, collection];
-                                                                    
-                                                                    updateFormData({
-                                                                        collectionAssignment: {
-                                                                            ...formData.collectionAssignment,
-                                                                            selectedCollections: newSelections,
-                                                                            includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
-                                                                            dataFilters: formData.collectionAssignment?.dataFilters || [],
-                                                                            organizationScope: formData.collectionAssignment?.organizationScope !== false
-                                                                        }
-                                                                    });
-                                                                }}
-                                                                sx={{
-                                                                    p: 1.5,
-                                                                    border: isSelected 
-                                                                        ? '2px solid #8b5cf6' 
-                                                                        : '1px solid rgba(255, 255, 255, 0.2)',
-                                                                    borderRadius: 1,
-                                                                    bgcolor: isSelected 
-                                                                        ? 'rgba(139, 92, 246, 0.1)' 
-                                                                        : 'rgba(255, 255, 255, 0.02)',
-                                                                    cursor: 'pointer',
-                                                                    transition: 'all 0.2s ease',
-                                                                    '&:hover': {
-                                                                        bgcolor: isSelected 
-                                                                            ? 'rgba(139, 92, 246, 0.2)' 
-                                                                            : 'rgba(255, 255, 255, 0.05)',
-                                                                        borderColor: isSelected 
-                                                                            ? '#8b5cf6' 
-                                                                            : 'rgba(255, 255, 255, 0.4)',
-                                                                        transform: 'translateY(-1px)'
-                                                                    }
-                                                                }}
-                                                            >
-                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                                    <StorageIcon 
-                                                                        fontSize="small" 
-                                                                        sx={{ 
-                                                                            color: isSelected ? '#8b5cf6' : 'rgba(255, 255, 255, 0.7)' 
-                                                                        }} 
-                                                                    />
-                                                                    <Typography 
-                                                                        variant="body2" 
-                                                                        sx={{ 
-                                                                            color: isSelected ? '#8b5cf6' : 'white',
-                                                                            fontWeight: isSelected ? 600 : 400,
-                                                                            fontSize: '0.85rem'
-                                                                        }}
-                                                                    >
-                                                                        {collection}
-                                                                    </Typography>
-                                                                    {isSelected && (
-                                                                        <CheckIcon 
-                                                                            fontSize="small" 
-                                                                            sx={{ color: '#8b5cf6', ml: 'auto' }} 
-                                                                        />
-                                                                    )}
-                                                                </Box>
-                                                            </Box>
-                                                        );
-                                                    })}
-                                                </Box>
-                                            </Box>
-                                            );
-                                        })}
-                                    </Box>
+                                    <CollectionSearchFilter
+                                        collections={DASHBOARD_COLLECTIONS_BY_CATEGORY}
+                                        allCollections={ALL_DASHBOARD_COLLECTIONS}
+                                        selectedCollections={formData.collectionAssignment?.selectedCollections || []}
+                                        searchQuery={searchState.searchQuery}
+                                        selectedCategory={searchState.selectedCategory}
+                                        showSelectedOnly={searchState.showSelectedOnly}
+                                        onSearchChange={searchActions.setSearchQuery}
+                                        onCategoryChange={searchActions.setSelectedCategory}
+                                        onShowSelectedOnlyChange={searchActions.setShowSelectedOnly}
+                                        onCollectionToggle={handleCollectionToggle}
+                                        onSelectAll={handleSelectAll}
+                                        onDeselectAll={handleDeselectAll}
+                                        onRefresh={refreshCollections}
+                                        loading={collectionsLoading}
+                                        error={collectionsError}
+                                        totalCount={ALL_DASHBOARD_COLLECTIONS.length}
+                                        selectedCount={formData.collectionAssignment?.selectedCollections?.length || 0}
+                                        variant="wizard"
+                                        compact={false}
+                                    />
                                 </Grid>
                                 <Grid item xs={12}>
                                     <FormControlLabel
@@ -1249,10 +1133,10 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                                         size="small"
                                                         sx={{
                                                             bgcolor: 'rgba(25, 118, 210, 0.08)',
-                                                            color: 'primary.main',
+                                                            color: '#ffffff',
                                                             border: '1px solid rgba(25, 118, 210, 0.2)',
                                                             '& .MuiChip-icon': {
-                                                                color: 'primary.main'
+                                                                color: '#ffffff'
                                                             },
                                                             '&:hover': {
                                                                 bgcolor: 'rgba(25, 118, 210, 0.12)'

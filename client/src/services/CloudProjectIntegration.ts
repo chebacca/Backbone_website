@@ -283,7 +283,72 @@ class CloudProjectIntegrationService {
    * Unassign a dataset from a project
    */
   public async unassignDatasetFromProject(projectId: string, datasetId: string): Promise<void> {
-    // await this.serviceFactory.getDatasetService().unassignDatasetFromProject(projectId, datasetId);
+    await this.unassignDatasetFromProjectInFirestore(projectId, datasetId);
+  }
+
+  /**
+   * Unassign a dataset from a project directly in Firestore (webonly mode)
+   */
+  private async unassignDatasetFromProjectInFirestore(projectId: string, datasetId: string): Promise<void> {
+    try {
+      console.log('🔍 [CloudProjectIntegration] Unassigning dataset from project in Firestore:', { projectId, datasetId });
+      
+      const { db } = await import('./firebase');
+      const { doc, updateDoc, getDoc, collection, query, where, getDocs, deleteDoc } = await import('firebase/firestore');
+      
+      // First, check if the dataset exists
+      const datasetRef = doc(db, 'datasets', datasetId);
+      const datasetDoc = await getDoc(datasetRef);
+      
+      if (!datasetDoc.exists()) {
+        throw new Error('Dataset not found');
+      }
+      
+      // Check if the dataset is actually assigned to this project
+      const datasetData = datasetDoc.data();
+      if (datasetData.projectId !== projectId) {
+        console.log('⚠️ [CloudProjectIntegration] Dataset is not assigned to this project, but continuing cleanup...');
+      }
+      
+      // 🚨 CRITICAL FIX: Remove the project assignment from dataset
+      await updateDoc(datasetRef, {
+        projectId: null,
+        updatedAt: new Date().toISOString()
+      });
+      console.log('✅ [CloudProjectIntegration] Cleared projectId from dataset');
+
+      // 🚨 CRITICAL FIX: Remove ALL links from the project_datasets collection
+      const projectDatasetQuery = query(
+        collection(db, 'project_datasets'),
+        where('projectId', '==', projectId),
+        where('datasetId', '==', datasetId)
+      );
+      
+      const projectDatasetDocs = await getDocs(projectDatasetQuery);
+      console.log(`🔍 [CloudProjectIntegration] Found ${projectDatasetDocs.size} project_datasets links to remove`);
+      
+      const deletePromises: Promise<void>[] = [];
+      projectDatasetDocs.forEach((docSnapshot) => {
+        console.log(`🗑️ [CloudProjectIntegration] Removing project_datasets link: ${docSnapshot.id}`);
+        deletePromises.push(deleteDoc(docSnapshot.ref));
+      });
+      
+      await Promise.all(deletePromises);
+      console.log(`✅ [CloudProjectIntegration] Removed ${deletePromises.length} project_datasets links`);
+
+      // Update the project document to reflect the dataset removal
+      const projectRef = doc(db, 'projects', projectId);
+      await updateDoc(projectRef, {
+        updatedAt: new Date().toISOString()
+      });
+      console.log('✅ [CloudProjectIntegration] Updated project timestamp');
+
+      console.log('🎉 [CloudProjectIntegration] Successfully unassigned dataset from project');
+      
+    } catch (error) {
+      console.error('❌ [CloudProjectIntegration] Error unassigning dataset from project:', error);
+      throw error;
+    }
   }
 
 
@@ -291,8 +356,53 @@ class CloudProjectIntegrationService {
    * Delete a dataset permanently
    */
   public async deleteDataset(datasetId: string): Promise<boolean> {
-    // return await this.serviceFactory.getDatasetService().deleteDataset(datasetId);
-    return false;
+    try {
+      console.log('🗑️ [CloudProjectIntegration] Deleting dataset:', datasetId);
+      
+      const { db } = await import('./firebase');
+      const { doc, getDoc, collection, query, where, getDocs, deleteDoc, writeBatch } = await import('firebase/firestore');
+      
+      // First, check if the dataset exists
+      const datasetRef = doc(db, 'datasets', datasetId);
+      const datasetDoc = await getDoc(datasetRef);
+      
+      if (!datasetDoc.exists()) {
+        throw new Error('Dataset not found');
+      }
+      
+      const datasetData = datasetDoc.data();
+      console.log('🔍 [CloudProjectIntegration] Dataset found:', datasetData.name);
+      
+      // Create a batch to delete all related data
+      const batch = writeBatch(db);
+      
+      // 1. Delete all project_datasets links for this dataset
+      const projectDatasetQuery = query(
+        collection(db, 'project_datasets'),
+        where('datasetId', '==', datasetId)
+      );
+      
+      const projectDatasetDocs = await getDocs(projectDatasetQuery);
+      console.log(`🔍 [CloudProjectIntegration] Found ${projectDatasetDocs.size} project_datasets links to remove`);
+      
+      projectDatasetDocs.forEach((docSnapshot) => {
+        console.log('🗑️ [CloudProjectIntegration] Deleting project_datasets link:', docSnapshot.id);
+        batch.delete(docSnapshot.ref);
+      });
+      
+      // 2. Delete the dataset document itself
+      batch.delete(datasetRef);
+      
+      // 3. Commit the batch
+      await batch.commit();
+      
+      console.log('✅ [CloudProjectIntegration] Dataset deleted successfully');
+      return true;
+      
+    } catch (error) {
+      console.error('❌ [CloudProjectIntegration] Failed to delete dataset:', error);
+      throw error;
+    }
   }
 
   /**
@@ -357,6 +467,9 @@ class CloudProjectIntegrationService {
       const now = new Date();
       
       // Prepare dataset data
+      const collectionAssignment = (input as any).collectionAssignment;
+      const selectedCollections = collectionAssignment?.selectedCollections || [];
+      
       const datasetData = {
         id: datasetRef.id,
         name: input.name,
@@ -374,8 +487,9 @@ class CloudProjectIntegrationService {
         lastAccessedAt: now.toISOString(),
         size: 0,
         fileCount: 0,
-        // 🆕 NEW: Collection assignment for Firestore datasets
-        collectionAssignment: (input as any).collectionAssignment || null
+        // 🚨 CRITICAL FIX: Save collections in BOTH formats for compatibility
+        collections: selectedCollections, // Dashboard expects this format
+        collectionAssignment: collectionAssignment || null // Licensing website uses this format
       };
       
       // Save to Firestore
@@ -482,6 +596,11 @@ class CloudProjectIntegrationService {
         lastAccessedAt: new Date().toISOString()
       };
       
+      // 🚨 CRITICAL FIX: Handle collection assignment compatibility
+      if (updateData.collectionAssignment?.selectedCollections) {
+        updateData.collections = updateData.collectionAssignment.selectedCollections;
+      }
+      
       // Remove fields that shouldn't be updated
       delete updateData.id;
       delete updateData.ownerId;
@@ -508,6 +627,7 @@ class CloudProjectIntegrationService {
 
   /**
    * Get datasets for a project from Firestore (webonly mode)
+   * 🚨 CRITICAL FIX: Use project_datasets collection for proper linking
    */
   private async getProjectDatasetsFromFirestore(projectId: string): Promise<CloudDataset[]> {
     try {
@@ -515,7 +635,7 @@ class CloudProjectIntegrationService {
       
       // Import Firebase modules
       const { db, auth } = await import('./firebase');
-      const { collection, query, where, getDocs, orderBy, getDoc } = await import('firebase/firestore');
+      const { collection, query, where, getDocs, doc, getDoc } = await import('firebase/firestore');
       
       // 🔧 CRITICAL FIX: Wait for Firebase authentication to be ready
       const currentUser = await this.waitForFirebaseAuth();
@@ -524,70 +644,82 @@ class CloudProjectIntegrationService {
         return [];
       }
       
-      // Get user's organization ID
-      const { doc: docFn } = await import('firebase/firestore');
-      const userDoc = await getDoc(docFn(db, 'users', currentUser.uid));
-      const userData = userDoc.data();
-      const organizationId = userData?.organizationId;
+      const datasets: CloudDataset[] = [];
       
-      // 🔧 CRITICAL FIX: Use simpler queries to avoid index issues
-      let datasetsQuery;
-      if (projectId && projectId !== 'all') {
-        // Query datasets specifically assigned to this project
-        try {
-          datasetsQuery = query(
-            collection(db, 'datasets'),
-            where('projectId', '==', projectId),
-            where('status', '==', 'ACTIVE'),
-            orderBy('updatedAt', 'desc')
-          );
-        } catch (indexError) {
-          console.log('⚠️ [CloudProjectIntegration] Composite index query failed, falling back to simple query');
-          // Fallback: query without orderBy to avoid index issues
-          datasetsQuery = query(
-            collection(db, 'datasets'),
-            where('projectId', '==', projectId),
-            where('status', '==', 'ACTIVE')
-          );
+      // 🚨 CRITICAL FIX: First, get the project-dataset links from the project_datasets collection
+      // This is the SAME approach used by ProjectDatasetFilterService in the Dashboard
+      const projectDatasetQuery = query(
+        collection(db, 'project_datasets'),
+        where('projectId', '==', projectId)
+      );
+      
+      const projectDatasetSnapshot = await getDocs(projectDatasetQuery);
+      
+      if (projectDatasetSnapshot.empty) {
+        console.log(`✅ [CloudProjectIntegration] No dataset assignments found for project ${projectId}`);
+        return [];
+      }
+      
+      console.log(`🔍 [CloudProjectIntegration] Found ${projectDatasetSnapshot.size} dataset assignments for project ${projectId}`);
+      
+      // Extract dataset IDs from the links and fetch the actual dataset documents
+      for (const linkDoc of projectDatasetSnapshot.docs) {
+        const linkData = linkDoc.data();
+        const datasetId = linkData.datasetId;
+        
+        if (!datasetId) {
+          console.warn('⚠️ [CloudProjectIntegration] Project dataset link missing datasetId:', linkDoc.id);
+          continue;
         }
-      } else {
-        // Query all datasets for the organization
+        
         try {
-          datasetsQuery = query(
-            collection(db, 'datasets'),
-            where('organizationId', '==', organizationId),
-            where('status', '==', 'ACTIVE'),
-            orderBy('updatedAt', 'desc')
-          );
-        } catch (indexError) {
-          console.log('⚠️ [CloudProjectIntegration] Composite index query failed, falling back to simple query');
-          // Fallback: query without orderBy to avoid index issues
-          datasetsQuery = query(
-            collection(db, 'datasets'),
-            where('organizationId', '==', organizationId),
-            where('status', '==', 'ACTIVE')
-          );
+          // Get the actual dataset document
+          const datasetDoc = await getDoc(doc(db, 'datasets', datasetId));
+          
+          if (datasetDoc.exists()) {
+            const datasetData = datasetDoc.data();
+            
+            // Map Firestore data to CloudDataset interface
+            const dataset: CloudDataset = {
+              id: datasetDoc.id,
+              name: datasetData.name || 'Untitled Dataset',
+              description: datasetData.description || '',
+              projectId: projectId, // Set the project ID from the link
+              type: datasetData.type || 'general',
+              status: datasetData.status || 'active',
+              createdAt: datasetData.createdAt?.toDate?.()?.toISOString() || datasetData.createdAt || new Date().toISOString(),
+              updatedAt: datasetData.updatedAt?.toDate?.()?.toISOString() || datasetData.updatedAt || new Date().toISOString(),
+              size: datasetData.size || 0,
+              recordCount: datasetData.recordCount || 0,
+              schema: datasetData.schema || {},
+              tags: datasetData.tags || [],
+              isPublic: datasetData.isPublic || false,
+              ownerId: datasetData.ownerId,
+              storage: datasetData.storage || { backend: 'firestore' },
+              visibility: datasetData.visibility || 'private',
+              // Include collection assignment data for compatibility
+              collections: datasetData.collections || [],
+              collectionAssignment: datasetData.collectionAssignment || null
+            };
+            
+            datasets.push(dataset);
+            console.log(`✅ [CloudProjectIntegration] Added dataset "${dataset.name}" (${dataset.id}) for project ${projectId}`);
+          } else {
+            console.warn(`⚠️ [CloudProjectIntegration] Dataset ${datasetId} referenced in project_datasets but not found in datasets collection`);
+          }
+        } catch (datasetError) {
+          console.error(`❌ [CloudProjectIntegration] Failed to fetch dataset ${datasetId}:`, datasetError);
         }
       }
       
-      const snapshot = await getDocs(datasetsQuery);
-      const datasets = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          id: doc.id
-        } as CloudDataset;
-      });
-      
-      // Sort manually if we used fallback query (when orderBy is not available)
-      // Note: We'll always sort manually for now to ensure consistent ordering
+      // Sort by creation date (newest first)
       datasets.sort((a, b) => {
-        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        const aTime = new Date(a.createdAt).getTime();
+        const bTime = new Date(b.createdAt).getTime();
         return bTime - aTime;
       });
       
-      console.log(`✅ [CloudProjectIntegration] Found ${datasets.length} datasets for project ${projectId}`);
+      console.log(`✅ [CloudProjectIntegration] Successfully loaded ${datasets.length} datasets for project ${projectId}`);
       return datasets;
       
     } catch (error) {
@@ -696,6 +828,7 @@ class CloudProjectIntegrationService {
 
   /**
    * Assign a dataset to a project directly in Firestore (webonly mode)
+   * 🚨 CRITICAL FIX: Include collection assignment data for Dashboard compatibility
    */
   private async assignDatasetToProjectInFirestore(projectId: string, datasetId: string): Promise<void> {
     try {
@@ -703,7 +836,7 @@ class CloudProjectIntegrationService {
       
       // Import Firebase modules
       const { db } = await import('./firebase');
-      const { doc, updateDoc, getDoc, collection, addDoc } = await import('firebase/firestore');
+      const { doc, updateDoc, getDoc, collection, addDoc, query, where, getDocs } = await import('firebase/firestore');
       
       // First, check if the dataset exists
       const datasetRef = doc(db, 'datasets', datasetId);
@@ -713,6 +846,14 @@ class CloudProjectIntegrationService {
         throw new Error('Dataset not found');
       }
 
+      const datasetData = datasetDoc.data();
+      console.log('🔍 [CloudProjectIntegration] Dataset data:', {
+        id: datasetId,
+        name: datasetData?.name,
+        collections: datasetData?.collections,
+        collectionAssignment: datasetData?.collectionAssignment
+      });
+
       // Check if the project exists
       const projectRef = doc(db, 'projects', projectId);
       const projectDoc = await getDoc(projectRef);
@@ -720,6 +861,15 @@ class CloudProjectIntegrationService {
       if (!projectDoc.exists()) {
         throw new Error('Project not found');
       }
+
+      const projectData = projectDoc.data();
+      const organizationId = projectData?.organizationId || projectData?.organization_id;
+      
+      console.log('🔍 [CloudProjectIntegration] Project data:', {
+        id: projectId,
+        name: projectData?.name,
+        organizationId: organizationId
+      });
       
       // Update the dataset to assign it to the project
       await updateDoc(datasetRef, {
@@ -727,17 +877,76 @@ class CloudProjectIntegrationService {
         updatedAt: new Date().toISOString()
       });
 
-      // Create a link in the project_datasets collection (following server-side pattern)
-      const projectDatasetLink = {
-        projectId: projectId,
-        datasetId: datasetId,
-        addedByUserId: datasetDoc.data()?.ownerId || 'system',
-        addedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      // 🚨 CRITICAL FIX: Check if assignment already exists to avoid duplicates
+      const existingAssignmentQuery = query(
+        collection(db, 'project_datasets'),
+        where('projectId', '==', projectId),
+        where('datasetId', '==', datasetId)
+      );
+      
+      const existingAssignmentSnapshot = await getDocs(existingAssignmentQuery);
+      
+      if (!existingAssignmentSnapshot.empty) {
+        console.log('⚠️ [CloudProjectIntegration] Dataset already assigned to project, updating existing assignment');
+        
+        // Update existing assignment with latest collection data
+        const existingDoc = existingAssignmentSnapshot.docs[0];
+        const existingData = existingDoc.data();
+        
+        // 🚨 CRITICAL FIX: Extract collection assignments from dataset
+        const collections = datasetData?.collections || 
+                          datasetData?.collectionAssignment?.selectedCollections || 
+                          [];
+        
+        await updateDoc(existingDoc.ref, {
+          assignedCollections: collections,
+          collectionAssignment: {
+            selectedCollections: collections,
+            assignmentMode: 'EXCLUSIVE',
+            priority: 1,
+            routingEnabled: true
+          },
+          organizationId: organizationId,
+          tenantId: organizationId,
+          isActive: true,
+          updatedAt: new Date().toISOString()
+        });
+        
+        console.log('✅ [CloudProjectIntegration] Updated existing dataset assignment with collection data');
+      } else {
+        // Create new assignment with full collection data
+        console.log('🔍 [CloudProjectIntegration] Creating new dataset assignment with collection data');
+        
+        // 🚨 CRITICAL FIX: Extract collection assignments from dataset
+        const collections = datasetData?.collections || 
+                          datasetData?.collectionAssignment?.selectedCollections || 
+                          [];
+        
+        console.log('🔍 [CloudProjectIntegration] Extracted collections for assignment:', collections);
+        
+        const projectDatasetLink = {
+          projectId: projectId,
+          datasetId: datasetId,
+          addedByUserId: datasetData?.ownerId || 'system',
+          addedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          // 🚨 CRITICAL FIX: Include collection assignment data for Dashboard compatibility
+          assignedCollections: collections,
+          collectionAssignment: {
+            selectedCollections: collections,
+            assignmentMode: 'EXCLUSIVE',
+            priority: 1,
+            routingEnabled: true
+          },
+          organizationId: organizationId,
+          tenantId: organizationId,
+          isActive: true
+        };
 
-      await addDoc(collection(db, 'project_datasets'), projectDatasetLink);
+        await addDoc(collection(db, 'project_datasets'), projectDatasetLink);
+        console.log('✅ [CloudProjectIntegration] Created new dataset assignment with collection data');
+      }
 
       // Update the project document to reflect the dataset assignment
       await updateDoc(projectRef, {

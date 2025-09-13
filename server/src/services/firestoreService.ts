@@ -338,6 +338,99 @@ export interface FirestorePrivacyConsent {
 
 export class FirestoreService {
   /**
+   * 🔥 ENHANCED CUSTOM CLAIMS UPDATE METHOD
+   * Preserves ownership privileges while adding project roles
+   */
+  async updateCustomClaimsWithDualRoleSupport(userId: string, projectId: string, projectRole: string) {
+    try {
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth();
+      
+      const userRecord = await auth.getUser(userId);
+      const currentClaims = userRecord.customClaims || {};
+      
+      // Determine if user is an owner
+      const isOwner = currentClaims.role === 'OWNER' || currentClaims.isOrganizationOwner === true;
+      const ownerHierarchy = isOwner ? 100 : 0;
+      
+      // Get project role hierarchy
+      const roleHierarchy: Record<string, number> = {
+        'ADMIN': 100,
+        'MANAGER': 80,
+        'DO_ER': 60,
+        'VIEWER': 30
+      };
+      const projectHierarchy = roleHierarchy[projectRole] || 30;
+      
+      // Calculate effective hierarchy (max of owner and project hierarchy)
+      const effectiveHierarchy = Math.max(ownerHierarchy, projectHierarchy);
+      
+      // Preserve existing project assignments
+      const existingProjectAssignments = currentClaims.projectAssignments || {};
+      const updatedProjectAssignments = {
+        ...existingProjectAssignments,
+        [projectId]: {
+          roleId: projectRole,
+          roleName: projectRole,
+          hierarchy: projectHierarchy,
+          assignedAt: new Date().toISOString(),
+          syncedFromLicensing: true
+        }
+      };
+      
+      // Create enhanced custom claims that preserve ownership
+      const enhancedClaims = {
+        ...currentClaims, // Preserve all existing claims
+        
+        // Enhanced hierarchy system
+        hierarchy: effectiveHierarchy,
+        effectiveHierarchy: effectiveHierarchy,
+        dashboardHierarchy: effectiveHierarchy,
+        
+        // Dual role system
+        hasOwnershipRole: isOwner,
+        hasProjectRoles: Object.keys(updatedProjectAssignments).length > 0,
+        
+        // Project assignments
+        projectAssignments: updatedProjectAssignments,
+        currentProjectId: projectId,
+        currentProjectRole: projectRole,
+        currentProjectHierarchy: projectHierarchy,
+        
+        // Admin access preservation
+        isAdmin: effectiveHierarchy >= 90,
+        canManageOrganization: isOwner || effectiveHierarchy >= 90,
+        canAccessTimecardAdmin: effectiveHierarchy >= 90,
+        
+        // Enhanced permissions
+        permissions: [
+          ...(currentClaims.permissions || []),
+          'read:projects',
+          'write:projects',
+          ...(effectiveHierarchy >= 90 ? ['admin:organization', 'admin:timecard'] : [])
+        ].filter((perm, index, arr) => arr.indexOf(perm) === index), // Remove duplicates
+        
+        // Update metadata
+        lastUpdated: Date.now(),
+        dualRoleSystemEnabled: true
+      };
+      
+      await auth.setCustomUserClaims(userId, enhancedClaims);
+      
+      console.log(`🔥 [LICENSING DUAL ROLE CLAIMS] Enhanced claims updated for user: ${userId}`);
+      console.log(`   - Effective Hierarchy: ${effectiveHierarchy}`);
+      console.log(`   - Is Owner: ${isOwner}`);
+      console.log(`   - Admin Access: ${effectiveHierarchy >= 90}`);
+      console.log(`   - Project Assignments: ${Object.keys(updatedProjectAssignments).length}`);
+      
+      return enhancedClaims;
+    } catch (error) {
+      console.error(`❌ [LICENSING DUAL ROLE CLAIMS] Error updating claims for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Health check that ensures the Firestore Admin SDK can perform a read.
    * Creates a short-lived doc read on a lightweight collection.
    */
@@ -1821,12 +1914,61 @@ export class FirestoreService {
       err.code = 'FORBIDDEN';
       throw err;
     }
-    // Upsert link
+    
+    // 🚨 CRITICAL FIX: Extract collection assignments from dataset for Dashboard compatibility
+    const collections = (ds as any).collections || (ds as any).collectionAssignment?.selectedCollections || [];
+    const organizationId = project.organizationId || project.organization_id;
+    
+    console.log('🔍 [FirestoreService] Dataset assignment with collections:', {
+      projectId,
+      datasetId,
+      collections,
+      organizationId
+    });
+    
+    // Upsert link with collection data
     const existing = await db.collection('project_datasets')
       .where('projectId', '==', projectId).where('datasetId', '==', datasetId).limit(1).get();
-    if (!existing.empty) return existing.docs[0].data() as FirestoreProjectDataset;
+    
+    if (!existing.empty) {
+      // Update existing assignment with collection data
+      const existingDoc = existing.docs[0];
+      const linkData = {
+        assignedCollections: collections,
+        collectionAssignment: {
+          selectedCollections: collections,
+          assignmentMode: 'EXCLUSIVE',
+          priority: 1,
+          routingEnabled: true
+        },
+        organizationId: organizationId,
+        tenantId: organizationId,
+        isActive: true,
+        updatedAt: new Date()
+      };
+      await existingDoc.ref.update(linkData);
+      return { ...existingDoc.data(), ...linkData } as any;
+    }
+    
     const ref = db.collection('project_datasets').doc();
-    const link: FirestoreProjectDataset = { id: ref.id, projectId, datasetId, addedByUserId: actingUserId, addedAt: new Date() };
+    const link: any = { 
+      id: ref.id, 
+      projectId, 
+      datasetId, 
+      addedByUserId: actingUserId, 
+      addedAt: new Date(),
+      // 🚨 CRITICAL FIX: Include collection assignment data for Dashboard compatibility
+      assignedCollections: collections,
+      collectionAssignment: {
+        selectedCollections: collections,
+        assignmentMode: 'EXCLUSIVE',
+        priority: 1,
+        routingEnabled: true
+      },
+      organizationId: organizationId,
+      tenantId: organizationId,
+      isActive: true
+    };
     await ref.set(link);
     return link;
   }
@@ -2049,6 +2191,14 @@ export class FirestoreService {
 
       console.log(`[FirestoreService] Creating validated project assignment:`, projectAssignment);
       await ref.set(projectAssignment);
+
+      // STEP 8: Update user's custom claims with dual role support (preserves ownership)
+      try {
+        await this.updateCustomClaimsWithDualRoleSupport(teamMemberId, projectId, role);
+        console.log(`✅ [FirestoreService] Updated enhanced custom claims for user: ${teamMemberId}`);
+      } catch (claimsError) {
+        console.warn('⚠️ [FirestoreService] Failed to update custom claims (non-blocking):', claimsError);
+      }
       
       // STEP 8: Update project's last accessed time
       await db.collection('projects').doc(projectId).update({

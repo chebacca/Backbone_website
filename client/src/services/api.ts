@@ -29,7 +29,7 @@ const getBaseURL = (): string => {
   } else {
     // 🔥 PRODUCTION MODE: Use Cloud Run API endpoint
     // This is a web-only Firebase project that uses Cloud Run for API calls
-    const apiUrl = 'https://api-oup5qxogca-uc.a.run.app/api';
+    const apiUrl = 'https://us-central1-backbone-logic.cloudfunctions.net/api';
     console.log('[api] PRODUCTION MODE: Using Cloud Run API endpoint');
     console.log(`[api] baseURL = ${apiUrl} mode = production (web-only)`);
     return apiUrl;

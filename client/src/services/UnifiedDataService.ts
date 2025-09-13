@@ -313,7 +313,7 @@ class UnifiedDataService {
   private getApiBaseUrl(): string {
     // 🔥 PRODUCTION MODE: Use Cloud Run API endpoint
     console.log('[UnifiedDataService] PRODUCTION MODE: Using Cloud Run API endpoint');
-    return 'https://api-oup5qxogca-uc.a.run.app/api';
+    return 'https://us-central1-backbone-logic.cloudfunctions.net/api';
   }
 
   private async initializeFirebase() {

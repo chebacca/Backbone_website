@@ -691,6 +691,9 @@ export abstract class BaseService<T> {
 - ❌ Skip input validation on payment endpoints
 - ❌ Allow cross-organization data access
 - ❌ Skip rate limiting on public endpoints
+- ❌ **GUESS ANSWERS OR SOLUTIONS** - Always search and find definitive answers
+- ❌ **STOP SEARCHING** - Continue until you find the real solution
+- ❌ **MAKE ASSUMPTIONS** - Verify everything through codebase analysis
 
 ### **ALWAYS Do These**
 - ✅ Verify Stripe webhooks with signature
@@ -700,6 +703,9 @@ export abstract class BaseService<T> {
 - ✅ Implement proper role-based access control
 - ✅ Use environment variables for secrets
 - ✅ Include comprehensive error handling
+- ✅ **SEARCH THOROUGHLY** - Use all available tools to find definitive answers
+- ✅ **CONTINUE SEARCHING** - Never stop until you have the complete solution
+- ✅ **VERIFY EVERYTHING** - Cross-reference multiple sources for accuracy
 
 ## 🚀 **DEPLOYMENT PATTERNS**
 
@@ -728,5 +734,35 @@ requiredEnvVars.forEach(varName => {
   }
 });
 ```
+
+## 🚫 **ABSOLUTE NO-GUESSING POLICY**
+
+### **CRITICAL: NEVER GUESS - ALWAYS SEARCH AND FIND**
+- **MANDATORY**: When uncertain about ANY aspect of the codebase, you MUST search thoroughly
+- **MANDATORY**: Use ALL available tools (codebase_search, grep, read_file, etc.) before providing answers
+- **MANDATORY**: Continue searching until you find the definitive, accurate solution
+- **MANDATORY**: Cross-reference multiple sources to verify accuracy
+- **MANDATORY**: If you cannot find a definitive answer, explicitly state this and ask for clarification
+
+### **Search Strategy Requirements**
+1. **Start with semantic search** - Use codebase_search for understanding patterns
+2. **Use grep for specific patterns** - Find exact implementations
+3. **Read actual files** - Never rely on assumptions about file contents
+4. **Check multiple locations** - Verify patterns across different files
+5. **Use Firebase MCP tools** - For Firebase-specific operations
+6. **Consult shared-mpc-library** - Reference the knowledge base for best practices
+
+### **Response Requirements**
+- **NEVER** provide answers based on assumptions
+- **NEVER** stop searching after finding one source
+- **ALWAYS** provide evidence from actual code
+- **ALWAYS** cite specific files and line numbers when possible
+- **ALWAYS** acknowledge uncertainty if definitive answer not found
+
+### **Quality Assurance**
+- Every answer must be backed by actual code analysis
+- Every pattern must be verified through multiple sources
+- Every implementation must be based on real codebase examples
+- Every solution must be tested and validated
 
 This enhanced .cursorrules file is based on comprehensive analysis of the actual BACKBONE v14.2 Licensing Website codebase and provides real patterns found in production code.

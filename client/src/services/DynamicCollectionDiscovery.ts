@@ -14,7 +14,7 @@
  * - Organization-scoped collection filtering
  */
 
-import { collection, getDocs, query, limit, where } from 'firebase/firestore';
+import { collection, getDocs, query, limit, where, doc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { db } from './firebase';
 import { useAuth } from '@/context/AuthContext';
 
@@ -125,7 +125,10 @@ class DynamicCollectionDiscoveryService {
     private static instance: DynamicCollectionDiscoveryService;
     private cache: Map<string, CollectionDiscoveryResult> = new Map();
     private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-    private readonly DISCOVERY_ENDPOINT = 'https://us-central1-backbone-logic.cloudfunctions.net/api/collections/discover';
+    private readonly DISCOVERY_ENDPOINT = 'https://api-oup5qxogca-uc.a.run.app/collections/discover';
+    private readonly SYNC_ENDPOINT = 'https://api-oup5qxogca-uc.a.run.app/collections/sync-metadata';
+    private listeners: Map<string, Unsubscribe> = new Map();
+    private callbacks: Map<string, (result: CollectionDiscoveryResult) => void> = new Map();
 
     public static getInstance(): DynamicCollectionDiscoveryService {
         if (!DynamicCollectionDiscoveryService.instance) {
@@ -173,18 +176,18 @@ class DynamicCollectionDiscoveryService {
     }
 
     /**
-     * Discover collections from Firebase backend API
+     * Discover collections from Firebase backend API using Admin SDK
      */
     private async discoverFromFirebase(organizationId?: string, authToken?: string): Promise<CollectionDiscoveryResult | null> {
         try {
-            console.log('🔍 [DynamicCollectionDiscovery] Discovering collections from Firebase...');
+            console.log('🔍 [DynamicCollectionDiscovery] Discovering collections from Firebase Admin SDK...');
             
             if (!authToken) {
                 console.warn('⚠️ [DynamicCollectionDiscovery] No auth token provided for collection discovery');
                 return null;
             }
             
-            // Call backend collection discovery API
+            // Call backend collection discovery API with Admin SDK
             const response = await fetch(this.DISCOVERY_ENDPOINT, {
                 method: 'POST',
                 headers: {
@@ -199,7 +202,7 @@ class DynamicCollectionDiscoveryService {
             });
 
             if (!response.ok) {
-                throw new Error(`Collection discovery API failed: ${response.status}`);
+                throw new Error(`Collection discovery API failed: ${response.status} ${response.statusText}`);
             }
 
             const data = await response.json();
@@ -208,21 +211,19 @@ class DynamicCollectionDiscoveryService {
                 throw new Error(`Collection discovery failed: ${data.error}`);
             }
 
-            // Process and categorize discovered collections
-            const categorizedCollections = this.processDiscoveredCollections(data.collections);
-            
+            // Use the categorized collections directly from the backend
             const result: CollectionDiscoveryResult = {
-                collections: categorizedCollections,
-                totalCollections: this.getTotalCollectionCount(categorizedCollections),
-                lastUpdated: new Date(),
+                collections: data.collections,
+                totalCollections: data.totalCollections,
+                lastUpdated: new Date(data.lastUpdated),
                 source: 'dynamic'
             };
 
-            console.log(`✅ [DynamicCollectionDiscovery] Discovered ${result.totalCollections} collections across ${Object.keys(categorizedCollections).length} categories`);
+            console.log(`✅ [DynamicCollectionDiscovery] Discovered ${result.totalCollections} collections across ${Object.keys(data.collections).length} categories from Admin SDK`);
             return result;
 
         } catch (error) {
-            console.error('❌ [DynamicCollectionDiscovery] Firebase discovery failed:', error);
+            console.error('❌ [DynamicCollectionDiscovery] Firebase Admin SDK discovery failed:', error);
             return null;
         }
     }
@@ -375,6 +376,111 @@ class DynamicCollectionDiscoveryService {
     }
 
     /**
+     * Set up real-time collection monitoring using Firestore listeners
+     * This will automatically update collections when changes are detected
+     */
+    public setupRealTimeMonitoring(
+        organizationId?: string, 
+        authToken?: string,
+        onCollectionsChanged?: (collections: CollectionDiscoveryResult) => void
+    ): () => void {
+        const listenerId = `${organizationId || 'global'}_${Date.now()}`;
+        console.log(`🔄 [DynamicCollectionDiscovery] Setting up real-time listener: ${listenerId}`);
+        
+        // First, sync the metadata to ensure it's up to date
+        this.syncCollectionsMetadata(authToken).catch(error => {
+            console.warn('⚠️ [DynamicCollectionDiscovery] Initial metadata sync failed:', error);
+        });
+        
+        // Set up Firestore listener for collections metadata
+        const metadataRef = doc(db, '_collections_metadata', 'current');
+        const unsubscribe = onSnapshot(metadataRef, async (docSnapshot) => {
+            try {
+                console.log('🔄 [DynamicCollectionDiscovery] Collections metadata changed, updating...');
+                
+                if (docSnapshot.exists()) {
+                    const metadata = docSnapshot.data();
+                    const collections = metadata.collections || [];
+                    
+                    // Process and categorize the collections
+                    const categorizedCollections = this.processDiscoveredCollections(collections);
+                    
+                    const result: CollectionDiscoveryResult = {
+                        collections: categorizedCollections,
+                        totalCollections: this.getTotalCollectionCount(categorizedCollections),
+                        lastUpdated: metadata.lastUpdated?.toDate() || new Date(),
+                        source: 'dynamic'
+                    };
+                    
+                    // Update cache
+                    const cacheKey = `collections_${organizationId || 'global'}`;
+                    this.setCachedResult(cacheKey, result);
+                    
+                    // Notify callback
+                    if (onCollectionsChanged) {
+                        onCollectionsChanged(result);
+                    }
+                    
+                    console.log(`✅ [DynamicCollectionDiscovery] Updated ${result.totalCollections} collections via listener`);
+                } else {
+                    console.log('📋 [DynamicCollectionDiscovery] Collections metadata document does not exist, creating...');
+                    // Trigger metadata sync if document doesn't exist
+                    await this.syncCollectionsMetadata(authToken);
+                }
+            } catch (error) {
+                console.error('❌ [DynamicCollectionDiscovery] Error processing collections update:', error);
+            }
+        }, (error) => {
+            console.error('❌ [DynamicCollectionDiscovery] Firestore listener error:', error);
+        });
+        
+        // Store listener and callback
+        this.listeners.set(listenerId, unsubscribe);
+        if (onCollectionsChanged) {
+            this.callbacks.set(listenerId, onCollectionsChanged);
+        }
+        
+        // Return cleanup function
+        return () => {
+            console.log(`🛑 [DynamicCollectionDiscovery] Stopping real-time listener: ${listenerId}`);
+            const listener = this.listeners.get(listenerId);
+            if (listener) {
+                listener();
+                this.listeners.delete(listenerId);
+            }
+            this.callbacks.delete(listenerId);
+        };
+    }
+
+    /**
+     * Sync collections metadata to trigger listener updates
+     */
+    private async syncCollectionsMetadata(authToken?: string): Promise<void> {
+        if (!authToken) {
+            console.warn('⚠️ [DynamicCollectionDiscovery] No auth token for metadata sync');
+            return;
+        }
+        
+        try {
+            const response = await fetch(this.SYNC_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                }
+            });
+            
+            if (response.ok) {
+                console.log('✅ [DynamicCollectionDiscovery] Collections metadata synced');
+            } else {
+                console.warn('⚠️ [DynamicCollectionDiscovery] Metadata sync failed:', response.status);
+            }
+        } catch (error) {
+            console.error('❌ [DynamicCollectionDiscovery] Error syncing metadata:', error);
+        }
+    }
+
+    /**
      * Get total collection count
      */
     private getTotalCollectionCount(collections: DashboardCollectionsByCategory): number {
@@ -386,6 +492,27 @@ class DynamicCollectionDiscoveryService {
      */
     public getStaticCollections(): DashboardCollectionsByCategory {
         return STATIC_COLLECTIONS_BY_CATEGORY;
+    }
+
+    /**
+     * Manually trigger collection sync (call this when you know collections have changed)
+     */
+    public async triggerSync(authToken?: string): Promise<void> {
+        console.log('🔄 [DynamicCollectionDiscovery] Manually triggering collection sync...');
+        await this.syncCollectionsMetadata(authToken);
+    }
+
+    /**
+     * Clean up all listeners (useful for app shutdown)
+     */
+    public cleanup(): void {
+        console.log('🧹 [DynamicCollectionDiscovery] Cleaning up all listeners...');
+        this.listeners.forEach((unsubscribe, listenerId) => {
+            console.log(`🛑 [DynamicCollectionDiscovery] Cleaning up listener: ${listenerId}`);
+            unsubscribe();
+        });
+        this.listeners.clear();
+        this.callbacks.clear();
     }
 }
 

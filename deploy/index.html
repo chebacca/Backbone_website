@@ -24,7 +24,18 @@
     <meta property="og:description" content="Transform your production workflow with BackboneLogic, Inc.">
     <meta property="og:type" content="website">
     
-    <script src="/firebase-config.js"></script>
+    <script>
+      // Shared Firebase config to avoid drift across apps (injected globally)
+      window.FIREBASE_CONFIG = {
+        projectId: 'backbone-logic',
+        apiKey: 'AIzaSyDFnIzSYCdPsDDdvP1lympVxEeUn0AQhWs',
+        authDomain: 'backbone-logic.firebaseapp.com',
+        storageBucket: 'backbone-logic.firebasestorage.app',
+        messagingSenderId: '749245129278',
+        appId: '1:749245129278:web:dfa5647101ea160a3b276f',
+        measurementId: 'G-8SZRDQ4XVR'
+      };
+    </script>
     
     <style>
       body {
@@ -66,10 +77,10 @@
         100% { transform: rotate(360deg); }
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-6lV7JeaC.js"></script>
+    <script type="module" crossorigin src="/assets/index-DFn9BWkZ.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-CjD1bmmO.js">
-    <link rel="modulepreload" crossorigin href="/assets/mui-B0Fi-Ngj.js">
-    <link rel="modulepreload" crossorigin href="/assets/stripe-DCrHNGRE.js">
+    <link rel="modulepreload" crossorigin href="/assets/mui-SoXCytG7.js">
+    <link rel="modulepreload" crossorigin href="/assets/stripe-CJ03RTEk.js">
     <link rel="stylesheet" crossorigin href="/assets/index-CBai7h7s.css">
   </head>
   <body>

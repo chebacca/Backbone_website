@@ -62,7 +62,18 @@ import {
       Paper,
   InputAdornment,
   TablePagination,
-  CircularProgress
+  CircularProgress,
+  Popover,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Tooltip,
+  Badge
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -93,7 +104,16 @@ import {
     Pause as PauseIcon,
     Check as CheckIcon,
     Warning as WarningIcon,
-    Edit as EditIcon
+    Edit as EditIcon,
+    Help as HelpIcon,
+    School as SchoolIcon,
+    Lightbulb as LightbulbIcon,
+    Assignment as AssignmentIcon,
+    People as PeopleIcon,
+    Storage as StorageIconAlt,
+    Link as LinkIcon,
+    CheckCircleOutline as CheckCircleOutlineIcon,
+    ArrowForward as ArrowForwardIcon
 } from '@mui/icons-material';
 
 import { cloudProjectIntegration, CloudDataset } from '../services/CloudProjectIntegration';
@@ -200,7 +220,7 @@ const getCollaborationLimit = (user: any): number => {
 };
 
 // Import unified status utilities
-import { calculateEnhancedStatus, getStatusColor, getStatusDisplayText, countProjectsByStatus, type ProjectStatus as UnifiedProjectStatus } from '../../../../shared-mpc-library/status-utils';
+import { calculateEnhancedStatus, getStatusColor, getStatusDisplayText, countProjectsByStatus, type ProjectStatus as UnifiedProjectStatus } from '../utils/status-utils';
 
 // Helper functions for project status and collaboration management
 const getProjectStatus = (project: any, teamMemberCount: number = 0, datasetCount: number = 0): UnifiedProjectStatus => {
@@ -619,6 +639,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  // Info popover state
+  const [showInfoPopover, setShowInfoPopover] = useState(false);
+  const [infoPopoverAnchor, setInfoPopoverAnchor] = useState<HTMLElement | null>(null);
 
   // Table Sorting State
   const [orderBy, setOrderBy] = useState<keyof CloudProject>('lastAccessedAt');
@@ -945,46 +969,29 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         try {
             console.log('🔍 [DashboardCloudProjectsBridge] Loading dataset counts for all projects...');
             
-            // 🔧 CRITICAL FIX: Get total organization datasets instead of per-project counts
-            // This shows users how many datasets they have access to overall
-            try {
-                const allDatasets = await cloudProjectIntegration.getAllOrganizationDatasets();
-                const totalDatasetCount = allDatasets.length;
-                
-                // Set the same count for all projects to show total available datasets
-                const newCounts: Record<string, number> = {};
-                projectList.forEach(project => {
-                    newCounts[project.id] = totalDatasetCount;
-                });
-                
-                setProjectDatasetCounts(newCounts);
-                console.log(`✅ [DashboardCloudProjectsBridge] Loaded total dataset count for organization: ${totalDatasetCount}`);
-                
-            } catch (error) {
-                console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to load organization datasets, falling back to per-project counts');
-                
-                // Fallback: Load dataset counts for each project individually
-                const datasetCountPromises = projectList.map(async (project) => {
-                    try {
-                        const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
-                        return { projectId: project.id, count: datasets.length };
-                    } catch (error) {
-                        console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
-                        return { projectId: project.id, count: 0 };
-                    }
-                });
-                
-                const datasetCounts = await Promise.all(datasetCountPromises);
-                
-                // Update the projectDatasetCounts state
-                const newCounts: Record<string, number> = {};
-                datasetCounts.forEach(({ projectId, count }) => {
-                    newCounts[projectId] = count;
-                });
-                
-                setProjectDatasetCounts(newCounts);
-                console.log('✅ [DashboardCloudProjectsBridge] Loaded dataset counts for all projects (fallback):', newCounts);
-            }
+            // 🚨 CRITICAL FIX: Get ACTUAL dataset assignments per project, not organization totals
+            // Load dataset counts for each project individually to show real assignments
+            const datasetCountPromises = projectList.map(async (project) => {
+                try {
+                    const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
+                    console.log(`🔍 [DashboardCloudProjectsBridge] Project "${project.name}" has ${datasets.length} assigned datasets`);
+                    return { projectId: project.id, count: datasets.length };
+                } catch (error) {
+                    console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
+                    return { projectId: project.id, count: 0 };
+                }
+            });
+            
+            const datasetCounts = await Promise.all(datasetCountPromises);
+            
+            // Update the projectDatasetCounts state
+            const newCounts: Record<string, number> = {};
+            datasetCounts.forEach(({ projectId, count }) => {
+                newCounts[projectId] = count;
+            });
+            
+            setProjectDatasetCounts(newCounts);
+            console.log('✅ [DashboardCloudProjectsBridge] Loaded ACTUAL dataset assignments per project:', newCounts);
             
         } catch (error) {
             console.error('❌ [DashboardCloudProjectsBridge] Failed to load dataset counts for all projects:', error);
@@ -1344,6 +1351,17 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         setActionsDropdownAnchor(null);
     };
 
+    // Info popover handlers
+    const handleInfoPopoverOpen = (event: React.MouseEvent<HTMLElement>) => {
+        setInfoPopoverAnchor(event.currentTarget);
+        setShowInfoPopover(true);
+    };
+
+    const handleInfoPopoverClose = () => {
+        setShowInfoPopover(false);
+        setInfoPopoverAnchor(null);
+    };
+
     const handleProjectCreated = async (projectId: string) => {
         setShowCreateDialog(false);
         await loadProjects(); // Refresh the list
@@ -1660,48 +1678,70 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         <Box sx={{ py: 4, px: 3 }}>
             {/* Header */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Box>
-                    <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
-                        {isTeamMember() ? 'My Assigned Projects' : 'Cloud Projects'}
-                    </Typography>
-                    <Typography variant="body1" color="text.secondary">
-                        {isTeamMember() 
-                            ? (canCreateProjects() 
-                                ? 'Manage and collaborate on projects. As an admin, you can create new projects and access assigned ones.'
-                                : 'Access and collaborate on projects assigned to you by your team administrator')
-                            : 'Manage your projects with Firebase and Google Cloud Storage integration. Available for all license tiers: Basic, Pro, and Enterprise.'
-                        }
-                    </Typography>
-                    
-                    {/* Team Member Status Indicator */}
-                    {isTeamMember() && completeUser && (
-                        <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Chip
-                                icon={<PersonIcon />}
-                                label={`Team Member - ${completeUser.memberRole || 'MEMBER'}`}
-                                color="primary"
-                                size="small"
-                                sx={{ 
-                                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
-                                    border: '1px solid rgba(0, 212, 255, 0.3)',
-                                    color: 'primary.main'
-                                }}
-                            />
-                            {completeUser.organizationId && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box>
+                        <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
+                            {isTeamMember() ? 'My Assigned Projects' : 'Cloud Projects'}
+                        </Typography>
+                        <Typography variant="body1" color="text.secondary">
+                            {isTeamMember() 
+                                ? (canCreateProjects() 
+                                    ? 'Manage and collaborate on projects. As an admin, you can create new projects and access assigned ones.'
+                                    : 'Access and collaborate on projects assigned to you by your team administrator')
+                                : 'Manage your projects with Firebase and Google Cloud Storage integration. Available for all license tiers: Basic, Pro, and Enterprise.'
+                            }
+                        </Typography>
+                        
+                        {/* Team Member Status Indicator */}
+                        {isTeamMember() && completeUser && (
+                            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Chip
-                                    icon={<GroupAddIcon />}
-                                    label="Organization Access"
-                                    color="secondary"
+                                    icon={<PersonIcon />}
+                                    label={`Team Member - ${completeUser.memberRole || 'MEMBER'}`}
+                                    color="primary"
                                     size="small"
                                     sx={{ 
-                                        backgroundColor: 'rgba(156, 39, 176, 0.1)',
-                                        border: '1px solid rgba(156, 39, 176, 0.3)',
-                                        color: 'secondary.main'
+                                        backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                        border: '1px solid rgba(0, 212, 255, 0.3)',
+                                        color: 'primary.main'
                                     }}
                                 />
-                            )}
-                        </Box>
-                    )}
+                                {completeUser.organizationId && (
+                                    <Chip
+                                        icon={<GroupAddIcon />}
+                                        label="Organization Access"
+                                        color="secondary"
+                                        size="small"
+                                        sx={{ 
+                                            backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                                            border: '1px solid rgba(156, 39, 176, 0.3)',
+                                            color: 'secondary.main'
+                                        }}
+                                    />
+                                )}
+                            </Box>
+                        )}
+                    </Box>
+                    
+                    {/* Info Button */}
+                    <Tooltip title="Project Management Guide" arrow>
+                        <IconButton
+                            onClick={handleInfoPopoverOpen}
+                            sx={{
+                                backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                                border: '1px solid rgba(0, 212, 255, 0.3)',
+                                color: 'primary.main',
+                                '&:hover': {
+                                    backgroundColor: 'rgba(0, 212, 255, 0.2)',
+                                    borderColor: 'rgba(0, 212, 255, 0.5)',
+                                    transform: 'scale(1.05)'
+                                },
+                                transition: 'all 0.2s ease-in-out'
+                            }}
+                        >
+                            <HelpIcon />
+                        </IconButton>
+                    </Tooltip>
                 </Box>
                 
                 {/* Button row removed - consolidated into dropdown menu in tab row */}
@@ -3212,7 +3252,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                                                         height: 18,
                                                                                         fontSize: '0.65rem',
                                                                                         backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                                                                                        color: '#fbbf24',
+                                                                                        color: '#ffffff',
                                                                                         border: '1px solid rgba(245, 158, 11, 0.3)'
                                                                                     }}
                                                                                 />
@@ -4149,7 +4189,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                                         height: 18,
                                                                         fontSize: '0.65rem',
                                                                         backgroundColor: 'rgba(79, 70, 229, 0.2)',
-                                                                        color: '#a5b4fc',
+                                                                        color: '#ffffff',
                                                                         border: '1px solid rgba(79, 70, 229, 0.3)'
                                                                     }}
                                                                 />
@@ -5034,6 +5074,490 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     }
                 }}
             />
+
+            {/* Comprehensive Info Popover */}
+            <Popover
+                open={showInfoPopover}
+                anchorEl={infoPopoverAnchor}
+                onClose={handleInfoPopoverClose}
+                anchorOrigin={{
+                    vertical: 'bottom',
+                    horizontal: 'left',
+                }}
+                transformOrigin={{
+                    vertical: 'top',
+                    horizontal: 'left',
+                }}
+                PaperProps={{
+                    sx: {
+                        width: 800,
+                        maxWidth: '90vw',
+                        maxHeight: '80vh',
+                        overflow: 'auto',
+                        borderRadius: 3,
+                        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
+                        background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                        color: 'white',
+                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }
+                }}
+            >
+                <Box sx={{ p: 3 }}>
+                    {/* Header */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                        <Box sx={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <SchoolIcon sx={{ color: 'white', fontSize: 24 }} />
+                        </Box>
+                        <Box>
+                            <Typography variant="h5" fontWeight="bold" gutterBottom>
+                                Project Management Guide
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                                Step-by-step instructions for effective project setup and management
+                            </Typography>
+                        </Box>
+                    </Box>
+
+                    {/* Step-by-Step Workflow */}
+                    <Stepper orientation="vertical" sx={{ mb: 3 }}>
+                        {/* Step 1: Create Project */}
+                        <Step active={true}>
+                            <StepLabel
+                                StepIconComponent={() => (
+                                    <Box sx={{
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #10b981, #059669)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'white',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        1
+                                    </Box>
+                                )}
+                                sx={{ color: 'white' }}
+                            >
+                                <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                                    Create Your Project
+                                </Typography>
+                            </StepLabel>
+                            <StepContent>
+                                <Box sx={{ pl: 2, pb: 2 }}>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 2 }}>
+                                        Start by creating a new project with the proper configuration:
+                                    </Typography>
+                                    <List dense>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#10b981', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Click 'Create Project' button or use the Actions menu"
+                                                secondary="Choose between Standalone (local) or Network (collaborative) mode"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#10b981', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Configure storage backend"
+                                                secondary="Select Firestore for web-only projects, or GCS/S3 for file storage"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#10b981', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Set project name and description"
+                                                secondary="Use descriptive names that clearly identify the project purpose"
+                                            />
+                                        </ListItem>
+                                    </List>
+                                </Box>
+                            </StepContent>
+                        </Step>
+
+                        {/* Step 2: Create Datasets with Collections */}
+                        <Step active={true}>
+                            <StepLabel
+                                StepIconComponent={() => (
+                                    <Box sx={{
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'white',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        2
+                                    </Box>
+                                )}
+                                sx={{ color: 'white' }}
+                            >
+                                <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                                    Create Datasets with Collections
+                                </Typography>
+                            </StepLabel>
+                            <StepContent>
+                                <Box sx={{ pl: 2, pb: 2 }}>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 2 }}>
+                                        Datasets organize your data and define which Firestore collections to use:
+                                    </Typography>
+                                    <List dense>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <StorageIcon sx={{ color: '#3b82f6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Access Dataset Management from Actions menu"
+                                                secondary="Click 'Dataset Management' to view and create datasets"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#3b82f6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Create new dataset with 'Create Dataset' button"
+                                                secondary="Configure dataset name, description, and visibility settings"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#3b82f6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Select Firestore collections to include"
+                                                secondary="Choose which collections from your Firestore database to include in this dataset"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#3b82f6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Set dataset visibility and permissions"
+                                                secondary="Configure whether dataset is private, organization-wide, or public"
+                                            />
+                                        </ListItem>
+                                    </List>
+                                </Box>
+                            </StepContent>
+                        </Step>
+
+                        {/* Step 3: Assign Datasets to Projects */}
+                        <Step active={true}>
+                            <StepLabel
+                                StepIconComponent={() => (
+                                    <Box sx={{
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'white',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        3
+                                    </Box>
+                                )}
+                                sx={{ color: 'white' }}
+                            >
+                                <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                                    Assign Datasets to Projects
+                                </Typography>
+                            </StepLabel>
+                            <StepContent>
+                                <Box sx={{ pl: 2, pb: 2 }}>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 2 }}>
+                                        Connect your datasets to specific projects for organized data access:
+                                    </Typography>
+                                    <List dense>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <LinkIcon sx={{ color: '#f59e0b', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Click on any project in the table"
+                                                secondary="This opens the project details and management options"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#f59e0b', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Use 'Assign Dataset' option"
+                                                secondary="Select from available datasets to assign to this project"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#f59e0b', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Configure dataset permissions for the project"
+                                                secondary="Set read/write permissions and access levels for team members"
+                                            />
+                                        </ListItem>
+                                    </List>
+                                </Box>
+                            </StepContent>
+                        </Step>
+
+                        {/* Step 4: Assign Team Members */}
+                        <Step active={true}>
+                            <StepLabel
+                                StepIconComponent={() => (
+                                    <Box sx={{
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: '50%',
+                                        background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: 'white',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        4
+                                    </Box>
+                                )}
+                                sx={{ color: 'white' }}
+                            >
+                                <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>
+                                    Assign Team Members to Project Roles
+                                </Typography>
+                            </StepLabel>
+                            <StepContent>
+                                <Box sx={{ pl: 2, pb: 2 }}>
+                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 2 }}>
+                                        Add team members and assign appropriate roles for collaboration:
+                                    </Typography>
+                                    <List dense>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <PeopleIcon sx={{ color: '#8b5cf6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Access 'Team Management' from project actions"
+                                                secondary="Click on a project, then select team management options"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#8b5cf6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Add team members to the project"
+                                                secondary="Search and select team members from your organization"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#8b5cf6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Assign appropriate roles (Admin, Member, Viewer)"
+                                                secondary="Set role-based permissions for project access and management"
+                                            />
+                                        </ListItem>
+                                        <ListItem sx={{ pl: 0 }}>
+                                            <ListItemIcon>
+                                                <CheckCircleOutlineIcon sx={{ color: '#8b5cf6', fontSize: 20 }} />
+                                            </ListItemIcon>
+                                            <ListItemText 
+                                                primary="Configure collaboration settings"
+                                                secondary="Enable real-time collaboration and set collaboration limits"
+                                            />
+                                        </ListItem>
+                                    </List>
+                                </Box>
+                            </StepContent>
+                        </Step>
+                    </Stepper>
+
+                    <Divider sx={{ my: 3, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
+
+                    {/* Best Practices Section */}
+                    <Box sx={{ mb: 3 }}>
+                        <Typography variant="h6" sx={{ color: 'white', fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <LightbulbIcon sx={{ color: '#fbbf24' }} />
+                            Best Practices
+                        </Typography>
+                        
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} md={6}>
+                                <Card sx={{ 
+                                    background: 'rgba(255, 255, 255, 0.05)', 
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: 'white'
+                                }}>
+                                    <CardContent sx={{ p: 2 }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#10b981' }}>
+                                            Project Organization
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                                            • Use descriptive project names that clearly identify purpose<br/>
+                                            • Group related projects with consistent naming conventions<br/>
+                                            • Archive completed projects to keep active list clean
+                                        </Typography>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <Card sx={{ 
+                                    background: 'rgba(255, 255, 255, 0.05)', 
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: 'white'
+                                }}>
+                                    <CardContent sx={{ p: 2 }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#3b82f6' }}>
+                                            Dataset Management
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                                            • Create datasets for specific data types or use cases<br/>
+                                            • Use clear collection naming in Firestore<br/>
+                                            • Set appropriate visibility levels for data security
+                                        </Typography>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <Card sx={{ 
+                                    background: 'rgba(255, 255, 255, 0.05)', 
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: 'white'
+                                }}>
+                                    <CardContent sx={{ p: 2 }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#8b5cf6' }}>
+                                            Team Collaboration
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                                            • Assign roles based on team member responsibilities<br/>
+                                            • Use Admin role sparingly for security<br/>
+                                            • Enable collaboration only when needed
+                                        </Typography>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                            
+                            <Grid item xs={12} md={6}>
+                                <Card sx={{ 
+                                    background: 'rgba(255, 255, 255, 0.05)', 
+                                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                                    color: 'white'
+                                }}>
+                                    <CardContent sx={{ p: 2 }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#f59e0b' }}>
+                                            Security & Access
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                                            • Review dataset visibility settings regularly<br/>
+                                            • Monitor team member access and roles<br/>
+                                            • Use organization-level permissions when appropriate
+                                        </Typography>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        </Grid>
+                    </Box>
+
+                    {/* Quick Actions */}
+                    <Box sx={{ mb: 3 }}>
+                        <Typography variant="h6" sx={{ color: 'white', fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <AssignmentIcon sx={{ color: '#ef4444' }} />
+                            Quick Actions
+                        </Typography>
+                        
+                        <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                                <Button
+                                    variant="outlined"
+                                    fullWidth
+                                    startIcon={<AddIcon />}
+                                    onClick={() => {
+                                        handleInfoPopoverClose();
+                                        handleCreateProject();
+                                    }}
+                                    sx={{
+                                        borderColor: 'rgba(16, 185, 129, 0.3)',
+                                        color: '#10b981',
+                                        '&:hover': {
+                                            borderColor: '#10b981',
+                                            backgroundColor: 'rgba(16, 185, 129, 0.1)'
+                                        }
+                                    }}
+                                >
+                                    Create New Project
+                                </Button>
+                            </Grid>
+                            
+                            <Grid item xs={12} sm={6}>
+                                <Button
+                                    variant="outlined"
+                                    fullWidth
+                                    startIcon={<StorageIcon />}
+                                    onClick={() => {
+                                        handleInfoPopoverClose();
+                                        setShowDatasetManagementDialog(true);
+                                    }}
+                                    sx={{
+                                        borderColor: 'rgba(59, 130, 246, 0.3)',
+                                        color: '#3b82f6',
+                                        '&:hover': {
+                                            borderColor: '#3b82f6',
+                                            backgroundColor: 'rgba(59, 130, 246, 0.1)'
+                                        }
+                                    }}
+                                >
+                                    Manage Datasets
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </Box>
+
+                    {/* Footer */}
+                    <Box sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        pt: 2,
+                        borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}>
+                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                            Need more help? Contact support or check the documentation.
+                        </Typography>
+                        <Button
+                            variant="text"
+                            onClick={handleInfoPopoverClose}
+                            sx={{ color: 'rgba(255, 255, 255, 0.8)' }}
+                        >
+                            Close Guide
+                        </Button>
+                    </Box>
+                </Box>
+            </Popover>
 
         </Box>
     );

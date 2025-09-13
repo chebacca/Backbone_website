@@ -31,7 +31,6 @@ import {
     CircularProgress,
     FormControlLabel,
     Switch,
-    Autocomplete,
     Divider,
     Card,
     CardContent
@@ -50,6 +49,8 @@ import {
 import { CloudDataset, cloudProjectIntegration } from '../services/CloudProjectIntegration';
 import { datasetConflictAnalyzer, DatasetCreationConflictCheck } from '../services/DatasetConflictAnalyzer';
 import { useDynamicCollections } from '../hooks/useDynamicCollections';
+import { useFirebaseCollectionSearch } from '../hooks/useCollectionSearch';
+import CollectionSearchFilter from './CollectionSearchFilter';
 import { 
     DASHBOARD_COLLECTIONS_BY_CATEGORY as STATIC_COLLECTIONS, 
     ALL_DASHBOARD_COLLECTIONS as STATIC_ALL_COLLECTIONS
@@ -82,7 +83,7 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
     const [conflictCheck, setConflictCheck] = useState<DatasetCreationConflictCheck | null>(null);
     const [loadingConflictCheck, setLoadingConflictCheck] = useState(false);
     
-    // 🔥 DYNAMIC COLLECTIONS: Real-time collection discovery
+    // 🔥 DYNAMIC COLLECTIONS: Real-time collection discovery with auto-monitoring
     const { 
         collections: DASHBOARD_COLLECTIONS_BY_CATEGORY, 
         allCollections: ALL_DASHBOARD_COLLECTIONS,
@@ -90,9 +91,27 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
         error: collectionsError,
         source: collectionsSource,
         refresh: refreshCollections,
+        startRealTimeMonitoring,
+        stopRealTimeMonitoring,
         isValidCollection,
         getCategoryForCollection 
     } = useDynamicCollections();
+    
+    // 🔍 COLLECTION SEARCH: Advanced search and filtering for collections
+    const {
+        state: searchState,
+        actions: searchActions,
+        filteredCollections,
+        getStatistics
+    } = useFirebaseCollectionSearch(
+        DASHBOARD_COLLECTIONS_BY_CATEGORY,
+        formData.collectionAssignment?.selectedCollections || [],
+        {
+            initialSearchQuery: '',
+            initialCategory: 'all',
+            initialShowSelectedOnly: false
+        }
+    );
     
     // Available collections for selection (fallback to static if dynamic loading)
     const availableCollections = collectionsLoading ? STATIC_ALL_COLLECTIONS : ALL_DASHBOARD_COLLECTIONS;
@@ -104,7 +123,6 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                 name: dataset.name,
                 description: dataset.description,
                 visibility: dataset.visibility,
-                tags: dataset.tags || [],
                 collectionAssignment: dataset.collectionAssignment || {
                     selectedCollections: [],
                     includeSubcollections: false,
@@ -117,6 +135,19 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
             setConflictCheck(null);
         }
     }, [dataset, open]);
+
+    // 🔄 REAL-TIME COLLECTION MONITORING: Start monitoring when dialog opens
+    useEffect(() => {
+        if (open && dataset) {
+            console.log('🔄 [EditDatasetDialog] Starting real-time collection monitoring...');
+            startRealTimeMonitoring();
+            
+            return () => {
+                console.log('🛑 [EditDatasetDialog] Stopping real-time collection monitoring...');
+                stopRealTimeMonitoring();
+            };
+        }
+    }, [open, dataset, startRealTimeMonitoring, stopRealTimeMonitoring]);
 
     // Update form data helper
     const updateFormData = useCallback((updates: Partial<CloudDataset>) => {
@@ -201,7 +232,6 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                 name: formData.name,
                 description: formData.description,
                 visibility: formData.visibility,
-                tags: formData.tags,
                 collectionAssignment: formData.collectionAssignment
             });
 
@@ -232,6 +262,26 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
             }
         });
     }, [formData.collectionAssignment, updateFormData]);
+
+    // Handle collection toggle for search filter
+    const handleCollectionToggle = useCallback((collection: string) => {
+        const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+        const newSelections = currentSelections.includes(collection)
+            ? currentSelections.filter(c => c !== collection)
+            : [...currentSelections, collection];
+        
+        handleCollectionChange(newSelections);
+    }, [formData.collectionAssignment, handleCollectionChange]);
+
+    // Handle select all collections
+    const handleSelectAll = useCallback(() => {
+        handleCollectionChange(ALL_DASHBOARD_COLLECTIONS);
+    }, [handleCollectionChange, ALL_DASHBOARD_COLLECTIONS]);
+
+    // Handle deselect all collections
+    const handleDeselectAll = useCallback(() => {
+        handleCollectionChange([]);
+    }, [handleCollectionChange]);
 
     if (!dataset) {
         return null;
@@ -347,41 +397,6 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                         />
                     </Grid>
 
-                    <Grid item xs={12}>
-                        <Autocomplete
-                            multiple
-                            freeSolo
-                            options={[]}
-                            value={formData.tags || []}
-                            onChange={(_, newValue) => updateFormData({ tags: newValue })}
-                            renderTags={(value, getTagProps) =>
-                                value.map((option, index) => (
-                                    <Chip
-                                        variant="outlined"
-                                        label={option}
-                                        {...getTagProps({ index })}
-                                        sx={{ color: 'white', borderColor: 'rgba(255, 255, 255, 0.3)' }}
-                                    />
-                                ))
-                            }
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Tags"
-                                    placeholder="Add tags..."
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            color: 'white',
-                                            '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.3)' },
-                                            '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
-                                            '&.Mui-focused fieldset': { borderColor: '#8b5cf6' }
-                                        },
-                                        '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' }
-                                    }}
-                                />
-                            )}
-                        />
-                    </Grid>
 
                     {/* Collection Assignment (only for Firestore datasets) */}
                     {dataset.storage?.backend === 'firestore' && (
@@ -405,151 +420,28 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                                             {validationErrors.collections}
                                         </Alert>
                                     )}
-                                    
-                                    {Object.entries(DASHBOARD_COLLECTIONS_BY_CATEGORY).map(([categoryName, category]) => {
-                                        // Calculate selection state for this category
-                                        const categoryCollections = category.collections;
-                                        const selectedInCategory = formData.collectionAssignment?.selectedCollections?.filter(
-                                            (collection: string) => categoryCollections.includes(collection)
-                                        ) || [];
-                                        const allSelected = selectedInCategory.length === categoryCollections.length;
-                                        const someSelected = selectedInCategory.length > 0 && selectedInCategory.length < categoryCollections.length;
-                                        
-                                        // Handle select all/remove all for this category
-                                        const handleCategorySelection = () => {
-                                            const currentSelections = formData.collectionAssignment?.selectedCollections || [];
-                                            const otherCategorySelections = currentSelections.filter(
-                                                (collection: string) => !categoryCollections.includes(collection)
-                                            );
-                                            
-                                            if (allSelected) {
-                                                // Remove all from this category
-                                                handleCollectionChange(otherCategorySelections);
-                                            } else {
-                                                // Add all from this category
-                                                handleCollectionChange([...otherCategorySelections, ...categoryCollections]);
-                                            }
-                                        };
 
-                                        return (
-                                            <Box key={categoryName} sx={{ mb: 3 }}>
-                                                <Box sx={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    justifyContent: 'space-between',
-                                                    gap: 1, 
-                                                    mb: 1,
-                                                    p: 1,
-                                                    bgcolor: 'rgba(255, 255, 255, 0.05)',
-                                                    borderRadius: 1,
-                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                                                }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                        <Typography sx={{ fontSize: '1.2rem' }}>{category.icon}</Typography>
-                                                        <Box>
-                                                            <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600 }}>
-                                                                {categoryName}
-                                                            </Typography>
-                                                            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                                                                {category.description}
-                                                            </Typography>
-                                                        </Box>
-                                                    </Box>
-                                                    
-                                                    {/* Add All Collections Button */}
-                                                    <Button
-                                                        size="small"
-                                                        variant="outlined"
-                                                        onClick={handleCategorySelection}
-                                                        sx={{
-                                                            borderColor: allSelected ? 'rgba(255, 255, 255, 0.3)' : '#8b5cf6',
-                                                            color: allSelected ? 'rgba(255, 255, 255, 0.8)' : '#8b5cf6',
-                                                            bgcolor: allSelected ? 'rgba(255, 255, 255, 0.05)' : 'rgba(139, 92, 246, 0.1)',
-                                                            '&:hover': {
-                                                                borderColor: allSelected ? 'rgba(255, 255, 255, 0.5)' : '#7c3aed',
-                                                                bgcolor: allSelected ? 'rgba(255, 255, 255, 0.1)' : 'rgba(139, 92, 246, 0.2)'
-                                                            },
-                                                            fontSize: '0.75rem',
-                                                            px: 1.5,
-                                                            py: 0.5,
-                                                            minWidth: 'auto'
-                                                        }}
-                                                    >
-                                                        {allSelected ? 'Remove All' : someSelected ? 'Add Remaining' : 'Add All'}
-                                                    </Button>
-                                                </Box>
-                                            
-                                            <Box sx={{ 
-                                                display: 'grid', 
-                                                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
-                                                gap: 1,
-                                                pl: 2
-                                            }}>
-                                                {category.collections.map((collection) => {
-                                                    const isSelected = formData.collectionAssignment?.selectedCollections?.includes(collection) || false;
-                                                    return (
-                                                        <Box
-                                                            key={collection}
-                                                            onClick={() => {
-                                                                const currentSelections = formData.collectionAssignment?.selectedCollections || [];
-                                                                const newSelections = isSelected
-                                                                    ? currentSelections.filter((c: string) => c !== collection)
-                                                                    : [...currentSelections, collection];
-                                                                handleCollectionChange(newSelections);
-                                                            }}
-                                                            sx={{
-                                                                p: 1.5,
-                                                                border: isSelected 
-                                                                    ? '2px solid #8b5cf6' 
-                                                                    : '1px solid rgba(255, 255, 255, 0.2)',
-                                                                borderRadius: 1,
-                                                                bgcolor: isSelected 
-                                                                    ? 'rgba(139, 92, 246, 0.1)' 
-                                                                    : 'rgba(255, 255, 255, 0.02)',
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.2s ease',
-                                                                '&:hover': {
-                                                                    bgcolor: isSelected 
-                                                                        ? 'rgba(139, 92, 246, 0.2)' 
-                                                                        : 'rgba(255, 255, 255, 0.05)',
-                                                                    borderColor: isSelected 
-                                                                        ? '#8b5cf6' 
-                                                                        : 'rgba(255, 255, 255, 0.4)',
-                                                                    transform: 'translateY(-1px)'
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                                <StorageIcon 
-                                                                    fontSize="small" 
-                                                                    sx={{ 
-                                                                        color: isSelected ? '#8b5cf6' : 'rgba(255, 255, 255, 0.7)' 
-                                                                    }} 
-                                                                />
-                                                                <Typography 
-                                                                    variant="body2" 
-                                                                    sx={{ 
-                                                                        color: isSelected ? '#8b5cf6' : 'white',
-                                                                        fontWeight: isSelected ? 600 : 400,
-                                                                        fontSize: '0.85rem'
-                                                                    }}
-                                                                >
-                                                                    {collection}
-                                                                </Typography>
-                                                                {isSelected && (
-                                                                    <CheckCircleIcon 
-                                                                        fontSize="small" 
-                                                                        sx={{ color: '#8b5cf6', ml: 'auto' }} 
-                                                                    />
-                                                                )}
-                                                            </Box>
-                                                        </Box>
-                                                    );
-                                                })}
-                                            </Box>
-                                        </Box>
-                                        );
-                                    })}
+                                    <CollectionSearchFilter
+                                        collections={DASHBOARD_COLLECTIONS_BY_CATEGORY}
+                                        allCollections={ALL_DASHBOARD_COLLECTIONS}
+                                        selectedCollections={formData.collectionAssignment?.selectedCollections || []}
+                                        searchQuery={searchState.searchQuery}
+                                        selectedCategory={searchState.selectedCategory}
+                                        showSelectedOnly={searchState.showSelectedOnly}
+                                        onSearchChange={searchActions.setSearchQuery}
+                                        onCategoryChange={searchActions.setSelectedCategory}
+                                        onShowSelectedOnlyChange={searchActions.setShowSelectedOnly}
+                                        onCollectionToggle={handleCollectionToggle}
+                                        onSelectAll={handleSelectAll}
+                                        onDeselectAll={handleDeselectAll}
+                                        onRefresh={refreshCollections}
+                                        loading={collectionsLoading}
+                                        error={collectionsError}
+                                        totalCount={ALL_DASHBOARD_COLLECTIONS.length}
+                                        selectedCount={formData.collectionAssignment?.selectedCollections?.length || 0}
+                                        variant="dialog"
+                                        compact={false}
+                                    />
                                 </Box>
                             </Grid>
 
@@ -617,10 +509,10 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                                                     size="small"
                                                     sx={{
                                                         bgcolor: 'rgba(139, 92, 246, 0.12)',
-                                                        color: 'secondary.main',
+                                                        color: '#ffffff',
                                                         border: '1px solid rgba(139, 92, 246, 0.3)',
                                                         '& .MuiChip-icon': {
-                                                            color: 'secondary.main'
+                                                            color: '#ffffff'
                                                         },
                                                         '&:hover': {
                                                             bgcolor: 'rgba(139, 92, 246, 0.16)'

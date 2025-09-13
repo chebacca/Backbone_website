@@ -3,19 +3,23 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { copyFileSync, existsSync } from 'fs';
 
-// Custom plugin to copy _headers file
-const copyHeadersPlugin = () => ({
-  name: 'copy-headers',
+// Custom plugin to copy _headers and firebase-config files
+const copyFilesPlugin = () => ({
+  name: 'copy-files',
   closeBundle() {
-    const sourcePath = resolve(__dirname, 'public/_headers');
-    const targetPath = resolve(__dirname, '../deploy/_headers');
+    const filesToCopy = ['_headers', 'firebase-config.js', 'health.json'];
     
-    if (existsSync(sourcePath)) {
-      copyFileSync(sourcePath, targetPath);
-      console.log('✅ Copied _headers file to deploy directory');
-    } else {
-      console.warn('⚠️  _headers file not found in public directory');
-    }
+    filesToCopy.forEach(fileName => {
+      const sourcePath = resolve(__dirname, `public/${fileName}`);
+      const targetPath = resolve(__dirname, `../deploy/${fileName}`);
+      
+      if (existsSync(sourcePath)) {
+        copyFileSync(sourcePath, targetPath);
+        console.log(`✅ Copied ${fileName} file to deploy directory`);
+      } else {
+        console.warn(`⚠️  ${fileName} file not found in public directory`);
+      }
+    });
   }
 });
 
@@ -23,7 +27,7 @@ const copyHeadersPlugin = () => ({
 export default defineConfig({
   plugins: [
     react(),
-    copyHeadersPlugin()
+    copyFilesPlugin()
   ],
   resolve: {
     alias: {

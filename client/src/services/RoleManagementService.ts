@@ -56,7 +56,7 @@ interface RoleAssignmentResponse {
 }
 
 class RoleManagementService {
-  private baseUrl = 'https://api-oup5qxogca-uc.a.run.app';
+  private baseUrl = 'https://us-central1-backbone-logic.cloudfunctions.net';
 
   /**
    * Get authentication headers for API requests

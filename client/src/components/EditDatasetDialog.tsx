@@ -267,7 +267,7 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
     const handleCollectionToggle = useCallback((collection: string) => {
         const currentSelections = formData.collectionAssignment?.selectedCollections || [];
         const newSelections = currentSelections.includes(collection)
-            ? currentSelections.filter(c => c !== collection)
+            ? currentSelections.filter((c: any) => c !== collection)
             : [...currentSelections, collection];
         
         handleCollectionChange(newSelections);
@@ -282,6 +282,20 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
     const handleDeselectAll = useCallback(() => {
         handleCollectionChange([]);
     }, [handleCollectionChange]);
+
+    // Handle select all collections in a specific category
+    const handleSelectAllInCategory = useCallback((categoryName: string, categoryCollections: string[]) => {
+        const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+        const newSelections = [...new Set([...currentSelections, ...categoryCollections])];
+        handleCollectionChange(newSelections);
+    }, [formData.collectionAssignment, handleCollectionChange]);
+
+    // Handle deselect all collections in a specific category
+    const handleDeselectAllInCategory = useCallback((categoryName: string, categoryCollections: string[]) => {
+        const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+        const newSelections = currentSelections.filter((collection: string) => !categoryCollections.includes(collection));
+        handleCollectionChange(newSelections);
+    }, [formData.collectionAssignment, handleCollectionChange]);
 
     if (!dataset) {
         return null;
@@ -434,6 +448,8 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                                         onCollectionToggle={handleCollectionToggle}
                                         onSelectAll={handleSelectAll}
                                         onDeselectAll={handleDeselectAll}
+                                        onSelectAllInCategory={handleSelectAllInCategory}
+                                        onDeselectAllInCategory={handleDeselectAllInCategory}
                                         onRefresh={refreshCollections}
                                         loading={collectionsLoading}
                                         error={collectionsError}

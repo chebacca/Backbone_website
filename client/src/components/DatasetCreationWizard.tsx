@@ -635,6 +635,38 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
         });
     }, [formData.collectionAssignment, updateFormData]);
 
+    // Handle select all collections in a specific category
+    const handleSelectAllInCategory = useCallback((categoryName: string, categoryCollections: string[]) => {
+        const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+        const newSelections = [...new Set([...currentSelections, ...categoryCollections])];
+        
+        updateFormData({
+            collectionAssignment: {
+                ...formData.collectionAssignment,
+                selectedCollections: newSelections,
+                includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                dataFilters: formData.collectionAssignment?.dataFilters || [],
+                organizationScope: formData.collectionAssignment?.organizationScope !== false
+            }
+        });
+    }, [formData.collectionAssignment, updateFormData]);
+
+    // Handle deselect all collections in a specific category
+    const handleDeselectAllInCategory = useCallback((categoryName: string, categoryCollections: string[]) => {
+        const currentSelections = formData.collectionAssignment?.selectedCollections || [];
+        const newSelections = currentSelections.filter(collection => !categoryCollections.includes(collection));
+        
+        updateFormData({
+            collectionAssignment: {
+                ...formData.collectionAssignment,
+                selectedCollections: newSelections,
+                includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                dataFilters: formData.collectionAssignment?.dataFilters || [],
+                organizationScope: formData.collectionAssignment?.organizationScope !== false
+            }
+        });
+    }, [formData.collectionAssignment, updateFormData]);
+
     // Load existing datasets when dialog opens
     useEffect(() => {
         if (open) {
@@ -1055,6 +1087,8 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                         onCollectionToggle={handleCollectionToggle}
                                         onSelectAll={handleSelectAll}
                                         onDeselectAll={handleDeselectAll}
+                                        onSelectAllInCategory={handleSelectAllInCategory}
+                                        onDeselectAllInCategory={handleDeselectAllInCategory}
                                         onRefresh={refreshCollections}
                                         loading={collectionsLoading}
                                         error={collectionsError}

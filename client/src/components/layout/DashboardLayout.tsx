@@ -62,9 +62,6 @@ const baseNavigationItems: NavigationItem[] = [
   { text: 'Cloud Projects', icon: <Analytics />, path: '/dashboard/cloud-projects' },
   { text: 'Team Management', icon: <Group />, path: '/dashboard/team' },
   { text: 'Billing & Payments', icon: <Payment />, path: '/dashboard/billing' },
-  { text: 'Usage Analytics', icon: <Analytics />, path: '/dashboard/analytics' },
-  { text: 'Downloads', icon: <Download />, path: '/dashboard/downloads', chip: 'SDK' },
-  { text: 'Documentation', icon: <Description />, path: '/dashboard/documentation' },
   { text: 'Support', icon: <Support />, path: '/dashboard/support' },
   { text: 'Settings', icon: <Settings />, path: '/dashboard/settings' },
 ];
@@ -340,29 +337,105 @@ export const DashboardLayout: React.FC = () => {
         )}
       </List>
 
-      {/* Support Section */}
+      {/* Quick Access Section */}
       <Box sx={{ mt: 'auto', p: 2 }}>
         <Divider sx={{ mb: 2, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
-        <ListItem disablePadding>
+        <Typography 
+          variant="caption" 
+          sx={{ 
+            px: 2, 
+            py: 1, 
+            display: 'block', 
+            fontWeight: 600, 
+            color: 'text.secondary',
+            textTransform: 'uppercase',
+            letterSpacing: 1,
+          }}
+        >
+          Quick Access
+        </Typography>
+        <ListItem disablePadding sx={{ mb: 0.5 }}>
           <ListItemButton
             component={RouterLink}
-            to="/dashboard/support"
+            to="/dashboard/support#analytics"
             sx={{
               borderRadius: 2,
-              py: 1.5,
+              py: 1,
               '&:hover': {
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',
               },
             }}
           >
             <ListItemIcon sx={{ color: 'text.secondary', minWidth: 40 }}>
-              <Support />
+              <Analytics />
             </ListItemIcon>
             <ListItemText 
-              primary="Help & Support"
+              primary="Usage Analytics"
               sx={{ 
                 '& .MuiListItemText-primary': { 
-                  fontSize: '0.95rem',
+                  fontSize: '0.85rem',
+                  color: 'text.secondary',
+                } 
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding sx={{ mb: 0.5 }}>
+          <ListItemButton
+            component={RouterLink}
+            to="/dashboard/support#downloads"
+            sx={{
+              borderRadius: 2,
+              py: 1,
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              },
+            }}
+          >
+            <ListItemIcon sx={{ color: 'text.secondary', minWidth: 40 }}>
+              <Download />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Downloads"
+              sx={{ 
+                '& .MuiListItemText-primary': { 
+                  fontSize: '0.85rem',
+                  color: 'text.secondary',
+                } 
+              }}
+            />
+            <Chip
+              label="SDK"
+              size="small"
+              sx={{ 
+                fontSize: '0.6rem', 
+                height: 16,
+                backgroundColor: 'rgba(0, 212, 255, 0.2)',
+                color: 'primary.main',
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton
+            component={RouterLink}
+            to="/dashboard/support#documentation"
+            sx={{
+              borderRadius: 2,
+              py: 1,
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              },
+            }}
+          >
+            <ListItemIcon sx={{ color: 'text.secondary', minWidth: 40 }}>
+              <Description />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Documentation"
+              sx={{ 
+                '& .MuiListItemText-primary': { 
+                  fontSize: '0.85rem',
                   color: 'text.secondary',
                 } 
               }}

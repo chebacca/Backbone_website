@@ -47,6 +47,12 @@ import {
   Schedule,
   Support,
   Close,
+  Analytics,
+  Description,
+  GetApp,
+  TrendingUp,
+  Assessment,
+  BarChart,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { Navigation } from '@/components/layout/Navigation';
@@ -65,13 +71,37 @@ interface FAQItem {
 
 const SupportPage: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
-  const [selectedTab, setSelectedTab] = useState(0);
+  const location = useLocation();
   const [expandedFAQ, setExpandedFAQ] = useState<string | false>(false);
   const [chatDialogOpen, setChatDialogOpen] = useState(false);
 
+  // Handle URL hash navigation for consolidated sections
+  const getInitialTab = () => {
+    const hash = location.hash.replace('#', '');
+    switch (hash) {
+      case 'analytics': return 1;
+      case 'downloads': return 2;
+      case 'documentation': return 3;
+      default: return 0; // FAQ tab
+    }
+  };
+
+  const [selectedTab, setSelectedTab] = useState(getInitialTab);
+
+  // Update tab when hash changes
+  React.useEffect(() => {
+    setSelectedTab(getInitialTab());
+  }, [location.hash]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setSelectedTab(newValue);
+    // Update URL hash when tab changes
+    const hashes = ['', 'analytics', 'downloads', 'documentation', 'contact'];
+    if (hashes[newValue]) {
+      window.history.replaceState(null, '', `${location.pathname}#${hashes[newValue]}`);
+    } else {
+      window.history.replaceState(null, '', location.pathname);
+    }
   };
 
   const handleFAQChange = (faqId: string) => (_event: React.SyntheticEvent, isExpanded: boolean) => {
@@ -177,7 +207,6 @@ const SupportPage: React.FC = () => {
     </Box>
   );
 
-  const location = useLocation();
   const inDashboard = location.pathname.startsWith('/dashboard');
 
   return (
@@ -260,6 +289,8 @@ const SupportPage: React.FC = () => {
           <Tabs
             value={selectedTab}
             onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
             sx={{
               borderBottom: 1,
               borderColor: 'rgba(255,255,255,0.1)',
@@ -272,7 +303,9 @@ const SupportPage: React.FC = () => {
             }}
           >
             <Tab label="FAQ" />
-            <Tab label="Documentation" />
+            <Tab label="Usage Analytics" icon={<Analytics />} iconPosition="start" />
+            <Tab label="Downloads" icon={<Download />} iconPosition="start" />
+            <Tab label="Documentation" icon={<Description />} iconPosition="start" />
             <Tab label="Contact Info" />
           </Tabs>
 
@@ -323,10 +356,241 @@ const SupportPage: React.FC = () => {
             </Box>
           </TabPanel>
 
+          {/* Usage Analytics Tab */}
+          <TabPanel value={selectedTab} index={1}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
+                Usage Analytics & Insights
+              </Typography>
+              
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={4}>
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      textAlign: 'center',
+                      p: 2,
+                    }}
+                  >
+                    <Box sx={{ width: 60, height: 60, borderRadius: 2, backgroundColor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2, color: '#000' }}>
+                      <TrendingUp />
+                    </Box>
+                    <Typography variant="h6" sx={{ mb: 1 }}>License Usage</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Track your license utilization and performance metrics
+                    </Typography>
+                    <Button variant="outlined" fullWidth>
+                      View Usage Stats
+                    </Button>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} md={4}>
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      textAlign: 'center',
+                      p: 2,
+                    }}
+                  >
+                    <Box sx={{ width: 60, height: 60, borderRadius: 2, backgroundColor: 'secondary.main', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2, color: '#000' }}>
+                      <BarChart />
+                    </Box>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Performance Reports</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Detailed analytics and performance insights
+                    </Typography>
+                    <Button variant="outlined" fullWidth>
+                      Generate Report
+                    </Button>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} md={4}>
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      textAlign: 'center',
+                      p: 2,
+                    }}
+                  >
+                    <Box sx={{ width: 60, height: 60, borderRadius: 2, backgroundColor: 'success.main', display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 2, color: '#000' }}>
+                      <Assessment />
+                    </Box>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Usage Trends</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Historical usage patterns and forecasting
+                    </Typography>
+                    <Button variant="outlined" fullWidth>
+                      View Trends
+                    </Button>
+                  </Card>
+                </Grid>
+              </Grid>
+              
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  Quick Analytics Overview
+                </Typography>
+                <Card
+                  sx={{
+                    background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    p: 3,
+                  }}
+                >
+                  <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
+                    Analytics dashboard integration coming soon. Monitor your license usage, API calls, and performance metrics all in one place.
+                  </Typography>
+                </Card>
+              </Box>
+            </Box>
+          </TabPanel>
 
+          {/* Downloads Tab */}
+          <TabPanel value={selectedTab} index={2}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
+                Downloads & SDK Resources
+              </Typography>
+              
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <GetApp sx={{ mr: 2, color: 'primary.main' }} />
+                        <Typography variant="h6">JavaScript SDK</Typography>
+                        <Chip label="Latest" size="small" color="primary" sx={{ ml: 'auto' }} />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Complete JavaScript SDK with TypeScript support and comprehensive examples
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                        <Chip label="v2.1.0" size="small" />
+                        <Chip label="TypeScript" size="small" />
+                        <Chip label="Examples" size="small" />
+                      </Box>
+                      <Button
+                        variant="contained"
+                        startIcon={<Download />}
+                        fullWidth
+                        sx={{
+                          background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+                          color: '#000',
+                        }}
+                      >
+                        Download SDK
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <GetApp sx={{ mr: 2, color: 'secondary.main' }} />
+                        <Typography variant="h6">Python SDK</Typography>
+                        <Chip label="Beta" size="small" color="secondary" sx={{ ml: 'auto' }} />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Python SDK with async support and comprehensive documentation
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                        <Chip label="v1.8.2" size="small" />
+                        <Chip label="Async" size="small" />
+                        <Chip label="Docs" size="small" />
+                      </Box>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Download />}
+                        fullWidth
+                      >
+                        Download SDK
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Code sx={{ mr: 2, color: 'success.main' }} />
+                        <Typography variant="h6">Code Examples</Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Ready-to-use code examples and integration templates
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Download />}
+                        fullWidth
+                      >
+                        View Examples
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Card
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      backdropFilter: 'blur(20px)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Article sx={{ mr: 2, color: 'info.main' }} />
+                        <Typography variant="h6">Integration Guides</Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Step-by-step integration guides for popular frameworks
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Download />}
+                        fullWidth
+                      >
+                        Download Guides
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Box>
+          </TabPanel>
 
           {/* Documentation Tab */}
-          <TabPanel value={selectedTab} index={1}>
+          <TabPanel value={selectedTab} index={3}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
                 Documentation & Resources
@@ -445,7 +709,7 @@ const SupportPage: React.FC = () => {
           </TabPanel>
 
           {/* Contact Info Tab */}
-          <TabPanel value={selectedTab} index={2}>
+          <TabPanel value={selectedTab} index={4}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
                 Contact Information

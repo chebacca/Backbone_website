@@ -1,683 +1,410 @@
-rules_version = '2';
-
 /**
- * 🔐 BACKBONE v14.2 Unified Firestore Security Rules
+ * 🔥 FIREBASE SECURITY RULES - DYNAMIC COLLECTION CREATION
  * 
- * CRITICAL FIX: Resolves "Missing or insufficient permissions" errors
- * by using Firebase Auth custom claims instead of database lookups
- * 
- * Key Features:
- * - Uses request.auth.token for role/organization checks (no DB reads)
- * - Supports both Dashboard and Licensing website collections
- * - Organization-based data isolation
- * - Role-based access control (RBAC)
- * - Comprehensive collection coverage
+ * Enhanced security rules that support dynamic collection creation while
+ * maintaining strict schema compliance and organization-based access control.
  */
 
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
     // ============================================================================
-    // HELPER FUNCTIONS - NO DATABASE READS
+    // HELPER FUNCTIONS
     // ============================================================================
     
-    // Authentication check
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    // Get user ID
     function getUserId() {
       return request.auth.uid;
     }
     
-    // Get user email
     function getUserEmail() {
       return request.auth.token.email;
     }
     
-    // Check if user owns the document (userId field matches)
-    function isOwner(userId) {
-      return isAuthenticated() && getUserId() == userId;
-    }
-    
-    // Get organization ID from custom claims
-    function getOrgId() {
-      return request.auth.token.get('organizationId', '');
-    }
-    
-    // Check if user belongs to organization (using custom claims)
-    function belongsToOrg(orgId) {
-      return isAuthenticated() && getOrgId() == orgId;
-    }
-    
-    // Get user role from custom claims
     function getUserRole() {
-      return request.auth.token.get('role', '');
+      return request.auth.token.role;
     }
     
-    // Get team member role from custom claims
-    function getTeamMemberRole() {
-      return request.auth.token.get('teamMemberRole', '');
+    function getOrganizationId() {
+      return request.auth.token.organizationId;
     }
     
-    // Check if user has specific role
-    function hasRole(role) {
-      return getUserRole() == role || getTeamMemberRole() == role;
-    }
-    
-    // Check if user has any of the specified roles
-    function hasAnyRole(roles) {
-      return getUserRole() in roles || getTeamMemberRole() in roles;
-    }
-    
-    // Check if user is admin (any type)
     function isAdmin() {
-      return hasAnyRole(['ADMIN', 'ENTERPRISE_ADMIN', 'SUPERADMIN', 'admin', 'owner']);
+      return getUserRole() in ['ADMIN', 'SUPERADMIN', 'OWNER'];
     }
     
-    // Check if user is organization admin
-    function isOrgAdmin(orgId) {
-      return belongsToOrg(orgId) && isAdmin();
+    function isOrgMember(orgId) {
+      return getOrganizationId() == orgId;
     }
     
-    // Check if user can manage team members
-    function canManageTeamMembers(orgId) {
-      return belongsToOrg(orgId) && hasAnyRole(['admin', 'owner', 'ADMIN', 'ENTERPRISE_ADMIN']);
+    function hasAnyRole(roles) {
+      return isAuthenticated() && getUserRole() in roles;
+    }
+    
+    function belongsToOrganization(organizationId) {
+      return isAuthenticated() && getOrganizationId() == organizationId;
     }
     
     // ============================================================================
-    // CORE COLLECTIONS - USERS & ORGANIZATIONS
+    // COLLECTION REGISTRY - MANAGES DYNAMIC COLLECTIONS
     // ============================================================================
     
-    // Users - Self-access + organization admin access
+    // Collection Registry - tracks all created collections
+    match /collectionRegistry/{collectionName} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'SUPER_ADMIN']) &&
+        request.resource.data.organizationId == getOrganizationId() &&
+        request.resource.data.createdBy == getUserId();
+      
+      allow update: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'SUPER_ADMIN']) &&
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow delete: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(resource.data.organizationId);
+    }
+    
+    // Collection Activity Logs - audit trail for collection operations
+    match /collectionActivityLogs/{logId} {
+      allow read: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create: if isAuthenticated();
+      // No update/delete - logs are immutable
+    }
+    
+    // Firestore Indexes Registry
+    match /firestoreIndexes/{indexId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create, update: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(request.resource.data.organizationId);
+    }
+    
+    // Security Rules Registry
+    match /securityRules/{ruleId} {
+      allow read: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create, update: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(request.resource.data.organizationId);
+    }
+    
+    // ============================================================================
+    // CORE SYSTEM COLLECTIONS
+    // ============================================================================
+    
+    // Users collection
     match /users/{userId} {
-      allow read: if isOwner(userId) || 
-                     (isAuthenticated() && isAdmin());
-      allow write: if isOwner(userId) || 
-                      (isAuthenticated() && isAdmin());
-      allow create: if isAuthenticated() && 
-                       (userId == getUserId() || isAdmin());
+      allow read: if isAuthenticated() && 
+        (getUserId() == userId || isAdmin());
+      
+      allow write: if isAuthenticated() && 
+        (getUserId() == userId || isAdmin());
     }
     
-    // Organizations - Organization member access
+    // Organizations collection
     match /organizations/{orgId} {
-      allow read: if belongsToOrg(orgId) || isAdmin();
-      allow write: if isOrgAdmin(orgId) || isAdmin();
-      allow create: if isAuthenticated() && 
-                       (orgId == getOrgId() || isAdmin());
+      allow read: if isAuthenticated() && 
+        (isOrgMember(orgId) || isAdmin());
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        isOrgMember(orgId);
     }
     
-    // ============================================================================
-    // TEAM MEMBER COLLECTIONS
-    // ============================================================================
-    
-    // Team Members (camelCase) - Organization-scoped access
+    // Team Members collection
     match /teamMembers/{memberId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        memberId == getUserId() ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) && 
-        canManageTeamMembers(request.resource.data.get('organizationId', ''))
-      );
-      allow update: if isAuthenticated() && (
-        memberId == getUserId() ||
-        (belongsToOrg(resource.data.get('organizationId', '')) && 
-         canManageTeamMembers(resource.data.get('organizationId', ''))) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        (belongsToOrg(resource.data.get('organizationId', '')) && 
-         canManageTeamMembers(resource.data.get('organizationId', ''))) ||
-        isAdmin()
-      );
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'HR_MANAGER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+      
+      allow update: if isAuthenticated() && 
+        (hasAnyRole(['ADMIN', 'OWNER', 'HR_MANAGER']) || 
+         resource.data.userId == getUserId()) &&
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow delete: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(resource.data.organizationId);
     }
     
-    // Team Members (underscore) - Organization-scoped access
-    match /team_members/{memberId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        memberId == getUserId() ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) && 
-        canManageTeamMembers(request.resource.data.get('organizationId', ''))
-      );
-      allow update: if isAuthenticated() && (
-        memberId == getUserId() ||
-        (belongsToOrg(resource.data.get('organizationId', '')) && 
-         canManageTeamMembers(resource.data.get('organizationId', ''))) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        (belongsToOrg(resource.data.get('organizationId', '')) && 
-         canManageTeamMembers(resource.data.get('organizationId', ''))) ||
-        isAdmin()
-      );
-    }
-    
-    // Organization Members - Team member management
-    match /orgMembers/{memberId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('orgId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('orgId', '')) && 
-        canManageTeamMembers(request.resource.data.get('orgId', ''))
-      );
-      allow update: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        (belongsToOrg(resource.data.get('orgId', '')) && 
-         canManageTeamMembers(resource.data.get('orgId', ''))) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        (belongsToOrg(resource.data.get('orgId', '')) && 
-         canManageTeamMembers(resource.data.get('orgId', ''))) ||
-        isAdmin()
-      );
-    }
-    
-    // ============================================================================
-    // PROJECT COLLECTIONS
-    // ============================================================================
-    
-    // Projects - Organization and owner access
+    // Projects collection
     match /projects/{projectId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isOwner(resource.data.get('ownerId', '')) ||
-        getUserEmail() == resource.data.get('ownerEmail', '') ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isOwner(request.resource.data.get('ownerId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isOwner(resource.data.get('ownerId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        isOwner(resource.data.get('ownerId', '')) ||
-        isOrgAdmin(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PROJECT_MANAGER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+      
+      allow update: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PROJECT_MANAGER']) &&
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow delete: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(resource.data.organizationId);
     }
     
-    // Project Team Members - Project assignments
-    match /project_team_members/{assignmentId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // Project Team Members (camelCase) - PERMISSIVE FOR ENTERPRISE USERS
-    match /projectTeamMembers/{assignmentId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users and authenticated users for now
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to create team member assignments
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to update assignments
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to delete assignments
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-    }
-    
-    // Project Assignments
-    match /projectAssignments/{assignmentId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // ============================================================================
-    // LICENSING & SUBSCRIPTION COLLECTIONS
-    // ============================================================================
-    
-    // Licenses - User and organization access
-    match /licenses/{licenseId} {
-      allow read: if isAuthenticated() && (
-        isOwner(resource.data.get('assignedToUserId', '')) ||
-        getUserEmail() == resource.data.get('assignedToEmail', '') ||
-        getUserEmail() == resource.data.get('userEmail', '') ||
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        isOrgAdmin(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // Subscriptions - User and organization access
-    match /subscriptions/{subscriptionId} {
-      allow read: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        getUserEmail() == resource.data.get('userEmail', '') ||
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        isOwner(request.resource.data.get('userId', '')) ||
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        isOrgAdmin(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // Payments - User and organization access
-    match /payments/{paymentId} {
-      allow read: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        getUserEmail() == resource.data.get('userEmail', '') ||
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        isOwner(request.resource.data.get('userId', '')) ||
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // ============================================================================
-    // DATA COLLECTIONS
-    // ============================================================================
-    
-    // Datasets - Organization-scoped access - PERMISSIVE FOR ENTERPRISE USERS
+    // Datasets collection - for Cloud Project Integration
     match /datasets/{datasetId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isOwner(resource.data.get('ownerId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to read datasets
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to create datasets
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isOwner(resource.data.get('ownerId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to update datasets
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow delete: if isAuthenticated() && (
-        isOwner(resource.data.get('ownerId', '')) ||
-        isOrgAdmin(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to delete datasets
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']))
-      );
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PROJECT_MANAGER', 'MEMBER']) &&
+        request.resource.data.organizationId == getOrganizationId() &&
+        request.resource.data.createdBy == getUserId();
+      
+      allow update: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PROJECT_MANAGER']) &&
+        belongsToOrganization(resource.data.organizationId) &&
+        request.resource.data.organizationId == resource.data.organizationId;
+      
+      allow delete: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        belongsToOrganization(resource.data.organizationId);
+    }
+
+    // ============================================================================
+    // DYNAMIC COLLECTION RULES
+    // ============================================================================
+    
+    // Sessions collections (dynamically created)
+    match /sessions/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PRODUCER', 'DIRECTOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
     }
     
-    // Project Datasets - Links between projects and datasets - PERMISSIVE FOR ENTERPRISE USERS
-    match /project_datasets/{linkId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to read project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to create project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to update project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to delete project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
+    match /sessionTasks/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PRODUCER', 'COORDINATOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
     }
     
-    // Project Datasets (camelCase) - PERMISSIVE FOR ENTERPRISE USERS
-    match /projectDatasets/{linkId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to read project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to create project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to update project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin() ||
-        // Allow enterprise users to delete project-dataset links
-        (getUserEmail().matches('.*@example.com') || 
-         hasAnyRole(['ENTERPRISE_USER', 'ENTERPRISE_ADMIN']) ||
-         isAuthenticated())
-      );
+    match /sessionWorkflows/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PRODUCER', 'DIRECTOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /sessionAssignments/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PRODUCER', 'COORDINATOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /sessionReviews/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PRODUCER', 'DIRECTOR', 'POST_SUPERVISOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /postProductionTasks/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'POST_SUPERVISOR', 'POST_COORDINATOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    // Media collections
+    match /mediaFiles/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'MEDIA_MANAGER', 'EDITOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /reviews/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'PRODUCER', 'DIRECTOR', 'POST_SUPERVISOR']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /notes/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['MEMBER', 'ADMIN', 'OWNER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /reports/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'MANAGER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    // Inventory collections
+    match /inventoryItems/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'INVENTORY_MANAGER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /inventory/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'INVENTORY_MANAGER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /networks/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'NETWORK_ADMIN']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /networkIPAssignments/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'NETWORK_ADMIN']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    // Business collections
+    match /clients/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'BUSINESS_MANAGER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /contacts/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER', 'BUSINESS_MANAGER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /licenses/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        request.resource.data.organizationId == getOrganizationId();
+    }
+    
+    match /subscriptions/{docId} {
+      allow read: if isAuthenticated() && 
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow write: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        request.resource.data.organizationId == getOrganizationId();
     }
     
     // ============================================================================
-    // SESSION & WORKFLOW COLLECTIONS
+    // GENERIC DYNAMIC COLLECTION RULE
     // ============================================================================
     
-    // Sessions - User and project access
-    match /sessions/{sessionId} {
-      allow read: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        isOwner(request.resource.data.get('userId', '')) ||
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        isOrgAdmin(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
+    // Generic rule for any dynamically created collection that follows the pattern
+    // This rule applies to collections that have organizationId field
+    match /{collection}/{docId} {
+      allow read: if isAuthenticated() && 
+        resource.data.keys().hasAll(['organizationId']) &&
+        belongsToOrganization(resource.data.organizationId);
+      
+      allow create: if isAuthenticated() && 
+        request.resource.data.keys().hasAll(['organizationId']) &&
+        request.resource.data.organizationId == getOrganizationId() &&
+        // Check if collection is registered
+        exists(/databases/$(database)/documents/collectionRegistry/$(collection));
+      
+      allow update: if isAuthenticated() && 
+        resource.data.keys().hasAll(['organizationId']) &&
+        belongsToOrganization(resource.data.organizationId) &&
+        request.resource.data.organizationId == resource.data.organizationId;
+      
+      allow delete: if isAuthenticated() && 
+        hasAnyRole(['ADMIN', 'OWNER']) &&
+        resource.data.keys().hasAll(['organizationId']) &&
+        belongsToOrganization(resource.data.organizationId);
     }
     
     // ============================================================================
-    // MEDIA & ASSET COLLECTIONS
+    // SUBCOLLECTIONS - INHERIT PARENT PERMISSIONS
     // ============================================================================
     
-    // Media Files - Organization-scoped access
-    match /media/{mediaId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
+    // All subcollections inherit parent document permissions
+    match /{parent}/{parentId}/{subcollection}/{docId} {
+      allow read, write: if isAuthenticated() && 
+        // Check parent document access
+        get(/databases/$(database)/documents/$(parent)/$(parentId)).data.organizationId == getOrganizationId();
     }
     
-    // Media Files (camelCase)
-    match /mediaFiles/{mediaId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
+    // Nested subcollections
+    match /{parent}/{parentId}/{subcollection}/{subId}/{nestedCollection}/{nestedId} {
+      allow read, write: if isAuthenticated() && 
+        get(/databases/$(database)/documents/$(parent)/$(parentId)).data.organizationId == getOrganizationId();
     }
     
     // ============================================================================
-    // REPORTING & ANALYTICS COLLECTIONS
+    // FALLBACK RULES - RESTRICTIVE BY DEFAULT
     // ============================================================================
     
-    // Reports - Organization-scoped access
-    match /reports/{reportId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isOwner(resource.data.get('userId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isOwner(resource.data.get('userId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // Usage Analytics - Organization-scoped access
-    match /usageAnalytics/{analyticsId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated() && (
-        belongsToOrg(request.resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow update: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // ============================================================================
-    // AUDIT & LOGGING COLLECTIONS
-    // ============================================================================
-    
-    // Audit Logs - Organization-scoped read access, system write access
-    match /audit_logs/{logId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated(); // System can create audit logs
-    }
-    
-    // Audit Logs (camelCase)
-    match /auditLogs/{logId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated(); // System can create audit logs
-    }
-    
-    // Webhook Events - System events
-    match /webhookEvents/{eventId} {
-      allow read: if isAuthenticated() && (
-        belongsToOrg(resource.data.get('organizationId', '')) ||
-        isAdmin()
-      );
-      allow create: if true; // System can create webhook events
-    }
-    
-    // ============================================================================
-    // NOTIFICATION & COMMUNICATION COLLECTIONS
-    // ============================================================================
-    
-    // Notifications - User-scoped access
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        isAdmin()
-      );
-      allow create: if true; // System can create notifications
-      allow update: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        isOwner(resource.data.get('userId', '')) ||
-        isAdmin()
-      );
-    }
-    
-    // ============================================================================
-    // SYSTEM & CONFIGURATION COLLECTIONS
-    // ============================================================================
-    
-    // System Settings - Read-only for users
-    match /systemSettings/{settingKey} {
-      allow read: if isAuthenticated();
-      allow write: if false; // Only server-side updates allowed
-    }
-    
-    // User Preferences - Self-access only
-    match /userPreferences/{userId} {
-      allow read, write: if isOwner(userId);
-      allow create: if isAuthenticated() && userId == getUserId();
-    }
-    
-    // User Sessions - Self-access only
-    match /userSessions/{sessionId} {
-      allow read: if isAuthenticated() && resource.data.get('userId', '') == getUserId();
-      allow create: if isAuthenticated() && request.resource.data.get('userId', '') == getUserId();
-      allow update: if isAuthenticated() && resource.data.get('userId', '') == getUserId();
-      allow delete: if isAuthenticated() && resource.data.get('userId', '') == getUserId();
-    }
-    
-    // Organization Settings - Organization admin access
-    match /organizationSettings/{organizationId} {
-      allow read: if belongsToOrg(organizationId) || isAdmin();
-      allow create: if isOrgAdmin(organizationId) || isAdmin();
-      allow update: if isOrgAdmin(organizationId) || isAdmin();
-      allow delete: if isOrgAdmin(organizationId) || isAdmin();
-    }
-    
-    // ============================================================================
-    // FALLBACK RULES
-    // ============================================================================
-    
-    // Allow all authenticated users to read/write any collection not explicitly covered
-    // This ensures the app doesn't break if new collections are added
+    // Deny all other access by default
     match /{document=**} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if false;
     }
   }
 }

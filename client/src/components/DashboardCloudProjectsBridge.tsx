@@ -22,6 +22,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLoading } from '@/context/LoadingContext';
+import CollectionCreationWizard from './CollectionCreationWizard';
 import {
     Box,
     Container,
@@ -113,7 +114,8 @@ import {
     Storage as StorageIconAlt,
     Link as LinkIcon,
     CheckCircleOutline as CheckCircleOutlineIcon,
-    ArrowForward as ArrowForwardIcon
+    ArrowForward as ArrowForwardIcon,
+    Extension as ExtensionIcon
 } from '@mui/icons-material';
 
 import { cloudProjectIntegration, CloudDataset } from '../services/CloudProjectIntegration';
@@ -373,6 +375,72 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     const { user } = useAuth();
     const { setLoading } = useLoading();
     
+    // State for subscription data
+    const [subscriptionData, setSubscriptionData] = useState<any>(null);
+    const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+    
+    // Function to fetch subscription data from Firestore
+    const fetchSubscriptionData = useCallback(async (organizationId: string) => {
+        if (subscriptionLoading) return; // Prevent multiple simultaneous requests
+        
+        setSubscriptionLoading(true);
+        try {
+            console.log('🔍 [DashboardCloudProjectsBridge] Fetching subscription from Firestore for org:', organizationId);
+            
+            // Import Firebase services dynamically
+            const { getFirestore, collection, query, where, getDocs, orderBy, limit } = await import('firebase/firestore');
+            const { getAuth } = await import('firebase/auth');
+            
+            const db = getFirestore();
+            const auth = getAuth();
+            const currentUser = auth.currentUser;
+            
+            if (!currentUser) {
+                console.warn('No authenticated user for subscription fetch');
+                return;
+            }
+            
+            // Query subscriptions by organizationId
+            const subscriptionsQuery = query(
+                collection(db, 'subscriptions'),
+                where('organizationId', '==', organizationId),
+                orderBy('createdAt', 'desc'),
+                limit(1)
+            );
+            
+            const subscriptionsSnapshot = await getDocs(subscriptionsQuery);
+            
+            if (!subscriptionsSnapshot.empty) {
+                const subDoc = subscriptionsSnapshot.docs[0];
+                const subData = subDoc.data();
+                
+                console.log('✅ [DashboardCloudProjectsBridge] Found subscription in Firestore:', {
+                    id: subDoc.id,
+                    tier: subData.tier,
+                    status: subData.status,
+                    organizationId: subData.organizationId
+                });
+                
+                const subscription = {
+                    plan: subData.tier?.toLowerCase() || 'basic',
+                    status: subData.status?.toLowerCase() || 'active',
+                    currentPeriodEnd: subData.currentPeriodEnd?.toDate?.() || subData.currentPeriodEnd
+                };
+                
+                setSubscriptionData(subscription);
+                
+                // Cache the subscription data in localStorage
+                localStorage.setItem('user_subscription', JSON.stringify(subscription));
+            } else {
+                console.log('⚠️ [DashboardCloudProjectsBridge] No subscription found in Firestore for org:', organizationId);
+            }
+        } catch (error) {
+            console.warn('Failed to fetch subscription from Firestore:', error);
+        } finally {
+            setSubscriptionLoading(false);
+        }
+    }, [subscriptionLoading]);
+    
     // Helper function to get the complete user object with team member properties
     const getCompleteUser = useCallback(() => {
         if (!user) return null;
@@ -427,8 +495,19 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             }
         }
         
+        // 🔧 CRITICAL FIX: Use subscription data from state if available
+        if (subscriptionData) {
+            mergedUser.subscription = subscriptionData;
+        }
+        
+        // 🔧 CRITICAL FIX: If still no subscription data, try to fetch from Firestore
+        if (!mergedUser.subscription && mergedUser.organizationId && !subscriptionLoading) {
+            console.log('🔍 [DashboardCloudProjectsBridge] No subscription found in localStorage, fetching from Firestore for org:', mergedUser.organizationId);
+            fetchSubscriptionData(mergedUser.organizationId);
+        }
+        
         return mergedUser;
-    }, [user]);
+    }, [user, subscriptionData, subscriptionLoading, fetchSubscriptionData]);
     
     // Get the complete user object
     const completeUser = useMemo(() => getCompleteUser(), [getCompleteUser]);
@@ -500,9 +579,15 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             return true;
         }
         
-        // 🔧 ENHANCED: Account owners with active subscriptions can create projects
+        // 🔧 CRITICAL FIX: Account owners (OWNER role) can ALWAYS create projects
         // This includes users who are NOT team members (i.e., they own their account/organization)
         if (!isTeamMember()) {
+            // 🔧 CRITICAL FIX: OWNER role users can always create projects regardless of subscription
+            if (completeUser.role === 'OWNER' || completeUser.memberRole === 'OWNER') {
+                console.log('✅ [DashboardCloudProjectsBridge] User is OWNER, can always create projects');
+                return true;
+            }
+            
             // Check if user has an active subscription or is a superadmin
             const hasActiveSubscription = completeUser.subscription?.status === 'ACTIVE' || 
                                         completeUser.subscription?.status === 'TRIALING' ||
@@ -591,6 +676,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [showLaunchDialog, setShowLaunchDialog] = useState(false);
     const [selectedProject, setSelectedProject] = useState<CloudProject | null>(null);
+    const [showCollectionWizard, setShowCollectionWizard] = useState(false);
   const [projectDatasets, setProjectDatasets] = useState<any[]>([]);
   const [datasetsLoading, setDatasetsLoading] = useState(false);
   const [availableDatasets, setAvailableDatasets] = useState<any[]>([]);
@@ -1315,6 +1401,16 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
 
     const handleCreateProject = () => {
         setShowCreateDialog(true);
+    };
+
+    const handleCreateCollection = () => {
+        setShowCollectionWizard(true);
+    };
+
+    const handleCollectionCreated = (collectionName: string, template: any) => {
+        console.log(`✅ Collection '${collectionName}' created successfully`);
+        // Refresh projects or show success message
+        loadProjects();
         // Ensure selectedProject is cleared to avoid conflicts
         setSelectedProject(null);
     };
@@ -2027,6 +2123,20 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 Create Project
                             </MenuItem>
                         )}
+
+                        {/* Create Collection */}
+                        {canCreateProjects() && (
+                            <MenuItem 
+                                onClick={() => {
+                                    handleActionsDropdownClose();
+                                    console.log('🧙‍♂️ [DashboardCloudProjectsBridge] Create Collection button clicked');
+                                    handleCreateCollection();
+                                }}
+                            >
+                                <ExtensionIcon sx={{ mr: 2 }} />
+                                Create Collection
+                            </MenuItem>
+                        )}
                         
                         {/* Create Dataset */}
                         {canCreateProjects() && (
@@ -2695,6 +2805,13 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     const id = await simplifiedStartupSequencer.createProject(options);
                     return id;
                 }}
+            />
+
+            {/* Collection Creation Wizard */}
+            <CollectionCreationWizard
+                open={showCollectionWizard}
+                onClose={() => setShowCollectionWizard(false)}
+                onCollectionCreated={handleCollectionCreated}
             />
 
             {/* Project Details Dialog */}

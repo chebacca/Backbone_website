@@ -16,5 +16,35 @@
     { "name": "Start Dev", "command": "pnpm dev", "cwd": ".", "longRunning": true },
     { "name": "Build", "command": "pnpm build", "cwd": ".", "longRunning": false },
     { "name": "Setup DB", "command": "pnpm setup:db", "cwd": ".", "longRunning": false }
-  ]
+  ],
+  "noGuessingPolicy": {
+    "enabled": true,
+    "mandatorySearch": true,
+    "searchStrategy": {
+      "semanticSearch": "Use codebase_search for understanding patterns",
+      "grepSearch": "Use grep for specific pattern matching",
+      "fileReading": "Read actual files, never assume contents",
+      "multiSourceVerification": "Cross-reference multiple sources",
+      "firebaseMCP": "Use Firebase MCP tools for Firebase operations",
+      "mpcLibrary": "Consult shared-mpc-library for best practices"
+    },
+    "responseRequirements": {
+      "noAssumptions": "NEVER provide answers based on assumptions",
+      "noSingleSource": "NEVER stop after finding one source",
+      "evidenceRequired": "ALWAYS provide evidence from actual code",
+      "citeSources": "ALWAYS cite specific files and line numbers",
+      "acknowledgeUncertainty": "ALWAYS acknowledge if definitive answer not found"
+    },
+    "qualityAssurance": {
+      "codeAnalysisRequired": "Every answer must be backed by actual code analysis",
+      "multiSourceVerification": "Every pattern must be verified through multiple sources",
+      "realCodebaseExamples": "Every implementation must be based on real codebase examples",
+      "testedSolutions": "Every solution must be tested and validated"
+    },
+    "errorPrevention": {
+      "guessingAnswers": "NEVER guess answers - always search and find definitive solutions",
+      "stoppingSearch": "NEVER stop searching until you find the complete solution",
+      "makingAssumptions": "NEVER make assumptions - verify everything through codebase analysis"
+    }
+  }
 }

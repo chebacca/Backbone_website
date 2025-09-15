@@ -62,6 +62,8 @@ export interface CollectionSearchFilterProps {
     onSelectAll: () => void;
     onDeselectAll: () => void;
     onRefresh: () => void;
+    onSelectAllInCategory?: (categoryName: string, collections: string[]) => void;
+    onDeselectAllInCategory?: (categoryName: string, collections: string[]) => void;
     
     // UI state
     loading?: boolean;
@@ -88,6 +90,8 @@ export const CollectionSearchFilter: React.FC<CollectionSearchFilterProps> = ({
     onSelectAll,
     onDeselectAll,
     onRefresh,
+    onSelectAllInCategory,
+    onDeselectAllInCategory,
     loading = false,
     error = null,
     totalCount = 0,
@@ -421,13 +425,61 @@ export const CollectionSearchFilter: React.FC<CollectionSearchFilterProps> = ({
                                         />
                                     </Box>
                                     
-                                    <Typography variant="caption" sx={{ 
-                                        color: 'text.secondary',
-                                        maxWidth: '300px',
-                                        textAlign: 'right'
-                                    }}>
-                                        {category.description}
-                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Typography variant="caption" sx={{ 
+                                            color: 'text.secondary',
+                                            maxWidth: '300px',
+                                            textAlign: 'right'
+                                        }}>
+                                            {category.description}
+                                        </Typography>
+                                        
+                                        {/* Category Select All/Deselect All Buttons */}
+                                        <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
+                                            <Tooltip title={`Select all ${categoryName} collections`}>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => {
+                                                        if (onSelectAllInCategory) {
+                                                            onSelectAllInCategory(categoryName, category.collections);
+                                                        }
+                                                    }}
+                                                    disabled={allSelected || loading}
+                                                    color="primary"
+                                                    sx={{ 
+                                                        opacity: allSelected ? 0.5 : 1,
+                                                        '&:hover': {
+                                                            backgroundColor: 'primary.main',
+                                                            color: 'primary.contrastText'
+                                                        }
+                                                    }}
+                                                >
+                                                    <SelectAllIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title={`Deselect all ${categoryName} collections`}>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => {
+                                                        if (onDeselectAllInCategory) {
+                                                            onDeselectAllInCategory(categoryName, category.collections);
+                                                        }
+                                                    }}
+                                                    disabled={selectedInCategory.length === 0 || loading}
+                                                    color="secondary"
+                                                    sx={{ 
+                                                        opacity: selectedInCategory.length === 0 ? 0.5 : 1,
+                                                        '&:hover': {
+                                                            backgroundColor: 'secondary.main',
+                                                            color: 'secondary.contrastText'
+                                                        }
+                                                    }}
+                                                >
+                                                    <DeselectAllIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </Box>
+                                    </Box>
                                 </Box>
 
                                 {/* Collection Grid */}

@@ -714,8 +714,8 @@ class CloudProjectIntegrationService {
       
       // Sort by creation date (newest first)
       datasets.sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime();
-        const bTime = new Date(b.createdAt).getTime();
+        const aTime = new Date(a.createdAt || 0).getTime();
+        const bTime = new Date(b.createdAt || 0).getTime();
         return bTime - aTime;
       });
       

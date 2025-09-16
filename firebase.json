@@ -65,50 +65,6 @@
           ]
         }
       ]
-    },
-    {
-      "target": "backbone-client.web",
-      "public": "deploy",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "redirects": [],
-      "rewrites": [
-        {
-          "source": "/api/**",
-          "function": "api"
-        },
-        {
-          "source": "/**",
-          "destination": "/index.html"
-        }
-      ],
-      "headers": [
-        {
-          "source": "**/*.js",
-          "headers": [
-            {
-              "key": "Content-Type",
-              "value": "application/javascript; charset=utf-8"
-            },
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        },
-        {
-          "source": "**/*.@(css|png|jpg|jpeg|gif|svg|ico|woff2)",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "max-age=31536000"
-            }
-          ]
-        }
-      ]
     }
   ],
   "firestore": {

@@ -23,6 +23,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAuth } from '@/context/AuthContext';
 import { useLoading } from '@/context/LoadingContext';
 import CollectionCreationWizard from './CollectionCreationWizard';
+import ProjectDetailsDialog from './ProjectDetailsDialog';
 import {
     Box,
     Container,
@@ -676,6 +677,11 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [showLaunchDialog, setShowLaunchDialog] = useState(false);
     const [selectedProject, setSelectedProject] = useState<CloudProject | null>(null);
+    
+    // Debug logging for selectedProject
+    useEffect(() => {
+        console.log('🔍 DashboardCloudProjectsBridge - selectedProject changed:', selectedProject?.name, 'open:', !!selectedProject);
+    }, [selectedProject]);
     const [showCollectionWizard, setShowCollectionWizard] = useState(false);
   const [projectDatasets, setProjectDatasets] = useState<any[]>([]);
   const [datasetsLoading, setDatasetsLoading] = useState(false);
@@ -2051,7 +2057,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             px: 2,
                             py: 1,
                             backgroundColor: 'warning.light',
-                            borderRadius: 1,
+                            borderRadius: 2,
                             border: '1px solid',
                             borderColor: 'warning.main'
                         }}>
@@ -2814,992 +2820,35 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 onCollectionCreated={handleCollectionCreated}
             />
 
-            {/* Project Details Dialog */}
-            <Dialog
+            {/* Enhanced Project Details Dialog */}
+            <ProjectDetailsDialog
                 open={!!selectedProject}
-                onClose={() => {
-                    setSelectedProject(null);
-                }}
-                maxWidth="md"
-                fullWidth
-                PaperProps={{
-                    sx: {
-                        borderRadius: 3,
-                        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-                        overflow: 'hidden'
-                    }
-                }}
-            >
-                <DialogTitle
-                    sx={{
-                        background: 'linear-gradient(135deg, #0f3460 0%, #16213e 100%)',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-                        p: 3,
-                        position: 'relative',
-                        '&::after': {
-                            content: '""',
-                            position: 'absolute',
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            height: '2px',
-                            background: 'linear-gradient(90deg, #4f46e5, #06b6d4, #3b82f6)',
-                            borderRadius: '1px'
-                        }
-                    }}
-                >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Box
-                            sx={{
-                                width: 48,
-                                height: 48,
-                                borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #4f46e5, #06b6d4)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxShadow: '0 8px 16px rgba(79, 70, 229, 0.3)'
-                            }}
-                        >
-                            <SettingsIcon sx={{ color: 'white', fontSize: 24 }} />
-                        </Box>
-                        <Box>
-                            <Typography variant="h5" sx={{ 
-                                color: 'white', 
-                                fontWeight: 700,
-                                textShadow: '0 2px 4px rgba(0, 0, 0, 0.3)'
-                            }}>
-                        Project Details
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                                {selectedProject?.name || 'Project Configuration'}
-                            </Typography>
-                        </Box>
-                    </Box>
-                </DialogTitle>
-
-                <DialogContent sx={{ p: 0, background: 'transparent' }}>
-                    {selectedProject && (
-                        <Box sx={{ p: 3 }}>
-
-                            {/* Project Description and Progress Section */}
-                            <Box sx={{ mb: 4 }}>
-                                <Typography variant="h6" sx={{ 
-                                    color: 'white', 
-                                    mb: 3, 
-                                    fontWeight: 600,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 1
-                                }}>
-                                    <Box
-                                        sx={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: '50%',
-                                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-                                            boxShadow: '0 0 8px rgba(139, 92, 246, 0.5)'
-                                        }}
-                                    />
-                                    Project Details
-                                </Typography>
-                                
-                                <Box
-                                    sx={{
-                                        p: 3,
-                                        borderRadius: 2,
-                                        background: 'rgba(255, 255, 255, 0.05)',
-                                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                                        backdropFilter: 'blur(10px)',
-                                        transition: 'all 0.3s ease',
-                                        '&:hover': {
-                                            transform: 'translateY(-2px)',
-                                            boxShadow: '0 8px 25px rgba(0, 0, 0, 0.2)',
-                                            borderColor: 'rgba(139, 92, 246, 0.3)'
-                                        }
-                                    }}
-                                >
-                                    {/* Project Description */}
-                                    {selectedProject?.description && (
-                                        <Box sx={{ mb: 3 }}>
-                                            <Typography variant="body2" sx={{ 
-                                                color: 'rgba(255, 255, 255, 0.6)', 
-                                                mb: 1,
-                                                fontWeight: 500
-                                            }}>
-                                                Description
-                                            </Typography>
-                                            <Typography variant="body1" sx={{ 
-                                                color: 'white',
-                                                lineHeight: 1.6
-                                            }}>
-                                                {selectedProject.description}
-                                            </Typography>
-                                        </Box>
-                                    )}
-                                </Box>
-                            </Box>
-
-                            {/* Assigned Datasets Section */}
-                            <Box>
-                                <Typography variant="h6" sx={{ 
-                                    color: 'white', 
-                                    mb: 3, 
-                                    fontWeight: 600,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 1
-                                }}>
-                                    <Box
-                                        sx={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: '50%',
-                                            background: 'linear-gradient(135deg, #f59e0b, #f97316)',
-                                            boxShadow: '0 0 8px rgba(245, 158, 11, 0.5)'
-                                        }}
-                                    />
-                                    Assigned Datasets
-                                </Typography>
-                                
-                                <Box
-                                    sx={{
-                                        p: 3,
-                                        borderRadius: 2,
-                                        background: 'rgba(255, 255, 255, 0.05)',
-                                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                                        backdropFilter: 'blur(10px)'
-                                    }}
-                                >
-                                    {/* Action Buttons */}
-                                    <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-
-                        <Button
-                          variant="outlined"
-                                            onClick={async () => {
-                                              if (!selectedProject) return;
-                                              console.log('🔄 [DashboardCloudProjectsBridge] Refreshing datasets for project:', selectedProject.id);
-                                              try {
-                                                setDatasetsLoading(true);
-                                                // Refresh both assigned and available datasets
-                                                await loadDatasetsForProject(selectedProject);
-                                                console.log('✅ [DashboardCloudProjectsBridge] Datasets refreshed successfully');
-                                              } catch (e) {
-                                                console.error('❌ [DashboardCloudProjectsBridge] Failed to refresh datasets:', e);
-                                                setError('Failed to refresh datasets');
-                                              } finally {
-                                                setDatasetsLoading(false);
-                                              }
-                                            }}
-                                            disabled={datasetsLoading}
-                                            sx={{
-                                                borderColor: 'rgba(79, 70, 229, 0.5)',
-                                                color: '#4f46e5',
-                                                borderRadius: 2,
-                                                px: 3,
-                                                py: 1,
-                                                textTransform: 'none',
-                                                fontWeight: 600,
-                                                '&:hover': {
-                                                    borderColor: '#4f46e5',
-                                                    backgroundColor: 'rgba(79, 70, 229, 0.1)'
-                                                },
-                                                '&:disabled': {
-                                                    borderColor: 'rgba(255, 255, 255, 0.2)',
-                                                    color: 'rgba(255, 255, 255, 0.3)'
-                                                }
-                                            }}
-                                        >
-                                            {datasetsLoading ? 'Refreshing...' : 'Refresh'}
-                        </Button>
-
-                                    </Box>
-
-                                    {/* Dataset Selection Controls */}
-                                    <Grid container spacing={2} sx={{ mb: 3 }}>
-                                        <Grid item xs={12} sm={3}>
-                                            <FormControl fullWidth size="small">
-                                                <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Backend</InputLabel>
-                                                <Select
-                                                    value={datasetBackendFilter === 'all' ? 'firestore' : datasetBackendFilter}
-                            onChange={(e) => setDatasetBackendFilter(e.target.value as any)}
-                                                    sx={{
-                                                        '& .MuiOutlinedInput-notchedOutline': {
-                                                            borderColor: 'rgba(255, 255, 255, 0.2)'
-                                                        },
-                                                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                                                            borderColor: 'rgba(79, 70, 229, 0.5)'
-                                                        },
-                                                        '& .MuiSelect-icon': {
-                                                            color: 'rgba(255, 255, 255, 0.7)'
-                                                        },
-                                                        color: 'white',
-                                                        '& .MuiMenuItem-root': {
-                                                            color: 'white'
-                                                        }
-                                                    }}
-                                                >
-                                                    <MenuItem value="firestore">Firestore</MenuItem>
-                                                    <MenuItem value="gcs">Google Cloud Storage</MenuItem>
-                                                    <MenuItem value="s3">Amazon S3</MenuItem>
-                                                    <MenuItem value="aws">AWS Services</MenuItem>
-                                                    <MenuItem value="azure">Microsoft Azure</MenuItem>
-                                                </Select>
-                                            </FormControl>
-                                        </Grid>
-                                        
-                                        <Grid item xs={12} sm={4}>
-                                            <TextField
-                                                fullWidth
-                                                size="small"
-                                                placeholder="Search datasets..."
-                            value={datasetSearch}
-                            onChange={(e) => setDatasetSearch(e.target.value)}
-                                                sx={{
-                                                    '& .MuiOutlinedInput-root': {
-                                                        color: 'white',
-                                                        '& fieldset': {
-                                                            borderColor: 'rgba(255, 255, 255, 0.2)'
-                                                        },
-                                                        '&:hover fieldset': {
-                                                            borderColor: 'rgba(79, 70, 229, 0.5)'
-                                                        },
-                                                        '& input::placeholder': {
-                                                            color: 'rgba(255, 255, 255, 0.5)',
-                                                            opacity: 1
-                                                        }
-                                                    }
-                                                }}
-                                            />
-                                        </Grid>
-                                        
-                                        <Grid item xs={12} sm={3}>
-                                            <FormControl fullWidth size="small">
-                                                <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Select dataset</InputLabel>
-                                                <Select
-                            value={selectedDatasetId}
-                            onChange={(e) => {
-                              const newValue = e.target.value;
-                              console.log('🔍 [DashboardCloudProjectsBridge] Dataset selection changed:', {
-                                oldValue: selectedDatasetId,
-                                newValue: newValue,
-                                valueType: typeof newValue,
-                                availableDatasetIds: availableDatasets.map(ds => ds.id)
-                              });
-                              setSelectedDatasetId(newValue);
-                            }}
-                                                    sx={{
-                                                        '& .MuiOutlinedInput-notchedOutline': {
-                                                            borderColor: 'rgba(255, 255, 255, 0.2)'
-                                                        },
-                                                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                                                            borderColor: 'rgba(79, 70, 229, 0.5)'
-                                                        },
-                                                        '& .MuiSelect-icon': {
-                                                            color: 'rgba(255, 255, 255, 0.7)'
-                                                        },
-                                                        color: 'white',
-                                                        '& .MuiMenuItem-root': {
-                                                            color: 'white'
-                                                        }
-                                                    }}
-                                                >
-                                                    <MenuItem value="">Select dataset...</MenuItem>
-                            {availableDatasets.map((ds: any) => (
-                                                        <MenuItem key={ds.id} value={ds.id}>{ds.__label || ds.name}</MenuItem>
-                                                    ))}
-                                                </Select>
-                                            </FormControl>
-                                        </Grid>
-                                        
-                                        <Grid item xs={12} sm={2}>
-                                            <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Button
-                            variant="contained"
-                                                    size="small"
-                            disabled={!selectedDatasetId || datasetsLoading}
-                            onClick={async () => {
-                              if (!selectedProject || !selectedDatasetId) return;
-                              
-                              // Debug: Log the selected dataset details
-                              const selectedDataset = availableDatasets.find(ds => ds.id === selectedDatasetId);
-                              console.log('🔍 [DashboardCloudProjectsBridge] Selected dataset details:', {
-                                selectedDatasetId,
-                                selectedDataset,
-                                availableDatasetsCount: availableDatasets.length,
-                                availableDatasetIds: availableDatasets.map(ds => ds.id)
-                              });
-                              
-                              // Validate that the selected dataset actually exists
-                              if (!selectedDataset) {
-                                console.error('❌ [DashboardCloudProjectsBridge] Selected dataset not found in available datasets:', {
-                                  selectedDatasetId,
-                                  availableDatasetIds: availableDatasets.map(ds => ds.id)
-                                });
-                                setError(`Selected dataset (${selectedDatasetId}) not found. Please try selecting a different dataset.`);
-                                return;
-                              }
-                              
-                              console.log('🔗 [DashboardCloudProjectsBridge] Assigning dataset to project:', { projectId: selectedProject.id, datasetId: selectedDatasetId });
-                              try {
-                                setDatasetsLoading(true);
-                                
-                                // Assign the dataset to the project
-                                await cloudProjectIntegration.assignDatasetToProject(selectedProject.id, selectedDatasetId);
-                                console.log('✅ [DashboardCloudProjectsBridge] Dataset assigned successfully');
-                                
-                                // Refresh the project datasets list
-                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
-                                setProjectDatasets(items);
-                                setProjectDatasetCounts(prev => ({ ...prev, [selectedProject.id]: items.length }));
-                                
-                                // Refresh available datasets to remove the assigned one
-                                const all = await cloudProjectIntegration.listDatasets({
-                                  backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
-                                  query: datasetSearch || undefined,
-                                });
-                                
-                                const labeled = all.map((ds: any) => {
-                                  const getBackendLabel = (backend: string) => {
-                                    switch (backend) {
-                                      case 'gcs': return '(GCS)';
-                                      case 's3': return '(S3)';
-                                      case 'aws': return '(AWS)';
-                                      case 'azure': return '(Azure)';
-                                      case 'firestore':
-                                      default: return '(Firestore)';
-                                    }
-                                  };
-                                  return {
-                                    ...ds,
-                                    __label: `${ds.name} ${getBackendLabel(ds.storage?.backend)}`,
-                                  };
-                                });
-                                setAvailableDatasets(labeled);
-                                
-                                // Clear the selection
-                                setSelectedDatasetId('');
-                                
-                                console.log('✅ [DashboardCloudProjectsBridge] Dataset assignment completed and lists refreshed');
-                              } catch (e) {
-                                console.error('❌ [DashboardCloudProjectsBridge] Failed to assign dataset:', e);
-                                setError('Failed to assign dataset to project');
-                              } finally {
-                                setDatasetsLoading(false);
-                              }
-                            }}
-                                                    sx={{
-                                                        background: 'linear-gradient(135deg, #10b981, #059669)',
-                                                        color: 'white',
-                                                        borderRadius: 2,
-                                                        textTransform: 'none',
-                                                        fontWeight: 600,
-                                                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                                                        '&:hover': {
-                                                            background: 'linear-gradient(135deg, #059669, #047857)',
-                                                            boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)'
-                                                        },
-                                                        '&:disabled': {
-                                                            background: 'rgba(255, 255, 255, 0.1)',
-                                                            color: 'rgba(255, 255, 255, 0.3)',
-                                                            boxShadow: 'none'
-                                                        }
-                                                    }}
-                                                >
-                                                    {datasetsLoading ? 'Assigning...' : 'Assign'}
-                                                </Button>
-                          <Button
-                            variant="outlined"
-                                                    size="small"
-                            onClick={async () => {
-                              if (!selectedProject) return;
-                              console.log('🔍 [DashboardCloudProjectsBridge] Applying dataset filters:', { backend: datasetBackendFilter, search: datasetSearch });
-                              try {
-                                setDatasetsLoading(true);
-                                
-                                // Load available datasets with current filters
-                                const all = await cloudProjectIntegration.listDatasets({
-                                  backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
-                                  query: datasetSearch || undefined,
-                                });
-                                console.log('✅ [DashboardCloudProjectsBridge] Filtered datasets loaded:', all);
-                                
-                                const labeled = all.map((ds: any) => {
-                                  const getBackendLabel = (backend: string) => {
-                                    switch (backend) {
-                                      case 'gcs': return '(GCS)';
-                                      case 's3': return '(S3)';
-                                      case 'aws': return '(AWS)';
-                                      case 'azure': return '(Azure)';
-                                      case 'firestore':
-                                      default: return '(Firestore)';
-                                    }
-                                  };
-                                  return {
-                                    ...ds,
-                                    __label: `${ds.name} ${getBackendLabel(ds.storage?.backend)}`,
-                                  };
-                                });
-                                setAvailableDatasets(labeled);
-                                
-                                // Also refresh assigned datasets to get updated counts
-                                const items = await cloudProjectIntegration.getProjectDatasets(selectedProject.id);
-                                setProjectDatasets(items);
-                                setProjectDatasetCounts(prev => ({ ...prev, [selectedProject.id]: items.length }));
-                                
-                                console.log('✅ [DashboardCloudProjectsBridge] Filters applied successfully');
-                              } catch (e) {
-                                console.error('❌ [DashboardCloudProjectsBridge] Failed to apply filters:', e);
-                                setError('Failed to apply dataset filters');
-                              } finally {
-                                setDatasetsLoading(false);
-                              }
-                            }}
-                            disabled={datasetsLoading}
-                                                    sx={{
-                                                        borderColor: 'rgba(79, 70, 229, 0.5)',
-                                                        color: '#4f46e5',
-                                                        borderRadius: 2,
-                                                        textTransform: 'none',
-                                                        fontWeight: 600,
-                                                        '&:hover': {
-                                                            borderColor: '#4f46e5',
-                                                            backgroundColor: 'rgba(79, 70, 229, 0.1)'
-                                                        },
-                                                        '&:disabled': {
-                                                            borderColor: 'rgba(255, 255, 255, 0.2)',
-                                                            color: 'rgba(255, 255, 255, 0.3)'
-                                                        }
-                                                    }}
-                                                >
-                                                    {datasetsLoading ? 'Applying...' : 'Apply Filters'}
-                                                </Button>
-                          </Box>
-                                        </Grid>
-                                    </Grid>
-
-                                    {/* Currently Assigned Datasets */}
-                                    <Box>
-                                        <Typography variant="body2" sx={{ 
-                                            color: 'rgba(255, 255, 255, 0.7)', 
-                                            mb: 2,
-                                            fontWeight: 500
-                                        }}>
-                                            Currently Assigned Datasets
-                                        </Typography>
-                                        
-                        {projectDatasets.length === 0 ? (
-                                            <Box
-                                                sx={{
-                                                    p: 4,
-                                                    textAlign: 'center',
-                                                    borderRadius: 2,
-                                                    background: 'rgba(255, 255, 255, 0.02)',
-                                                    border: '1px dashed rgba(255, 255, 255, 0.1)'
-                                                }}
-                                            >
-                                                <DatasetIcon sx={{ fontSize: 48, color: 'rgba(255, 255, 255, 0.3)', mb: 2 }} />
-                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
-                                                    No datasets assigned to this project
-                                                </Typography>
-                                            </Box>
-                                        ) : (
-                                            <Box
-                                                sx={{
-                                                    borderRadius: 2,
-                                                    overflow: 'hidden',
-                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                                                }}
-                                            >
-                                                {projectDatasets.map((ds: any, index: number) => (
-                                                    <Box
-                                                        key={ds.id}
-                                                        sx={{
-                                                            p: 2,
-                                                            background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)',
-                                                            borderBottom: index < projectDatasets.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            transition: 'all 0.2s ease',
-                                                            '&:hover': {
-                                                                background: 'rgba(79, 70, 229, 0.1)',
-                                                                transform: 'translateX(4px)'
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                            <Box
-                                                                sx={{
-                                                                    width: 32,
-                                                                    height: 32,
-                                                                    borderRadius: '50%',
-                                                                    background: 'linear-gradient(135deg, #f59e0b, #f97316)',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center'
-                                                                }}
-                                                            >
-                                                                <DatasetIcon sx={{ color: 'white', fontSize: 16 }} />
-                                                            </Box>
-                                                            <Box>
-                                                                <Typography variant="body1" sx={{ color: 'white', fontWeight: 500 }}>
-                                                                    {ds.name}
-                                                                </Typography>
-                                                                {ds.description && (
-                                                                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                                                                        {ds.description}
-                                                                    </Typography>
-                                                                )}
-                                                                {/* Show collection assignment info for Firestore datasets */}
-                                                                {ds.storage?.backend === 'firestore' && ds.collectionAssignment?.selectedCollections?.length > 0 && (
-                                                                    <Box sx={{ mt: 1 }}>
-                                                                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', display: 'block', mb: 0.5 }}>
-                                                                            Assigned Collections:
-                                                                        </Typography>
-                                                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                                                            {ds.collectionAssignment.selectedCollections.slice(0, 3).map((collection: string) => (
-                                                                                <Chip
-                                                                                    key={collection}
-                                                                                    label={collection}
-                                                                                    size="small"
-                                                                                    sx={{
-                                                                                        height: 18,
-                                                                                        fontSize: '0.65rem',
-                                                                                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                                                                                        color: '#ffffff',
-                                                                                        border: '1px solid rgba(245, 158, 11, 0.3)'
-                                                                                    }}
-                                                                                />
-                                                                            ))}
-                                                                            {ds.collectionAssignment.selectedCollections.length > 3 && (
-                                                                                <Chip
-                                                                                    label={`+${ds.collectionAssignment.selectedCollections.length - 3} more`}
-                                                                                    size="small"
-                                                                                    sx={{
-                                                                                        height: 18,
-                                                                                        fontSize: '0.65rem',
-                                                                                        backgroundColor: 'rgba(156, 163, 175, 0.2)',
-                                                                                        color: '#9ca3af'
-                                                                                    }}
-                                                                                />
-                                                                            )}
-                                                                        </Box>
-                                                                        {ds.collectionAssignment.organizationScope && (
-                                                                            <Typography variant="caption" sx={{ 
-                                                                                color: 'rgba(16, 185, 129, 0.8)', 
-                                                                                display: 'block', 
-                                                                                mt: 0.5,
-                                                                                fontSize: '0.65rem'
-                                                                            }}>
-                                                                                ✓ Organization scoped for data isolation
-                                                                            </Typography>
-                                                                        )}
-                                                                    </Box>
-                                                                )}
-                                                            </Box>
-                                                        </Box>
-                                                        <Box sx={{ display: 'flex', gap: 1 }}>
-                                                            <Button
-                                                                variant="outlined"
-                                                                size="small"
-                                                                startIcon={<DeleteIcon />}
-                                                                onClick={async () => {
-                                  try {
-                                    console.log('🗑️ [DashboardCloudProjectsBridge] Removing dataset from project:', { projectId: selectedProject!.id, datasetId: ds.id });
-                                    await cloudProjectIntegration.unassignDatasetFromProject(selectedProject!.id, ds.id);
-                                    console.log('✅ [DashboardCloudProjectsBridge] Dataset removed successfully');
-                                    
-                                    // Update local state immediately for better UX
-                                    setProjectDatasets(prev => prev.filter(x => x.id !== ds.id));
-                                    setProjectDatasetCounts(prev => ({ ...prev, [selectedProject!.id]: Math.max(0, (prev[selectedProject!.id] || 1) - 1) }));
-                                    
-                                    // Refresh available datasets to include the removed one
-                                    const all = await cloudProjectIntegration.listDatasets({
-                                      backend: datasetBackendFilter === 'all' ? undefined : datasetBackendFilter,
-                                      query: datasetSearch || undefined,
-                                    });
-                                    
-                                    const labeled = all.map((availableDs: any) => {
-                                      const getBackendLabel = (backend: string) => {
-                                        switch (backend) {
-                                          case 'gcs': return '(GCS)';
-                                          case 's3': return '(S3)';
-                                          case 'aws': return '(AWS)';
-                                          case 'azure': return '(Azure)';
-                                          case 'firestore':
-                                          default: return '(Firestore)';
-                                        }
-                                      };
-                                      return {
-                                        ...availableDs,
-                                        __label: `${availableDs.name} ${getBackendLabel(availableDs.storage?.backend)}`,
-                                      };
-                                    });
-                                    setAvailableDatasets(labeled);
-                                    
-                                    console.log('✅ [DashboardCloudProjectsBridge] Dataset removal completed and lists refreshed');
-                                  } catch (e) {
-                                    console.error('❌ [DashboardCloudProjectsBridge] Failed to remove dataset:', e);
-                                    setError('Failed to remove dataset from project');
-                                  }
-                                                            }}
-                                                            sx={{
-                                                                borderColor: 'rgba(239, 68, 68, 0.5)',
-                                                                color: '#ef4444',
-                                                                borderRadius: 2,
-                                                                textTransform: 'none',
-                                                                fontWeight: 600,
-                                                                '&:hover': {
-                                                                    borderColor: '#ef4444',
-                                                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                                                    transform: 'scale(1.05)'
-                                                                }
-                                                            }}
-                                                        >
-                                                            Remove
-                                                        </Button>
-                                                        </Box>
-                                                    </Box>
-                                                ))}
-                                            </Box>
-                                        )}
-                                    </Box>
-                                </Box>
-                            </Box>
-
-                            {/* Team Members Section */}
-                            <Box sx={{ mt: 4 }}>
-                                <Typography variant="h6" sx={{ 
-                                    color: 'white', 
-                                    mb: 3, 
-                                    fontWeight: 600,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 1
-                                }}>
-                                    <Box
-                                        sx={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: '50%',
-                                            background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-                                            boxShadow: '0 0 8px rgba(139, 92, 246, 0.5)'
-                                        }}
-                                    />
-                                    Team Members
-                                </Typography>
-                                
-                                <Box
-                                    sx={{
-                                        p: 3,
-                                        borderRadius: 2,
-                                        background: 'rgba(255, 255, 255, 0.05)',
-                                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                                        backdropFilter: 'blur(10px)'
-                                    }}
-                                >
-                                    {/* Team Member Action Buttons */}
-                                    <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-                                        <Button
-                                            variant="contained"
-                                            startIcon={<GroupIcon />}
-                                            onClick={() => setShowTeamRoleWizard(true)}
-                                            sx={{
-                                                background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-                                                color: 'white',
-                                                borderRadius: 2,
-                                                px: 3,
-                                                py: 1,
-                                                textTransform: 'none',
-                                                fontWeight: 600,
-                                                boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)',
-                                                '&:hover': {
-                                                    background: 'linear-gradient(135deg, #7c3aed, #9333ea)',
-                                                    boxShadow: '0 6px 20px rgba(139, 92, 246, 0.4)',
-                                                    transform: 'translateY(-1px)'
-                                                }
-                                            }}
-                                        >
-                                            Team & Roles
-                                        </Button>
-                                        <Button
-                                            variant="outlined"
-                                            onClick={async () => {
-                                              if (!selectedProject) return;
-                                              console.log('🔄 [DashboardCloudProjectsBridge] Refreshing team members for project:', selectedProject.id);
-                                              try {
-                                                setTeamMembersLoading(true);
-                                                // Refresh both assigned and available team members
-                                                await loadTeamMembersForProject(selectedProject);
-                                                console.log('✅ [DashboardCloudProjectsBridge] Team members refreshed successfully');
-                                              } catch (e) {
-                                                console.error('❌ [DashboardCloudProjectsBridge] Failed to refresh team members:', e);
-                                                setError('Failed to refresh team members');
-                                              } finally {
-                                                setTeamMembersLoading(false);
-                                              }
-                                            }}
-                                            disabled={teamMembersLoading}
-                                            sx={{
-                                                borderColor: 'rgba(139, 92, 246, 0.5)',
-                                                color: '#8b5cf6',
-                                                borderRadius: 2,
-                                                px: 3,
-                                                py: 1,
-                                                textTransform: 'none',
-                                                fontWeight: 600,
-                                                '&:hover': {
-                                                    borderColor: '#8b5cf6',
-                                                    backgroundColor: 'rgba(139, 92, 246, 0.1)'
-                                                },
-                                                '&:disabled': {
-                                                    borderColor: 'rgba(255, 255, 255, 0.2)',
-                                                    color: 'rgba(255, 255, 255, 0.3)'
-                                                }
-                                            }}
-                                        >
-                                            {teamMembersLoading ? 'Refreshing...' : 'Refresh'}
-                                        </Button>
-                                    </Box>
-
-                                    {/* Currently Assigned Team Members */}
-                                    <Box>
-                                        <Typography variant="body2" sx={{ 
-                                            color: 'rgba(255, 255, 255, 0.8)', 
-                                            mb: 2,
-                                            fontWeight: 500
-                                        }}>
-                                            Project Team Members ({projectTeamMembers.length})
-                                        </Typography>
-                                        
-                                        {projectTeamMembers.length === 0 ? (
-                                            <Box
-                                                sx={{
-                                                    p: 4,
-                                                    textAlign: 'center',
-                                                    borderRadius: 2,
-                                                    background: 'rgba(255, 255, 255, 0.02)',
-                                                    border: '1px dashed rgba(255, 255, 255, 0.1)'
-                                                }}
-                                            >
-                                                <NetworkIcon sx={{ fontSize: 48, color: 'rgba(255, 255, 255, 0.3)', mb: 2 }} />
-                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
-                                                    No team members assigned to this project
-                                                </Typography>
-                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.4)', mt: 1 }}>
-                                                    Add licensed team members to collaborate on this project
-                                                </Typography>
-                                            </Box>
-                                        ) : (
-                                            <Box
-                                                sx={{
-                                                    borderRadius: 2,
-                                                    overflow: 'hidden',
-                                                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                                                }}
-                                            >
-                                                {projectTeamMembers.map((member: any, index: number) => {
-                                                    // Debug: Log the actual member structure
-                                                    console.log('🔍 [DashboardCloudProjectsBridge] Team member structure:', member);
-                                                    
-                                                    // 🔧 ENHANCED: Use the enriched name from TeamMemberService
-                                                    // The TeamMemberService now properly enriches team member data with full profiles
-                                                    let displayName = 'Unnamed User';
-                                                    
-                                                    // Priority 1: Use the enriched name from TeamMemberService (this should be correct now)
-                                                    if (member.name && member.name !== 'Unnamed User') {
-                                                        displayName = member.name;
-                                                        console.log('🎯 [DashboardCloudProjectsBridge] Using enriched name from TeamMemberService:', displayName);
-                                                    }
-                                                    // Priority 2: Check nested teamMember profile (fallback)
-                                                    else if (member.teamMember?.name && member.teamMember.name !== 'Unnamed User') {
-                                                        displayName = member.teamMember.name;
-                                                        console.log('🎯 [DashboardCloudProjectsBridge] Using nested teamMember name:', displayName);
-                                                    }
-                                                    // Priority 3: Try to construct from nested profile data
-                                                    else if (member.teamMember?.firstName && member.teamMember?.lastName) {
-                                                        displayName = `${member.teamMember.firstName} ${member.teamMember.lastName}`;
-                                                        console.log('🎯 [DashboardCloudProjectsBridge] Constructed from nested firstName + lastName:', displayName);
-                                                    }
-                                                    // Priority 4: Use nested firstName only
-                                                    else if (member.teamMember?.firstName) {
-                                                        displayName = member.teamMember.firstName;
-                                                        console.log('🎯 [DashboardCloudProjectsBridge] Using nested firstName:', displayName);
-                                                    }
-                                                    // Priority 5: Extract from email (last resort)
-                                                    else if (member.email || member.teamMember?.email) {
-                                                        const email = member.email || member.teamMember.email;
-                                                        const emailParts = email.split('@');
-                                                        displayName = emailParts[0]
-                                                            .replace(/[._-]/g, ' ')
-                                                            .split(' ')
-                                                            .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                                                            .join(' ');
-                                                        console.log('🎯 [DashboardCloudProjectsBridge] Extracted from email:', displayName);
-                                                    }
-                                                    
-                                                    console.log('🔍 [DashboardCloudProjectsBridge] Final display name:', displayName);
-                                                    
-                                                    const displayEmail = member.email || member.teamMember?.email || 'No email';
-                                                    const displayRole = member.role || member.teamMember?.role || 'Member';
-                                                    const displayLicenseType = member.teamMember?.licenseType || member.licenseType;
-                                                    
-                                                    return (
-                                                    <Box
-                                                        key={member.id}
-                                                        sx={{
-                                                            p: 3,
-                                                            background: index % 2 === 0 ? 'rgba(255, 255, 255, 0.02)' : 'rgba(255, 255, 255, 0.05)',
-                                                            borderBottom: index < projectTeamMembers.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            transition: 'all 0.2s ease',
-                                                            '&:hover': {
-                                                                background: 'rgba(139, 92, 246, 0.1)',
-                                                                transform: 'translateX(4px)'
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                            <Box
-                                                                sx={{
-                                                                    width: 40,
-                                                                    height: 40,
-                                                                    borderRadius: '50%',
-                                                                    background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    fontSize: '18px',
-                                                                    fontWeight: 600,
-                                                                    color: 'white'
-                                                                }}
-                                                            >
-                                                                {displayName.charAt(0).toUpperCase()}
-                                                            </Box>
-                                                            <Box>
-                                                                <Typography variant="body1" sx={{ color: 'white', fontWeight: 500 }}>
-                                                                    {displayName}
-                                                                </Typography>
-                                                                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                                                                    {displayEmail}
-                                                                </Typography>
-                                                                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                                                                    <Chip
-                                                                        size="small"
-                                                                        label={displayRole}
-                                                                        sx={{
-                                                                            backgroundColor: 'rgba(139, 92, 246, 0.2)',
-                                                                            color: '#c4b5fd',
-                                                                            fontSize: '11px'
-                                                                        }}
-                                                                    />
-                                                                    {displayLicenseType && (
-                                                                        <Chip
-                                                                            size="small"
-                                                                            label={displayLicenseType}
-                                                                            sx={{
-                                                                                backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                                                                                color: '#6ee7b7',
-                                                                                fontSize: '11px'
-                                                                            }}
-                                                                        />
-                                                                    )}
-                                                                </Box>
-                                                            </Box>
-                                                        </Box>
-                                                        <Button
-                                                            variant="outlined"
-                                                            size="small"
-                                                            startIcon={<DeleteIcon />}
-                                                            onClick={async () => {
-                                                                try {
-                                                                    // Use teamMemberId if available, otherwise fall back to id
-                                                                    const memberIdToRemove = member.teamMemberId || member.id;
-                                                                    
-                                                                    if (!memberIdToRemove) {
-                                                                        console.error('No valid team member ID found:', member);
-                                                                        alert('Error: Invalid team member ID');
-                                                                        return;
-                                                                    }
-                                                                    
-                                                                    await cloudProjectIntegration.removeTeamMemberFromProject(selectedProject!.id, memberIdToRemove);
-                                                                    
-                                                                    // Update local state
-                                                                    setProjectTeamMembers(prev => prev.filter(m => 
-                                                                        (m.teamMemberId || m.id) !== memberIdToRemove
-                                                                    ));
-                                                                } catch (e: any) {
-                                                                    console.error('Failed to remove team member', e);
-                                                                    alert(`Failed to remove team member: ${e?.message || 'Unknown error'}`);
-                                                                }
-                                                            }}
-                                                            sx={{
-                                                                borderColor: 'rgba(239, 68, 68, 0.5)',
-                                                                color: '#ef4444',
-                                                                borderRadius: 2,
-                                                                textTransform: 'none',
-                                                                fontWeight: 600,
-                                                                '&:hover': {
-                                                                    borderColor: '#ef4444',
-                                                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                                                    transform: 'scale(1.05)'
-                                                                }
-                                                            }}
-                                                        >
-                                                            Remove
-                                                        </Button>
-                                                    </Box>
-                                                );
-                                            })}
-                                            </Box>
-                                        )}
-                                    </Box>
-                                </Box>
-                            </Box>
-                      </Box>
-                    )}
-                </DialogContent>
-
-                <DialogActions
-                    sx={{
-                        p: 3,
-                        background: 'rgba(255, 255, 255, 0.02)',
-                        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-                        display: 'flex',
-                        justifyContent: 'space-between'
-                    }}
-                >
-
-                    
-                    <Button
-                        onClick={() => setSelectedProject(null)}
-                        variant="outlined"
-                        sx={{
-                            borderColor: 'rgba(255, 255, 255, 0.3)',
-                            color: 'rgba(255, 255, 255, 0.8)',
-                            borderRadius: 2,
-                            px: 4,
-                            py: 1.5,
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            '&:hover': {
-                                borderColor: 'rgba(255, 255, 255, 0.5)',
-                                backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                            }
-                        }}
-                    >
-                        Close
-                    </Button>
-
-                </DialogActions>
-            </Dialog>
-
-            {/* Dataset Creation Wizard */}
+                project={selectedProject}
+                onClose={() => setSelectedProject(null)}
+                onProjectUpdated={loadProjects}
+                // Dataset management props
+                projectDatasets={projectDatasets}
+                availableDatasets={availableDatasets}
+                datasetsLoading={datasetsLoading}
+                datasetSearch={datasetSearch}
+                datasetBackendFilter={datasetBackendFilter}
+                selectedDatasetId={selectedDatasetId}
+                uploading={uploading}
+                onLoadDatasetsForProject={loadDatasetsForProject}
+                onSetDatasetSearch={setDatasetSearch}
+                onSetDatasetBackendFilter={setDatasetBackendFilter}
+                onSetSelectedDatasetId={setSelectedDatasetId}
+                onSetError={setError}
+                // Team management props
+                projectTeamMembers={projectTeamMembers}
+                teamMembersLoading={teamMembersLoading}
+                projectTeamMemberCounts={projectTeamMemberCounts}
+                onLoadTeamMembersForProject={loadTeamMembersForProject}
+                onShowTeamRoleWizard={() => setShowTeamRoleWizard(true)}
+                onShowCreateDatasetWizard={() => setShowCreateDatasetWizard(true)}
+                onShowDatasetManagementDialog={() => setShowDatasetManagementDialog(true)}
+                onShowDatasetInsightsDialog={() => setShowDatasetInsightsDialog(true)}
+            />            {/* Dataset Creation Wizard */}
             <ErrorBoundary>
                 <DatasetCreationWizard
                     open={showCreateDatasetWizard}
@@ -3847,7 +2896,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                             sx={{
                                 width: 40,
                                 height: 40,
-                                borderRadius: '50%',
+                                borderRadius: 2,
                                 background: 'rgba(255, 255, 255, 0.2)',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -3958,7 +3007,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                                 sx={{
                                                                     width: 32,
                                                                     height: 32,
-                                                                    borderRadius: '50%',
+                                                                    borderRadius: 2,
                                                                     background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
                                                                     display: 'flex',
                                                                     alignItems: 'center',
@@ -5252,7 +4301,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                     <Box sx={{
                                         width: 32,
                                         height: 32,
-                                        borderRadius: '50%',
+                                        borderRadius: 2,
                                         background: 'linear-gradient(135deg, #10b981, #059669)',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -5314,7 +4363,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                     <Box sx={{
                                         width: 32,
                                         height: 32,
-                                        borderRadius: '50%',
+                                        borderRadius: 2,
                                         background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -5385,7 +4434,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                     <Box sx={{
                                         width: 32,
                                         height: 32,
-                                        borderRadius: '50%',
+                                        borderRadius: 2,
                                         background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -5447,7 +4496,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                     <Box sx={{
                                         width: 32,
                                         height: 32,
-                                        borderRadius: '50%',
+                                        borderRadius: 2,
                                         background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                                         display: 'flex',
                                         alignItems: 'center',

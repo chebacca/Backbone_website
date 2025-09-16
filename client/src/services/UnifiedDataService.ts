@@ -278,7 +278,15 @@ export interface StreamlinedTeamMember {
   
   // Department & Projects (embedded)
   department?: string;
+  position?: string;
+  phone?: string;
   assignedProjects: string[];
+  
+  // License information
+  licenseType?: string;
+  
+  // Organization ID for compatibility
+  organizationId?: string;
   
   // Metadata
   avatar?: string;
@@ -287,6 +295,11 @@ export interface StreamlinedTeamMember {
   invitedBy?: string;
   createdAt: Date;
   updatedAt: Date;
+  
+  // Additional fields for compatibility
+  password?: string;
+  createdBy?: string;
+  updatedBy?: string;
 }
 
 export interface OrganizationContext {
@@ -1693,8 +1706,8 @@ class UnifiedDataService {
         updatedAt: new Date()
       };
 
-      // Team members are stored in the 'users' collection, not 'team_members'
-      await updateDoc(doc(this.db, 'users', memberId), updateData);
+      // Team members are stored in the 'teamMembers' collection
+      await updateDoc(doc(this.db, 'teamMembers', memberId), updateData);
       
       // Clear related caches
       this.clearCacheByPattern('org-team-members-');

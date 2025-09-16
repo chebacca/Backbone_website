@@ -48,7 +48,7 @@ const AnalyticsPage = React.lazy(() => import('@/pages/dashboard/AnalyticsPage')
 const BillingPage = React.lazy(() => import('@/pages/dashboard/BillingPage'));
 const StreamlinedBillingPage = React.lazy(() => import('@/pages/dashboard/StreamlinedBillingPage'));
 const SettingsPage = React.lazy(() => import('@/pages/dashboard/SettingsPage'));
-const TeamPage = React.lazy(() => import('@/pages/dashboard/TeamPage'));
+const TeamPage = React.lazy(() => import('@/pages/dashboard/EnhancedTeamPage'));
 const TestStreamlinedHooks = React.lazy(() => import('@/components/TestStreamlinedHooks'));
 const DownloadsPage = React.lazy(() => import('@/pages/dashboard/DownloadsPage'));
 const DocumentationPage = React.lazy(() => import('@/pages/dashboard/DocumentationPage'));

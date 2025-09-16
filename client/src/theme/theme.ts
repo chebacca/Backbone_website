@@ -168,7 +168,7 @@ const components = {
   MuiButton: {
     styleOverrides: {
       root: {
-        borderRadius: 8,
+        borderRadius: 0,
         padding: '12px 24px',
         fontSize: '0.875rem',
         fontWeight: 500,
@@ -204,7 +204,7 @@ const components = {
       root: {
         backgroundColor: colors.background.paper,
         backgroundImage: 'none',
-        borderRadius: 12,
+        borderRadius: 0,
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
         transition: 'all 0.3s ease-in-out',
         '&:hover': {
@@ -250,7 +250,7 @@ const components = {
     styleOverrides: {
       root: {
         '& .MuiOutlinedInput-root': {
-          borderRadius: 8,
+          borderRadius: 0,
           backgroundColor: 'rgba(255, 255, 255, 0.05)',
           '& fieldset': {
             borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -277,7 +277,7 @@ const components = {
   MuiChip: {
     styleOverrides: {
       root: {
-        borderRadius: 6,
+        borderRadius: 0,
         fontWeight: 500,
       },
       colorPrimary: {
@@ -291,7 +291,7 @@ const components = {
   MuiDialog: {
     styleOverrides: {
       paper: {
-        borderRadius: 12,
+        borderRadius: 0,
         backgroundColor: colors.background.paper,
       },
     },
@@ -301,7 +301,7 @@ const components = {
   MuiMenu: {
     styleOverrides: {
       paper: {
-        borderRadius: 8,
+        borderRadius: 0,
         backgroundColor: colors.background.elevated,
         boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
         border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -313,7 +313,7 @@ const components = {
   MuiListItem: {
     styleOverrides: {
       root: {
-        borderRadius: 6,
+        borderRadius: 0,
         margin: '2px 0',
         '&:hover': {
           backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -371,7 +371,7 @@ const themeOptions: ThemeOptions = {
   typography,
   components,
   shape: {
-    borderRadius: 8,
+    borderRadius: 0,
   },
   spacing: 8,
   breakpoints: {

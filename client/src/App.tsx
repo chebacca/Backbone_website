@@ -43,6 +43,7 @@ const DashboardLayout = React.lazy(() => import('@/components/layout/DashboardLa
 const DashboardOverview = React.lazy(() => import('@/pages/dashboard/DashboardOverview'));
 const DashboardCloudProjectsBridge = React.lazy(() => import('@/components/DashboardCloudProjectsBridge'));
 const LicensesPage = React.lazy(() => import('@/pages/dashboard/LicensesPage'));
+const SecurityDashboardPage = React.lazy(() => import('@/pages/security-dashboard'));
 
 const AnalyticsPage = React.lazy(() => import('@/pages/dashboard/AnalyticsPage'));
 const BillingPage = React.lazy(() => import('@/pages/dashboard/BillingPage'));
@@ -222,10 +223,10 @@ function App() {
                 <Route path="support" element={<SupportPage />} />
                 <Route path="startup" element={<StartupWorkflow />} />
                 <Route path="test-streamlined" element={<TestStreamlinedHooks />} />
-                <Route path="organization" element={<div>Organization (Coming Soon)</div>} />
-                <Route path="security" element={<div>Security Center (Coming Soon)</div>} />
-                <Route path="compliance" element={<div>Compliance (Coming Soon)</div>} />
-              </Route>
+              <Route path="organization" element={<div>Organization (Coming Soon)</div>} />
+              <Route path="security" element={<SecurityDashboardPage />} />
+              <Route path="compliance" element={<div>Compliance (Coming Soon)</div>} />
+            </Route>
 
               {/* Keep public support route for non-dashboard access */}
 

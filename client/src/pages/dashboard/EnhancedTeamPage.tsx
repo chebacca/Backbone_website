@@ -1,14 +1,11 @@
 /**
- * 👥 Enhanced Team Management Page
+ * 👥 Enhanced Team Management Page - Licensing Website Version
  * 
- * Complete team management with advanced features:
+ * Streamlined team management for licensing website:
+ * - Team Member Management
+ * - License Assignment
+ * - Basic Filtering & Search
  * - CSV Import/Export
- * - Advanced Filtering & Search
- * - Team Analytics & Reports
- * - Audit Trail
- * - Bulk Operations
- * - Team Templates
- * - Advanced Search
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
@@ -43,47 +40,13 @@ import {
   TableRow,
   Paper,
   Tooltip,
-  LinearProgress,
-  Fab,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
   CircularProgress,
   FormControlLabel,
   Switch,
   InputAdornment,
   IconButton as MuiIconButton,
-  Tabs,
-  Tab,
-  Autocomplete,
   Checkbox,
-  FormGroup,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Alert as MuiAlert,
-  Snackbar,
-  Backdrop,
-  Drawer,
-  ListItemButton,
-  ListItemAvatar,
-  ListItemSecondaryAction,
-  CardHeader,
-  CardActions,
-  CardMedia,
-  Rating,
-  Slider,
-  RadioGroup,
-  Radio,
-  FormLabel,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
+  Divider,
   Pagination,
   Skeleton,
 } from '@mui/material';
@@ -99,7 +62,6 @@ import {
   AdminPanelSettings,
   Work,
   Star,
-  VisibilityOff,
   Send,
   Warning,
   Security,
@@ -108,127 +70,19 @@ import {
   Phone,
   Badge,
   AccessTime,
-  Assignment,
   Lock,
   VpnKey,
   Folder,
-  Business,
   Download,
   Upload,
   FilterList,
   Search,
-  Analytics,
-  History,
-  Settings,
-  PlaylistAdd,
-  PlayArrow,
-  Stop,
   Edit,
   Delete,
-  Visibility,
   Refresh,
-  SelectAll,
   Clear,
   ExpandMore,
   ExpandLess,
-  TrendingUp,
-  TrendingDown,
-  Assessment,
-  Timeline as TimelineIcon,
-  GroupWork,
-  Speed,
-  Insights,
-  BarChart,
-  PieChart,
-  TableChart,
-  ViewList,
-  ViewModule,
-  ViewQuilt,
-  Sort,
-  FilterAlt,
-  Tune,
-  ManageAccounts,
-  SupervisedUserCircle,
-  PersonSearch,
-  PersonAddAlt1,
-  PersonRemove,
-  PersonOff,
-  PersonAddDisabled,
-  PersonPin,
-  PersonPinCircle,
-  PersonAddAlt,
-  PersonRemoveAlt1,
-  PersonAddAlt1Outlined,
-  PersonRemoveAlt1Outlined,
-  PersonAddOutlined,
-  PersonRemoveOutlined,
-  PersonAddDisabledOutlined,
-  PersonOffOutlined,
-  PersonPinOutlined,
-  PersonPinCircleOutlined,
-  PersonSearchOutlined,
-  ManageAccountsOutlined,
-  SupervisedUserCircleOutlined,
-  GroupOutlined,
-  GroupWorkOutlined,
-  SpeedOutlined,
-  InsightsOutlined,
-  AssessmentOutlined,
-  BarChartOutlined,
-  PieChartOutlined,
-  TableChartOutlined,
-  ViewListOutlined,
-  ViewModuleOutlined,
-  ViewQuiltOutlined,
-  SortOutlined,
-  FilterAltOutlined,
-  TuneOutlined,
-  DownloadOutlined,
-  UploadOutlined,
-  FilterListOutlined,
-  SearchOutlined,
-  AnalyticsOutlined,
-  HistoryOutlined,
-  SettingsOutlined,
-  PlaceOutlined,
-  PlaylistAddOutlined,
-  SelectAllOutlined,
-  ClearOutlined,
-  ExpandMoreOutlined,
-  ExpandLessOutlined,
-  TrendingUpOutlined,
-  TrendingDownOutlined,
-  TimelineOutlined,
-  GroupOutlined as GroupOutlinedIcon,
-  GroupWorkOutlined as GroupWorkOutlinedIcon,
-  SpeedOutlined as SpeedOutlinedIcon,
-  InsightsOutlined as InsightsOutlinedIcon,
-  AssessmentOutlined as AssessmentOutlinedIcon,
-  BarChartOutlined as BarChartOutlinedIcon,
-  PieChartOutlined as PieChartOutlinedIcon,
-  TableChartOutlined as TableChartOutlinedIcon,
-  ViewListOutlined as ViewListOutlinedIcon,
-  ViewModuleOutlined as ViewModuleOutlinedIcon,
-  ViewQuiltOutlined as ViewQuiltOutlinedIcon,
-  SortOutlined as SortOutlinedIcon,
-  FilterAltOutlined as FilterAltOutlinedIcon,
-  TuneOutlined as TuneOutlinedIcon,
-  DownloadOutlined as DownloadOutlinedIcon,
-  UploadOutlined as UploadOutlinedIcon,
-  FilterListOutlined as FilterListOutlinedIcon,
-  SearchOutlined as SearchOutlinedIcon,
-  AnalyticsOutlined as AnalyticsOutlinedIcon,
-  HistoryOutlined as HistoryOutlinedIcon,
-  SettingsOutlined as SettingsOutlinedIcon,
-  PlaceOutlined as TemplateOutlinedIcon,
-  PlaylistAddOutlined as PlaylistAddOutlinedIcon,
-  SelectAllOutlined as SelectAllOutlinedIcon,
-  ClearOutlined as ClearOutlinedIcon,
-  ExpandMoreOutlined as ExpandMoreOutlinedIcon,
-  ExpandLessOutlined as ExpandLessOutlinedIcon,
-  TrendingUpOutlined as TrendingUpOutlinedIcon,
-  TrendingDownOutlined as TrendingDownOutlinedIcon,
-  TimelineOutlined as TimelineOutlinedIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import {
@@ -247,9 +101,6 @@ import {
 import { StreamlinedTeamMember } from '@/services/UnifiedDataService';
 import { csvService, CSVImportResult } from '@/services/CSVService';
 import { teamMemberFilterService, FilterCriteria, SortOptions, PaginationOptions } from '@/services/TeamMemberFilterService';
-import { teamMemberAnalyticsService, TeamAnalytics } from '@/services/TeamMemberAnalyticsService';
-import { teamMemberAuditService, AuditLog, AuditQuery } from '@/services/TeamMemberAuditService';
-import { teamMemberTemplateService, TeamMemberTemplate, BulkOperation } from '@/services/TeamMemberTemplateService';
 import MetricCard from '@/components/common/MetricCard';
 
 // ============================================================================
@@ -274,31 +125,9 @@ interface TeamStats {
   assignedLicenses: number;
 }
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
 // ============================================================================
 // COMPONENTS
 // ============================================================================
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`team-tabpanel-${index}`}
-      aria-labelledby={`team-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
 
 // ============================================================================
 // MAIN COMPONENT
@@ -308,29 +137,16 @@ const EnhancedTeamPage: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   
   // State management
-  const [activeTab, setActiveTab] = useState(0);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [filterCriteria, setFilterCriteria] = useState<FilterCriteria>({});
   const [sortOptions, setSortOptions] = useState<SortOptions>({ field: 'createdAt', direction: 'desc' });
   const [pagination, setPagination] = useState<PaginationOptions>({ page: 1, pageSize: 25 });
-  const [viewMode, setViewMode] = useState<'list' | 'grid' | 'table'>('table');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [showAuditTrail, setShowAuditTrail] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [showBulkOperations, setShowBulkOperations] = useState(false);
   const [showCSVImport, setShowCSVImport] = useState(false);
   const [showCSVExport, setShowCSVExport] = useState(false);
-  const [analytics, setAnalytics] = useState<TeamAnalytics | null>(null);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [templates, setTemplates] = useState<TeamMemberTemplate[]>([]);
-  const [bulkOperations, setBulkOperations] = useState<BulkOperation[]>([]);
   const [csvImportResult, setCsvImportResult] = useState<CSVImportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showOperationDetails, setShowOperationDetails] = useState(false);
-  const [selectedOperation, setSelectedOperation] = useState<BulkOperation | null>(null);
-  const [runningOperations, setRunningOperations] = useState<Set<string>>(new Set());
   
   // Menu states for team member actions
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -427,63 +243,6 @@ const EnhancedTeamPage: React.FC = () => {
     };
   }, [teamMembers, licenses]);
 
-  // Load analytics
-  const loadAnalytics = useCallback(async () => {
-    if (!teamMembers) return;
-    
-    setIsLoading(true);
-    try {
-      const analyticsData = teamMemberAnalyticsService.generateAnalytics(teamMembers);
-      setAnalytics(analyticsData);
-    } catch (error) {
-      console.error('Failed to load analytics:', error);
-      enqueueSnackbar('Failed to load analytics', { variant: 'error' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [teamMembers, enqueueSnackbar]);
-
-  // Load audit logs
-  const loadAuditLogs = useCallback(async () => {
-    if (!orgContext?.organization?.id) return;
-    
-    setIsLoading(true);
-    try {
-      const query: AuditQuery = {
-        organizationId: orgContext.organization.id,
-        limit: 100
-      };
-      const logs = teamMemberAuditService.queryAuditLogs(query);
-      setAuditLogs(logs);
-    } catch (error) {
-      console.error('Failed to load audit logs:', error);
-      enqueueSnackbar('Failed to load audit logs', { variant: 'error' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [orgContext?.organization?.id, enqueueSnackbar]);
-
-  // Load templates
-  const loadTemplates = useCallback(async () => {
-    try {
-      const templateList = teamMemberTemplateService.getTemplates();
-      setTemplates(templateList);
-    } catch (error) {
-      console.error('Failed to load templates:', error);
-      enqueueSnackbar('Failed to load templates', { variant: 'error' });
-    }
-  }, [enqueueSnackbar]);
-
-  // Load bulk operations
-  const loadBulkOperations = useCallback(async () => {
-    try {
-      const operations = teamMemberTemplateService.getBulkOperations();
-      setBulkOperations(operations);
-    } catch (error) {
-      console.error('Failed to load bulk operations:', error);
-      enqueueSnackbar('Failed to load bulk operations', { variant: 'error' });
-    }
-  }, [enqueueSnackbar]);
 
   // Handle CSV export
   const handleCSVExport = useCallback(async () => {
@@ -531,123 +290,6 @@ const EnhancedTeamPage: React.FC = () => {
     }
   }, [orgContext?.organization?.id, enqueueSnackbar, refetchTeamMembers]);
 
-  // Handle bulk operations
-  const handleBulkOperation = useCallback(async (operation: BulkOperation) => {
-    if (!teamMembers) return;
-    
-    // Add to running operations
-    setRunningOperations(prev => new Set([...prev, operation.id]));
-    
-    try {
-      const result = await teamMemberTemplateService.executeBulkOperation(
-        operation.id,
-        teamMembers,
-        (progress) => {
-          // Update progress in real-time
-          setBulkOperations(prev => prev.map(op => 
-            op.id === operation.id ? { ...op, progress } : op
-          ));
-        }
-      );
-      
-      // Update operation status
-      setBulkOperations(prev => prev.map(op => 
-        op.id === operation.id ? { 
-          ...op, 
-          status: result.failed === 0 ? 'completed' : 'failed',
-          progress: 100,
-          results: result,
-          completedAt: new Date()
-        } : op
-      ));
-      
-      enqueueSnackbar(`Bulk operation completed: ${result.successful} successful, ${result.failed} failed`, { 
-        variant: result.failed === 0 ? 'success' : 'warning' 
-      });
-      refetchTeamMembers();
-    } catch (error) {
-      console.error('Failed to execute bulk operation:', error);
-      
-      // Update operation status to failed
-      setBulkOperations(prev => prev.map(op => 
-        op.id === operation.id ? { 
-          ...op, 
-          status: 'failed',
-          progress: 0
-        } : op
-      ));
-      
-      enqueueSnackbar('Failed to execute bulk operation', { variant: 'error' });
-    } finally {
-      // Remove from running operations
-      setRunningOperations(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(operation.id);
-        return newSet;
-      });
-    }
-  }, [teamMembers, enqueueSnackbar, refetchTeamMembers]);
-
-  // Handle view operation details
-  const handleViewOperationDetails = useCallback((operation: BulkOperation) => {
-    setSelectedOperation(operation);
-    setShowOperationDetails(true);
-  }, []);
-
-  // Handle edit operation
-  const handleEditOperation = useCallback((operation: BulkOperation) => {
-    // For now, just show a message - in a real app, this would open an edit dialog
-    enqueueSnackbar('Edit functionality coming soon', { variant: 'info' });
-  }, [enqueueSnackbar]);
-
-  // Handle delete operation
-  const handleDeleteOperation = useCallback((operation: BulkOperation) => {
-    setBulkOperations(prev => prev.filter(op => op.id !== operation.id));
-    enqueueSnackbar('Operation deleted successfully', { variant: 'success' });
-  }, [enqueueSnackbar]);
-
-  // Handle retry operation
-  const handleRetryOperation = useCallback((operation: BulkOperation) => {
-    // Reset operation status and retry
-    setBulkOperations(prev => prev.map(op => 
-      op.id === operation.id ? { 
-        ...op, 
-        status: 'pending',
-        progress: 0,
-        results: {
-          totalProcessed: 0,
-          successful: 0,
-          failed: 0,
-          errors: [],
-          details: {}
-        }
-      } : op
-    ));
-    
-    // Execute the operation
-    handleBulkOperation(operation);
-  }, [handleBulkOperation]);
-
-  // Handle stop operation
-  const handleStopOperation = useCallback((operation: BulkOperation) => {
-    // Update operation status to failed
-    setBulkOperations(prev => prev.map(op => 
-      op.id === operation.id ? { 
-        ...op, 
-        status: 'failed',
-        progress: 0
-      } : op
-    ));
-    
-    // Remove from running operations
-    setRunningOperations(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(operation.id);
-      return newSet;
-    });
-    
-    enqueueSnackbar('Operation stopped', { variant: 'info' });
-  }, [enqueueSnackbar]);
 
   // Handle team member menu actions
   const handleMenuClick = useCallback((event: React.MouseEvent<HTMLElement>, member: StreamlinedTeamMember) => {
@@ -801,26 +443,6 @@ const EnhancedTeamPage: React.FC = () => {
     }
   }, [selectedMember, passwordFormData, changeTeamMemberPassword, enqueueSnackbar]);
 
-  // Handle tab change
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
-    
-    // Load data based on tab
-    switch (newValue) {
-      case 1: // Analytics
-        loadAnalytics();
-        break;
-      case 2: // Audit Trail
-        loadAuditLogs();
-        break;
-      case 3: // Templates
-        loadTemplates();
-        break;
-      case 4: // Bulk Operations
-        loadBulkOperations();
-        break;
-    }
-  };
 
   // Handle member selection
   const handleMemberSelection = (memberId: string, selected: boolean) => {
@@ -894,14 +516,14 @@ const EnhancedTeamPage: React.FC = () => {
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             variant="outlined"
-            startIcon={<DownloadOutlined />}
+            startIcon={<Download />}
             onClick={handleCSVExport}
           >
             Export CSV
           </Button>
           <Button
             variant="outlined"
-            startIcon={<UploadOutlined />}
+            startIcon={<Upload />}
             onClick={() => setShowCSVImport(true)}
           >
             Import CSV
@@ -952,20 +574,9 @@ const EnhancedTeamPage: React.FC = () => {
         </Grid>
       </Grid>
 
-      {/* Main Content Tabs */}
+      {/* Main Content */}
       <Card>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={activeTab} onChange={handleTabChange} aria-label="team management tabs">
-            <Tab label="Team Members" icon={<People />} />
-            <Tab label="Analytics" icon={<Analytics />} />
-            <Tab label="Audit Trail" icon={<History />} />
-            <Tab label="Templates" icon={<Settings />} />
-            <Tab label="Bulk Operations" icon={<PlaylistAdd />} />
-          </Tabs>
-        </Box>
-
-        {/* Team Members Tab */}
-        <TabPanel value={activeTab} index={0}>
+        <CardContent>
           {/* Search and Filters */}
           <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
             <TextField
@@ -988,22 +599,6 @@ const EnhancedTeamPage: React.FC = () => {
             >
               Filters
             </Button>
-            <ToggleButtonGroup
-              value={viewMode}
-              exclusive
-              onChange={(e, newMode) => newMode && setViewMode(newMode)}
-              size="small"
-            >
-              <ToggleButton value="table">
-                <ViewList />
-              </ToggleButton>
-              <ToggleButton value="grid">
-                <ViewModule />
-              </ToggleButton>
-              <ToggleButton value="list">
-                <ViewQuilt />
-              </ToggleButton>
-            </ToggleButtonGroup>
           </Box>
 
           {/* Advanced Filters */}
@@ -1185,273 +780,7 @@ const EnhancedTeamPage: React.FC = () => {
               color="primary"
             />
           </Box>
-        </TabPanel>
-
-        {/* Analytics Tab */}
-        <TabPanel value={activeTab} index={1}>
-          {analytics ? (
-            <Box>
-              <Typography variant="h5" gutterBottom>Team Analytics</Typography>
-              {/* Analytics content would go here */}
-              <Typography>Analytics dashboard coming soon...</Typography>
-            </Box>
-          ) : (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <CircularProgress />
-              <Typography variant="body1" sx={{ mt: 2 }}>
-                Loading analytics...
-              </Typography>
-            </Box>
-          )}
-        </TabPanel>
-
-        {/* Audit Trail Tab */}
-        <TabPanel value={activeTab} index={2}>
-          <Typography variant="h5" gutterBottom>Audit Trail</Typography>
-          {auditLogs.length > 0 ? (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Timestamp</TableCell>
-                    <TableCell>Action</TableCell>
-                    <TableCell>Actor</TableCell>
-                    <TableCell>Target</TableCell>
-                    <TableCell>Changes</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {auditLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>
-                        {log.timestamp.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={log.action} size="small" />
-                      </TableCell>
-                      <TableCell>{log.actorEmail}</TableCell>
-                      <TableCell>{log.targetMemberEmail}</TableCell>
-                      <TableCell>
-                        {log.changes.length} changes
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Typography>No audit logs found.</Typography>
-          )}
-        </TabPanel>
-
-        {/* Templates Tab */}
-        <TabPanel value={activeTab} index={3}>
-          <Typography variant="h5" gutterBottom>Team Member Templates</Typography>
-          <Grid container spacing={2}>
-            {templates.map((template) => (
-              <Grid item xs={12} sm={6} md={4} key={template.id}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6">{template.name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {template.description}
-                    </Typography>
-                    <Box sx={{ mt: 2 }}>
-                      <Chip label={template.role} size="small" />
-                      <Chip label={template.category} size="small" sx={{ ml: 1 }} />
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </TabPanel>
-
-        {/* Bulk Operations Tab */}
-        <TabPanel value={activeTab} index={4}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h5">Bulk Operations</Typography>
-            <Button
-              variant="contained"
-              startIcon={<PlaylistAdd />}
-              onClick={() => setShowBulkOperations(true)}
-            >
-              Create New Operation
-            </Button>
-          </Box>
-          
-          {bulkOperations.length > 0 ? (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Description</TableCell>
-                    <TableCell>Operation</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Progress</TableCell>
-                    <TableCell>Created</TableCell>
-                    <TableCell>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {bulkOperations.map((operation) => (
-                    <TableRow key={operation.id}>
-                      <TableCell>
-                        <Typography variant="subtitle2" fontWeight="medium">
-                          {operation.name}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {operation.description}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={operation.operation.replace('_', ' ')} 
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={operation.status} 
-                          color={
-                            operation.status === 'completed' ? 'success' : 
-                            operation.status === 'running' ? 'warning' :
-                            operation.status === 'failed' ? 'error' : 'default'
-                          }
-                          size="small" 
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={operation.progress} 
-                            sx={{ width: 100 }}
-                            color={
-                              operation.status === 'completed' ? 'success' :
-                              operation.status === 'failed' ? 'error' : 'primary'
-                            }
-                          />
-                          <Typography variant="body2">
-                            {operation.progress}%
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {operation.createdAt.toLocaleDateString()}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {operation.createdAt.toLocaleTimeString()}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                          {/* Execute/Stop Button */}
-                          {operation.status === 'pending' && (
-                            <Button
-                              size="small"
-                              variant="contained"
-                              color="primary"
-                              onClick={() => handleBulkOperation(operation)}
-                              startIcon={<PlayArrow />}
-                              disabled={runningOperations.has(operation.id)}
-                            >
-                              Execute
-                            </Button>
-                          )}
-                          
-                          {operation.status === 'running' && (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="warning"
-                              onClick={() => handleStopOperation(operation)}
-                              startIcon={<Stop />}
-                            >
-                              Stop
-                            </Button>
-                          )}
-                          
-                          {operation.status === 'failed' && (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="primary"
-                              onClick={() => handleRetryOperation(operation)}
-                              startIcon={<Refresh />}
-                            >
-                              Retry
-                            </Button>
-                          )}
-                          
-                          {/* View Details Button - Always available */}
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleViewOperationDetails(operation)}
-                            startIcon={<Visibility />}
-                          >
-                            Details
-                          </Button>
-                          
-                          {/* Edit Button - Only for pending operations */}
-                          {operation.status === 'pending' && (
-                            <Button
-                              size="small"
-                              variant="text"
-                              onClick={() => handleEditOperation(operation)}
-                              startIcon={<Edit />}
-                            >
-                              Edit
-                            </Button>
-                          )}
-                          
-                          {/* Delete Button - Only for completed/failed operations */}
-                          {(operation.status === 'completed' || operation.status === 'failed') && (
-                            <Button
-                              size="small"
-                              variant="text"
-                              color="error"
-                              onClick={() => handleDeleteOperation(operation)}
-                              startIcon={<Delete />}
-                            >
-                              Delete
-                            </Button>
-                          )}
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Card>
-              <CardContent sx={{ textAlign: 'center', py: 6 }}>
-                <PlaylistAdd sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" gutterBottom>
-                  No Bulk Operations Found
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                  Create your first bulk operation to manage multiple team members at once.
-                </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<PlaylistAdd />}
-                  onClick={() => setShowBulkOperations(true)}
-                >
-                  Create New Operation
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabPanel>
+        </CardContent>
       </Card>
 
       {/* CSV Import Dialog */}
@@ -1500,214 +829,6 @@ const EnhancedTeamPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Bulk Operations Creation Dialog */}
-      <Dialog open={showBulkOperations} onClose={() => setShowBulkOperations(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Create Bulk Operation</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            <TextField
-              fullWidth
-              label="Operation Name"
-              placeholder="e.g., Update Engineering Team Roles"
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              fullWidth
-              label="Description"
-              placeholder="Describe what this operation will do"
-              multiline
-              rows={3}
-              sx={{ mb: 2 }}
-            />
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Operation Type</InputLabel>
-              <Select label="Operation Type">
-                <MenuItem value="update_role">Update Roles</MenuItem>
-                <MenuItem value="assign_license">Assign Licenses</MenuItem>
-                <MenuItem value="change_status">Change Status</MenuItem>
-                <MenuItem value="bulk_invite">Bulk Invite</MenuItem>
-              </Select>
-            </FormControl>
-            <Alert severity="info" sx={{ mt: 2 }}>
-              <AlertTitle>Bulk Operation Preview</AlertTitle>
-              This operation will affect {selectedMembers.length} selected team members.
-            </Alert>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowBulkOperations(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            // Create a sample bulk operation
-            const newOperation = teamMemberTemplateService.createBulkOperation(
-              'Sample Bulk Operation',
-              'This is a sample bulk operation created from the UI',
-              'update_role',
-              { roles: ['member'] },
-              'current-user'
-            );
-            setBulkOperations(prev => [newOperation, ...prev]);
-            setShowBulkOperations(false);
-            enqueueSnackbar('Bulk operation created successfully', { variant: 'success' });
-          }}>
-            Create Operation
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Operation Details Dialog */}
-      <Dialog open={showOperationDetails} onClose={() => setShowOperationDetails(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Operation Details</DialogTitle>
-        <DialogContent>
-          {selectedOperation && (
-            <Box sx={{ mt: 2 }}>
-              <Grid container spacing={3}>
-                <Grid item xs={12}>
-                  <Typography variant="h6" gutterBottom>
-                    {selectedOperation.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    {selectedOperation.description}
-                  </Typography>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" gutterBottom>Operation Type</Typography>
-                  <Chip 
-                    label={selectedOperation.operation.replace('_', ' ')} 
-                    color="primary" 
-                    variant="outlined"
-                  />
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" gutterBottom>Status</Typography>
-                  <Chip 
-                    label={selectedOperation.status} 
-                    color={
-                      selectedOperation.status === 'completed' ? 'success' : 
-                      selectedOperation.status === 'running' ? 'warning' :
-                      selectedOperation.status === 'failed' ? 'error' : 'default'
-                    }
-                  />
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" gutterBottom>Progress</Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={selectedOperation.progress} 
-                      sx={{ flex: 1 }}
-                      color={
-                        selectedOperation.status === 'completed' ? 'success' :
-                        selectedOperation.status === 'failed' ? 'error' : 'primary'
-                      }
-                    />
-                    <Typography variant="body2">
-                      {selectedOperation.progress}%
-                    </Typography>
-                  </Box>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" gutterBottom>Created</Typography>
-                  <Typography variant="body2">
-                    {selectedOperation.createdAt.toLocaleString()}
-                  </Typography>
-                </Grid>
-                
-                {selectedOperation.completedAt && (
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" gutterBottom>Completed</Typography>
-                    <Typography variant="body2">
-                      {selectedOperation.completedAt.toLocaleString()}
-                    </Typography>
-                  </Grid>
-                )}
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" gutterBottom>Created By</Typography>
-                  <Typography variant="body2">
-                    {selectedOperation.createdBy}
-                  </Typography>
-                </Grid>
-                
-                {selectedOperation.results && (
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" gutterBottom>Results</Typography>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Grid container spacing={2}>
-                          <Grid item xs={4}>
-                            <Typography variant="h6" color="primary">
-                              {selectedOperation.results.totalProcessed}
-                            </Typography>
-                            <Typography variant="caption">Total Processed</Typography>
-                          </Grid>
-                          <Grid item xs={4}>
-                            <Typography variant="h6" color="success.main">
-                              {selectedOperation.results.successful}
-                            </Typography>
-                            <Typography variant="caption">Successful</Typography>
-                          </Grid>
-                          <Grid item xs={4}>
-                            <Typography variant="h6" color="error.main">
-                              {selectedOperation.results.failed}
-                            </Typography>
-                            <Typography variant="caption">Failed</Typography>
-                          </Grid>
-                        </Grid>
-                        
-                        {selectedOperation.results.errors.length > 0 && (
-                          <Box sx={{ mt: 2 }}>
-                            <Typography variant="subtitle2" gutterBottom>Errors</Typography>
-                            <List dense>
-                              {selectedOperation.results.errors.map((error, index) => (
-                                <ListItem key={index}>
-                                  <ListItemText
-                                    primary={error.memberId}
-                                    secondary={error.error}
-                                  />
-                                </ListItem>
-                              ))}
-                            </List>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                )}
-                
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2" gutterBottom>Criteria</Typography>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <pre style={{ margin: 0, fontSize: '0.875rem' }}>
-                        {JSON.stringify(selectedOperation.criteria, null, 2)}
-                      </pre>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowOperationDetails(false)}>Close</Button>
-          {selectedOperation && selectedOperation.status === 'pending' && (
-            <Button 
-              variant="contained" 
-              onClick={() => {
-                setShowOperationDetails(false);
-                handleBulkOperation(selectedOperation);
-              }}
-              startIcon={<PlayArrow />}
-            >
-              Execute Now
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
 
       {/* Team Member Actions Menu */}
       <Menu

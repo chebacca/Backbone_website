@@ -44,6 +44,7 @@ import {
 } from '@mui/icons-material';
 import { Link as RouterLink, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import SecurityNavigation from '../../pages/components/SecurityNavigation';
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 
 const drawerWidth = 280;
@@ -514,6 +515,9 @@ export const DashboardLayout: React.FC = () => {
           )}
 
           <Box sx={{ flexGrow: 1 }} />
+
+          {/* Security Navigation */}
+          <SecurityNavigation />
 
           {/* Notification Icon */}
           <IconButton

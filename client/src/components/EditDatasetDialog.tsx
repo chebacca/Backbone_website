@@ -83,6 +83,9 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
     const [conflictCheck, setConflictCheck] = useState<DatasetCreationConflictCheck | null>(null);
     const [loadingConflictCheck, setLoadingConflictCheck] = useState(false);
     
+    // Expand/collapse state for collection categories
+    const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+    
     // 🔥 DYNAMIC COLLECTIONS: Real-time collection discovery with auto-monitoring
     const { 
         collections: DASHBOARD_COLLECTIONS_BY_CATEGORY, 
@@ -274,9 +277,19 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
     }, [formData.collectionAssignment, handleCollectionChange]);
 
     // Handle select all collections
-    const handleSelectAll = useCallback(() => {
-        handleCollectionChange(ALL_DASHBOARD_COLLECTIONS);
-    }, [handleCollectionChange, ALL_DASHBOARD_COLLECTIONS]);
+    const handleSelectAll = useCallback(async () => {
+        try {
+            // Use validator to get all available collections (including dynamic ones)
+            const { datasetCollectionValidator } = await import('../services/DatasetCollectionValidator');
+            const allCollections = await datasetCollectionValidator.getCollectionRecommendations('ALL_DATA');
+            handleCollectionChange(allCollections);
+            console.log('✅ [EditDatasetDialog] Selected all collections:', allCollections.length);
+        } catch (error) {
+            console.warn('⚠️ [EditDatasetDialog] Failed to get dynamic collections, using static fallback:', error);
+            // Fallback to static collections
+            handleCollectionChange(ALL_DASHBOARD_COLLECTIONS);
+        }
+    }, [handleCollectionChange]);
 
     // Handle deselect all collections
     const handleDeselectAll = useCallback(() => {
@@ -305,7 +318,7 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
         <Dialog
             open={open}
             onClose={onClose}
-            maxWidth="md"
+            maxWidth="lg"
             fullWidth
             PaperProps={{
                 sx: {
@@ -457,6 +470,9 @@ export const EditDatasetDialog: React.FC<EditDatasetDialogProps> = ({
                                         selectedCount={formData.collectionAssignment?.selectedCollections?.length || 0}
                                         variant="dialog"
                                         compact={false}
+                                        layout="table"
+                                        expandedCategories={expandedCategories}
+                                        onExpandedCategoriesChange={setExpandedCategories}
                                     />
                                 </Box>
                             </Grid>

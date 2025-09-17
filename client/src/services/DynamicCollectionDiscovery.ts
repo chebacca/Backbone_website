@@ -457,7 +457,7 @@ class DynamicCollectionDiscoveryService {
      */
     private async syncCollectionsMetadata(authToken?: string): Promise<void> {
         if (!authToken) {
-            console.warn('⚠️ [DynamicCollectionDiscovery] No auth token for metadata sync');
+            console.log('ℹ️ [DynamicCollectionDiscovery] No auth token for metadata sync - using static collections');
             return;
         }
         
@@ -517,6 +517,7 @@ class DynamicCollectionDiscoveryService {
 }
 
 // Export singleton instance
+export { DynamicCollectionDiscoveryService };
 export const dynamicCollectionDiscovery = DynamicCollectionDiscoveryService.getInstance();
 
 // Export helper functions

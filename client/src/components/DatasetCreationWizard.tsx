@@ -325,6 +325,9 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
     const [conflictCheck, setConflictCheck] = useState<DatasetCreationConflictCheck | null>(null);
     const [existingDatasets, setExistingDatasets] = useState<CloudDataset[]>([]);
     const [loadingConflictCheck, setLoadingConflictCheck] = useState(false);
+    
+    // Expand/collapse state for collection categories
+    const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
     // 🔥 DYNAMIC COLLECTIONS: Real-time collection discovery with auto-monitoring
     const { 
@@ -610,17 +613,37 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
     }, [formData.collectionAssignment, updateFormData]);
 
     // Handle select all collections
-    const handleSelectAll = useCallback(() => {
-        updateFormData({
-            collectionAssignment: {
-                ...formData.collectionAssignment,
-                selectedCollections: ALL_DASHBOARD_COLLECTIONS,
-                includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
-                dataFilters: formData.collectionAssignment?.dataFilters || [],
-                organizationScope: formData.collectionAssignment?.organizationScope !== false
-            }
-        });
-    }, [formData.collectionAssignment, updateFormData, ALL_DASHBOARD_COLLECTIONS]);
+    const handleSelectAll = useCallback(async () => {
+        try {
+            // Use validator to get all available collections (including dynamic ones)
+            const { datasetCollectionValidator } = await import('../services/DatasetCollectionValidator');
+            const allCollections = await datasetCollectionValidator.getCollectionRecommendations('ALL_DATA');
+            
+            updateFormData({
+                collectionAssignment: {
+                    ...formData.collectionAssignment,
+                    selectedCollections: allCollections,
+                    includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                    dataFilters: formData.collectionAssignment?.dataFilters || [],
+                    organizationScope: formData.collectionAssignment?.organizationScope !== false
+                }
+            });
+            
+            console.log('✅ [DatasetCreationWizard] Selected all collections:', allCollections.length);
+        } catch (error) {
+            console.warn('⚠️ [DatasetCreationWizard] Failed to get dynamic collections, using static fallback:', error);
+            // Fallback to static collections
+            updateFormData({
+                collectionAssignment: {
+                    ...formData.collectionAssignment,
+                    selectedCollections: ALL_DASHBOARD_COLLECTIONS,
+                    includeSubcollections: formData.collectionAssignment?.includeSubcollections || false,
+                    dataFilters: formData.collectionAssignment?.dataFilters || [],
+                    organizationScope: formData.collectionAssignment?.organizationScope !== false
+                }
+            });
+        }
+    }, [formData.collectionAssignment, updateFormData]);
 
     // Handle deselect all collections
     const handleDeselectAll = useCallback(() => {
@@ -1096,6 +1119,9 @@ export const DatasetCreationWizard: React.FC<DatasetCreationWizardProps> = React
                                         selectedCount={formData.collectionAssignment?.selectedCollections?.length || 0}
                                         variant="wizard"
                                         compact={false}
+                                        layout="table"
+                                        expandedCategories={expandedCategories}
+                                        onExpandedCategoriesChange={setExpandedCategories}
                                     />
                                 </Grid>
                                 <Grid item xs={12}>

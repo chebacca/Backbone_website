@@ -20,13 +20,14 @@ export interface DashboardCollectionsByCategory {
 
 // Static fallback collections - used when dynamic discovery is not available
 // For real-time collections, use useDynamicCollections hook
+// 🔧 UPDATED: Now includes all 90 collections to match Dashboard requirements
 export const DASHBOARD_COLLECTIONS_BY_CATEGORY: DashboardCollectionsByCategory = {
     'Core System': {
         icon: '👥',
         description: 'User management, organizations, and core system data',
         collections: [
-            'users', 'teamMembers', 'organizations', 'roles', 'projects', 
-            'projectTeamMembers', 'clients', 'contacts', 'test'
+            'users', 'teamMembers', 'organizations', 'projects', 'roles', 'projectTeamMembers',
+            'clients', 'contacts', 'test'
         ]
     },
     'Sessions & Workflows': {
@@ -45,50 +46,68 @@ export const DASHBOARD_COLLECTIONS_BY_CATEGORY: DashboardCollectionsByCategory =
         collections: [
             'inventoryItems', 'inventory', 'networkIPAssignments', 'networkIPRanges', 
             'networks', 'inventoryHistory', 'setupProfiles', 'schemas', 'schemaFields',
-            'mapLayouts', 'mapLocations', 'inventoryMaps', 'mapData'
+            'mapLayouts', 'mapLocations', 'inventoryMaps', 'mapData', 'ipRanges'
         ]
     },
     'Timecards & Scheduling': {
         icon: '⏰',
         description: 'Time tracking, approvals, and scheduling systems',
         collections: [
-            'timecard_entries', 'user_timecards', 'timecard_approvals', 'timecard_templates'
+            'timecard_configurations', 'timecard_entries', 'timecard_template_assignments',
+            'timecard_templates', 'user_timecards', 'timecard_approvals'
         ]
     },
     'Media & Content': {
         icon: '🎥',
         description: 'Media files, production tasks, and content management',
         collections: [
-            'mediaFiles', 'postProductionTasks', 'stages', 'notes', 'reports', 'callSheets'
+            'mediaFiles', 'postProductionTasks', 'stages', 'notes', 'reports', 'callSheets',
+            'callSheetTemplates', 'dailyCallSheets', 'callSheetPersonnel', 'callSheetDepartments',
+            'callSheetRoles', 'callsheet_templates', 'dailyCallSheetRecords'
         ]
     },
     'AI & Automation': {
         icon: '🤖',
         description: 'AI agents, messaging, and automated systems',
         collections: [
-            'aiAgents', 'messages', 'chats', 'messageSessions'
+            'aiAgents', 'messages', 'chats', 'messageSessions', 'notifications'
         ]
     },
     'Business & Licensing': {
         icon: '💼',
         description: 'Licenses, subscriptions, payments, and business data',
         collections: [
-            'licenses', 'subscriptions', 'payments', 'userPreferences'
+            'licenses', 'subscriptions', 'payments', 'userPreferences', 'auditLogs', 'audit_logs'
         ]
     },
     'Production Budget Management': {
         icon: '💰',
         description: 'Budget tracking, schedules, and financial management',
         collections: [
-            'pbmProjects', 'pbmSchedules', 'pbmPayscales', 'pbmDailyStatus'
+            'pbmProjects', 'pbmSchedules', 'pbmPayscales', 'pbmDailyStatus', 'pbmBudgetCategories',
+            'pbmFinancialSummary', 'pbmAnalytics', 'pbmEpisodes'
         ]
     },
     'Network Delivery & Deliverables': {
         icon: '📡',
         description: 'Network delivery bibles, deliverables, and post-production workflows',
         collections: [
-            'networkDeliveryBibles', 'deliverables', 'networkDeliveryChats',
+            'networkDeliveryBibles', 'deliverables', 'enhancedDeliverables', 'networkDeliveryChats',
             'deliverySpecs', 'deliveryTemplates', 'deliveryTracking'
+        ]
+    },
+    'Weather & Environment': {
+        icon: '🌤️',
+        description: 'Weather data, forecasts, and environmental monitoring',
+        collections: [
+            'weatherData', 'weatherTemplates', 'weatherForecasts'
+        ]
+    },
+    'System & Administration': {
+        icon: '⚙️',
+        description: 'System administration, datasets, and data management',
+        collections: [
+            'datasetAssignments', 'datasets', 'edl_data', 'roleSyncEvents', 'schemas'
         ]
     }
 };

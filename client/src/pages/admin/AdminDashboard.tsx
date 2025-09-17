@@ -29,7 +29,6 @@ import {
   Tab,
   Alert,
   InputAdornment,
-  Container,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -738,20 +737,19 @@ const AdminDashboard: React.FC = () => {
   return (
     <>
       <Box sx={{ pb: 4 }}>
-        <Container maxWidth="xl">
-          <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', '@keyframes fadeInUp': { '0%': { opacity: 0, transform: 'translateY(20px)', }, '100%': { opacity: 1, transform: 'translateY(0)', }, }, }} >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
-              <DashboardIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-              <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                Admin Dashboard
-              </Typography>
-              <Chip
-                icon={getHealthIcon(stats.systemHealth)}
-                label={`System ${stats.systemHealth}`}
-                color={getHealthColor(stats.systemHealth)}
-                size="small"
-              />
-            </Box>
+        <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', '@keyframes fadeInUp': { '0%': { opacity: 0, transform: 'translateY(20px)', }, '100%': { opacity: 1, transform: 'translateY(0)', }, }, }} >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
+            <DashboardIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+              Admin Dashboard
+            </Typography>
+            <Chip
+              icon={getHealthIcon(stats.systemHealth)}
+              label={`System ${stats.systemHealth}`}
+              color={getHealthColor(stats.systemHealth)}
+              size="small"
+            />
+          </Box>
 
         {/* Stats Cards */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -873,14 +871,14 @@ const AdminDashboard: React.FC = () => {
         {activeTab === 0 && (
           <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-              {/* Global Search */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {/* Search and Actions Bar - Full Width */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <TextField
                   placeholder="Search users by name, email, role, status, or subscription..."
                   value={usersSearch}
                   onChange={(e) => setUsersSearch(e.target.value)}
                   size="small"
-                  sx={{ minWidth: 400 }}
+                  sx={{ flexGrow: 1, maxWidth: 600 }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -906,14 +904,15 @@ const AdminDashboard: React.FC = () => {
                 <Button variant="contained" onClick={openAddDialog}>Add License</Button>
               </Box>
 
-              {/* Advanced Filters - match Invoices layout */}
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              {/* Advanced Filters - Full Width Layout */}
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                 <TextField
                   label="Role"
                   select
                   size="small"
                   value={usersFilters.role || ''}
                   onChange={(e) => setUsersFilters((f) => ({ ...f, role: e.target.value || undefined }))}
+                  sx={{ minWidth: 120 }}
                 >
                   <MenuItem value="">All</MenuItem>
                   <MenuItem value="USER">USER</MenuItem>
@@ -926,6 +925,7 @@ const AdminDashboard: React.FC = () => {
                   size="small"
                   value={usersFilters.status || ''}
                   onChange={(e) => setUsersFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+                  sx={{ minWidth: 120 }}
                 >
                   <MenuItem value="">All</MenuItem>
                   <MenuItem value="active">ACTIVE</MenuItem>
@@ -937,6 +937,7 @@ const AdminDashboard: React.FC = () => {
                   size="small"
                   value={usersFilters.tier || ''}
                   onChange={(e) => setUsersFilters((f) => ({ ...f, tier: (e.target.value || undefined) as any }))}
+                  sx={{ minWidth: 140 }}
                 >
                   <MenuItem value="">All</MenuItem>
                   <MenuItem value="BASIC">BASIC</MenuItem>
@@ -1042,14 +1043,14 @@ const AdminDashboard: React.FC = () => {
         {activeTab === 1 && (
           <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-              {/* Global Search */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {/* Search and Actions Bar - Full Width */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <TextField
                   placeholder="Search licenses by user, tier, status, or subscription..."
                   value={licensesSearch}
                   onChange={(e) => setLicensesSearch(e.target.value)}
                   size="small"
-                  sx={{ minWidth: 400 }}
+                  sx={{ flexGrow: 1, maxWidth: 600 }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -1075,8 +1076,8 @@ const AdminDashboard: React.FC = () => {
                 <Button variant="contained" onClick={openAddDialog}>Add License</Button>
               </Box>
 
-              {/* Advanced Filters */}
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              {/* Advanced Filters - Full Width Layout */}
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                 <TextField
                   label="Subscription Tier"
                   select
@@ -1207,14 +1208,14 @@ const AdminDashboard: React.FC = () => {
         {activeTab === 2 && (
           <Box sx={{ opacity: 0, transform: 'translateY(20px)', animation: 'fadeInUp 0.6s ease-out forwards', }} >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
-              {/* Global Search */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {/* Search and Actions Bar - Full Width */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <TextField
                   placeholder="Search payments by ID, email, tier, status, amount, or date..."
                   value={paymentsSearch}
                   onChange={(e) => setPaymentsSearch(e.target.value)}
                   size="small"
-                  sx={{ minWidth: 400 }}
+                  sx={{ flexGrow: 1, maxWidth: 600 }}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -1239,8 +1240,8 @@ const AdminDashboard: React.FC = () => {
                 )}
               </Box>
               
-              {/* Advanced Filters */}
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              {/* Advanced Filters - Full Width Layout */}
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                 <TextField
                   label="Filter by Email"
                   size="small"
@@ -1918,7 +1919,6 @@ const AdminDashboard: React.FC = () => {
           <Button onClick={saveUserSeatDialog} variant="contained" disabled={!userSeatSubscription}>Save</Button>
         </DialogActions>
       </Dialog>
-        </Container>
       </Box>
     </>
   );

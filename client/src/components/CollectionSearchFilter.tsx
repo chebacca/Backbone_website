@@ -43,6 +43,8 @@ import {
     Refresh as RefreshIcon
 } from '@mui/icons-material';
 
+import CollapsibleCollectionTable from './CollapsibleCollectionTable';
+
 export interface CollectionSearchFilterProps {
     // Collection data
     collections: { [categoryName: string]: { icon: string; description: string; collections: string[] } };
@@ -74,6 +76,11 @@ export interface CollectionSearchFilterProps {
     // Styling
     variant?: 'wizard' | 'dialog';
     compact?: boolean;
+    layout?: 'cards' | 'table';
+    
+    // Expand/collapse state
+    expandedCategories?: string[];
+    onExpandedCategoriesChange?: (categories: string[]) => void;
 }
 
 export const CollectionSearchFilter: React.FC<CollectionSearchFilterProps> = ({
@@ -97,7 +104,10 @@ export const CollectionSearchFilter: React.FC<CollectionSearchFilterProps> = ({
     totalCount = 0,
     selectedCount = 0,
     variant = 'wizard',
-    compact = false
+    compact = false,
+    layout = 'cards',
+    expandedCategories = [],
+    onExpandedCategoriesChange
 }) => {
     // Filtered collections based on search and category filters
     const filteredCollections = useMemo(() => {
@@ -385,6 +395,18 @@ export const CollectionSearchFilter: React.FC<CollectionSearchFilterProps> = ({
                         }
                     </Typography>
                 </Box>
+            ) : layout === 'table' ? (
+                <CollapsibleCollectionTable
+                    collections={filteredCollections}
+                    selectedCollections={selectedCollections}
+                    onCollectionToggle={onCollectionToggle}
+                    onSelectAllInCategory={onSelectAllInCategory}
+                    onDeselectAllInCategory={onDeselectAllInCategory}
+                    loading={loading}
+                    compact={compact}
+                    expandedCategories={expandedCategories}
+                    onExpandedCategoriesChange={onExpandedCategoriesChange}
+                />
             ) : (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {Object.entries(filteredCollections).map(([categoryName, category]) => {

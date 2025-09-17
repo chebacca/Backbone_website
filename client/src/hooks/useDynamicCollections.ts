@@ -66,8 +66,27 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
             
             console.log('🔍 [useDynamicCollections] Discovering collections...');
             
-            // Get auth token from authService
-            const authToken = authService.getStoredToken() || undefined;
+            // 🔧 CRITICAL FIX: Handle missing auth service gracefully
+            let authToken: string | undefined;
+            try {
+                authToken = authService.getStoredToken() || undefined;
+            } catch (error) {
+                console.warn('⚠️ [useDynamicCollections] Auth service not available, proceeding without token:', error);
+                authToken = undefined;
+            }
+            
+            // If no auth token, try to get one from localStorage as fallback
+            if (!authToken) {
+                const fallbackToken = localStorage.getItem('firebase_id_token') || 
+                                     localStorage.getItem('auth_token') || 
+                                     localStorage.getItem('jwt_token');
+                if (fallbackToken) {
+                    authToken = fallbackToken;
+                    console.log('🔑 [useDynamicCollections] Using fallback token from localStorage');
+                } else {
+                    console.log('ℹ️ [useDynamicCollections] No auth token available, will use static collections');
+                }
+            }
             
             const result = await dynamicCollectionDiscovery.discoverCollections(
                 organizationId || user.organizationId || user.id,
@@ -120,7 +139,28 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
         }
 
         console.log('🔄 [useDynamicCollections] Starting real-time collection monitoring...');
-        const authToken = authService.getStoredToken() || undefined;
+        
+        // 🔧 CRITICAL FIX: Handle missing auth service gracefully
+        let authToken: string | undefined;
+        try {
+            authToken = authService.getStoredToken() || undefined;
+        } catch (error) {
+            console.warn('⚠️ [useDynamicCollections] Auth service not available, proceeding without token:', error);
+            authToken = undefined;
+        }
+        
+        // If no auth token, try to get one from localStorage as fallback
+        if (!authToken) {
+            const fallbackToken = localStorage.getItem('firebase_id_token') || 
+                                 localStorage.getItem('auth_token') || 
+                                 localStorage.getItem('jwt_token');
+            if (fallbackToken) {
+                authToken = fallbackToken;
+                console.log('🔑 [useDynamicCollections] Using fallback token from localStorage');
+            } else {
+                console.log('ℹ️ [useDynamicCollections] No auth token available, real-time monitoring will use static collections');
+            }
+        }
         
         const cleanup = dynamicCollectionDiscovery.setupRealTimeMonitoring(
             organizationId || user?.organizationId || user?.id,
@@ -146,7 +186,29 @@ export const useDynamicCollections = (organizationId?: string): UseDynamicCollec
     // Trigger sync function
     const triggerSync = useCallback(async () => {
         console.log('🔄 [useDynamicCollections] Manually triggering collection sync...');
-        const authToken = authService.getStoredToken() || undefined;
+        
+        // 🔧 CRITICAL FIX: Handle missing auth service gracefully
+        let authToken: string | undefined;
+        try {
+            authToken = authService.getStoredToken() || undefined;
+        } catch (error) {
+            console.warn('⚠️ [useDynamicCollections] Auth service not available, proceeding without token:', error);
+            authToken = undefined;
+        }
+        
+        // If no auth token, try to get one from localStorage as fallback
+        if (!authToken) {
+            const fallbackToken = localStorage.getItem('firebase_id_token') || 
+                                 localStorage.getItem('auth_token') || 
+                                 localStorage.getItem('jwt_token');
+            if (fallbackToken) {
+                authToken = fallbackToken;
+                console.log('🔑 [useDynamicCollections] Using fallback token from localStorage');
+            } else {
+                console.log('ℹ️ [useDynamicCollections] No auth token available, sync will use static collections');
+            }
+        }
+        
         await dynamicCollectionDiscovery.triggerSync(authToken);
     }, []);
 

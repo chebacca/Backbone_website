@@ -41,10 +41,12 @@ import {
   Home,
   ArrowBack,
   AccountBalance,
+  Receipt,
 } from '@mui/icons-material';
 import { Link as RouterLink, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import SecurityNavigation from '../../pages/components/SecurityNavigation';
+import { RoleBasedAccessControl, NAVIGATION_ITEMS, UserRole } from '@/services/RoleBasedAccessControl';
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 
 const drawerWidth = 280;
@@ -91,6 +93,27 @@ const adminNavigationItems: NavigationItem[] = [
   { text: 'Invoices', icon: <Payment />, path: '/admin#invoices' },
   { text: 'System Health', icon: <Security />, path: '/admin#system' },
 ];
+
+// Icon mapping function for RBAC navigation items
+const getIconComponent = (iconName: string): React.ReactNode => {
+  const iconMap: Record<string, React.ReactNode> = {
+    'Dashboard': <Dashboard />,
+    'CardMembership': <CardMembership />,
+    'Analytics': <Analytics />,
+    'Group': <Group />,
+    'Payment': <Payment />,
+    'Receipt': <Receipt />,
+    'Download': <Download />,
+    'Business': <Business />,
+    'Security': <Security />,
+    'AccountBalance': <AccountBalance />,
+    'AdminPanelSettings': <Security />,
+    'Settings': <Settings />,
+    'Support': <Support />,
+    'Notifications': <Notifications />
+  };
+  return iconMap[iconName] || <Dashboard />;
+};
 
 export const DashboardLayout: React.FC = () => {
   const theme = useTheme();
@@ -154,22 +177,32 @@ export const DashboardLayout: React.FC = () => {
   const needsKyc = kycStatus !== 'COMPLETED';
   const showKycBanner = needsKyc && !dismissedKycBanner;
 
-  // Compute navigation items based on current section (dashboard vs accounting)
-  // and hide Billing for SUPERADMIN only on the user dashboard.
+  // Compute navigation items based on user role and permissions
   const navigationItems: NavigationItem[] = React.useMemo(() => {
     const inAccountingSection = location.pathname.startsWith('/accounting');
     const inAdminSection = location.pathname.startsWith('/admin');
+    
+    // Special sections use their own navigation
     if (inAccountingSection) return [...accountingNavigationItems];
     if (inAdminSection) return [...adminNavigationItems];
 
-    const items = [...baseNavigationItems];
-    const roleUpper = String(user?.role || '').toUpperCase();
-    const isSuperAdmin = roleUpper === 'SUPERADMIN';
-    if (isSuperAdmin) {
-      return items.filter((item) => item.path !== '/dashboard/billing');
-    }
-    return items;
-  }, [location.pathname, user?.role]);
+    // Use RBAC system to determine accessible navigation items
+    const accessibleItems = RoleBasedAccessControl.getAccessibleNavigationItems(user);
+    
+    // Debug logging
+    console.log('🔍 [DashboardLayout] User role:', user?.role);
+    console.log('🔍 [DashboardLayout] Accessible items:', accessibleItems);
+    console.log('🔍 [DashboardLayout] Team management item:', accessibleItems.find(item => item.id === 'team-management'));
+    
+    // Convert to the expected format
+    return accessibleItems.map(item => ({
+      text: item.text,
+      icon: getIconComponent(item.icon),
+      path: item.path,
+      badge: undefined, // RBAC NavigationItem doesn't have badge property
+      chip: undefined   // RBAC NavigationItem doesn't have chip property
+    }));
+  }, [location.pathname, user]);
 
   const NavigationList = () => (
     <Box sx={{ width: drawerWidth, height: '100%', backgroundColor: 'background.paper' }}>

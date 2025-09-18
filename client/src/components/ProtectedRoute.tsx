@@ -2,12 +2,16 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingSpinner } from './common/LoadingSpinner';
+import { RoleBasedAccessControl, UserRole, Permission } from '@/services/RoleBasedAccessControl';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireEmailVerification?: boolean;
   requireAdmin?: boolean;
   requireAccounting?: boolean;
+  requirePermission?: Permission;
+  requireRole?: UserRole;
+  requireMinimumRoleLevel?: number;
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
@@ -16,6 +20,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requireEmailVerification = false,
   requireAdmin = false,
   requireAccounting = false,
+  requirePermission,
+  requireRole,
+  requireMinimumRoleLevel,
 }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
 
@@ -32,20 +39,30 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   //   return <Navigate to="/verify-email" replace />;
   // }
 
+  // Legacy role checks (for backward compatibility)
   if (requireAdmin) {
-    const roleUpper = String(user?.role || '').toUpperCase();
-    const isSuperAdmin = roleUpper === 'SUPERADMIN';
-    if (!isSuperAdmin) {
+    if (!RoleBasedAccessControl.isAdminOrHigher(user)) {
       return <Navigate to="/dashboard" replace />;
     }
   }
 
   if (requireAccounting) {
-    const roleUpper = String(user?.role || '').toUpperCase();
-    const isAccounting = roleUpper === 'ACCOUNTING' || roleUpper === 'SUPERADMIN';
-    if (!isAccounting) {
+    if (!RoleBasedAccessControl.hasRole(user, UserRole.ACCOUNTING)) {
       return <Navigate to="/dashboard" replace />;
     }
+  }
+
+  // New RBAC checks
+  if (requirePermission && !RoleBasedAccessControl.hasPermission(user, requirePermission)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requireRole && !RoleBasedAccessControl.hasRole(user, requireRole)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requireMinimumRoleLevel && !RoleBasedAccessControl.hasMinimumRoleLevel(user, requireMinimumRoleLevel)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

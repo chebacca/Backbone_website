@@ -363,27 +363,42 @@ export class TeamMemberService extends BaseService {
         // Convert StreamlinedTeamMember to TeamMember format
         activeMembers = streamlinedTeamMembers
           .filter((stm: any) => stm.status === 'active') // Only active members
-          .map((stm: any) => ({
-            id: stm.id,
-            email: stm.email,
-            firstName: stm.firstName,
-            lastName: stm.lastName,
-            name: `${stm.firstName} ${stm.lastName}`.trim() || stm.email,
-            role: stm.role as any,
-            status: TeamMemberStatus.ACTIVE, // Use proper enum value
-            department: stm.department,
-            organizationId: stm.organization.id,
-            licenseType: stm.licenseAssignment?.licenseType || 'BASIC',
-            assignedProjects: stm.assignedProjects,
-            createdAt: stm.createdAt.toISOString(),
-            updatedAt: stm.updatedAt.toISOString(),
-            // Additional fields for compatibility
-            isActive: true,
-            joinedAt: stm.joinedAt.toISOString(),
-            lastActive: stm.lastActive?.toISOString(),
-            invitedBy: stm.invitedBy,
-            avatar: stm.avatar
-          }));
+          .map((stm: any) => {
+            // Helper function to safely convert to Date and then to ISO string
+            const safeToISOString = (dateValue: any): string => {
+              if (!dateValue) return new Date().toISOString();
+              if (dateValue instanceof Date) return dateValue.toISOString();
+              if (typeof dateValue === 'string') return new Date(dateValue).toISOString();
+              if (typeof dateValue === 'number') return new Date(dateValue).toISOString();
+              // Handle Firestore Timestamp objects
+              if (dateValue && typeof dateValue === 'object' && dateValue.toDate) {
+                return dateValue.toDate().toISOString();
+              }
+              return new Date().toISOString();
+            };
+
+            return {
+              id: stm.id,
+              email: stm.email,
+              firstName: stm.firstName,
+              lastName: stm.lastName,
+              name: `${stm.firstName} ${stm.lastName}`.trim() || stm.email,
+              role: stm.role as any,
+              status: TeamMemberStatus.ACTIVE, // Use proper enum value
+              department: stm.department,
+              organizationId: stm.organization.id,
+              licenseType: stm.licenseAssignment?.licenseType || 'BASIC',
+              assignedProjects: stm.assignedProjects,
+              createdAt: safeToISOString(stm.createdAt),
+              updatedAt: safeToISOString(stm.updatedAt),
+              // Additional fields for compatibility
+              isActive: true,
+              joinedAt: safeToISOString(stm.joinedAt),
+              lastActive: stm.lastActive ? safeToISOString(stm.lastActive) : undefined,
+              invitedBy: stm.invitedBy,
+              avatar: stm.avatar
+            };
+          });
         
         console.log(`✅ [TeamMemberService] Converted ${activeMembers.length} active team members from UnifiedDataService`);
       } catch (unifiedError) {

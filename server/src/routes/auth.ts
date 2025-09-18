@@ -15,6 +15,7 @@ import {
   createApiError 
 } from '../middleware/errorHandler.js';
 import { 
+  authenticateFirebaseToken,
   authenticateToken, 
   addRequestInfo,
   requireEmailVerification 
@@ -376,151 +377,15 @@ router.post('/login', [
   const { email, password } = req.body;
   const requestInfo = (req as any).requestInfo;
   
-  // Find user and check if they're a team member
-  let user = await firestoreService.getUserByEmail(email);
-  
-  if (!user) throw createApiError('Invalid credentials', 401);
-
-  // Validate password for regular users
-  if (user.password) {
-    const ok = await PasswordUtil.compare(password, user.password);
-    if (!ok) throw createApiError('Invalid credentials', 401);
-  }
-
-  // Check if this user is a team member (org member)
-  let isTeamMember = false;
-  let organizationId = null;
-  let memberRole = null;
-  let memberStatus = null;
-  
-  // Log the original user role for debugging
-  logger.info(`User login role check: ${email} has role: ${user.role}`);
-  
-  try {
-    const orgMemberships = await firestoreService.getOrgMembershipsByUserId(user.id);
-    if (orgMemberships && orgMemberships.length > 0) {
-      const primaryMembership = orgMemberships[0]; // Use first membership
-      // Handle both orgId and organizationId fields for backward compatibility
-      organizationId = primaryMembership.orgId || primaryMembership.organizationId;
-      memberRole = primaryMembership.role;
-      memberStatus = primaryMembership.status;
-
-      // Preserve privileged roles. SUPERADMIN (and ADMIN) should never be downgraded.
-      const isPrivilegedRole = String(user.role).toUpperCase() === 'SUPERADMIN' || String(user.role).toUpperCase() === 'ADMIN';
-
-      if (isPrivilegedRole) {
-        isTeamMember = false;
-        logger.info(`Preserving privileged role for ${email}: ${user.role} (not marking as team member)`);
-        // Keep original role for privileged users
-      } else {
-        // Only set as team member if they're not an organization owner
-        // Enterprise owners who created their own org should retain their original role
-        if (primaryMembership.role !== 'OWNER') {
-          isTeamMember = true;
-          logger.info(`Marking ${email} as team member (role: ${user.role})`);
-          // Note: We don't change the user.role here - we'll use the original role
-        } else {
-          // This is an enterprise owner - preserve their original role and don't mark as team member
-          isTeamMember = false;
-          logger.info(`Preserving enterprise owner role for ${email}: ${user.role}`);
-        }
-      }
-    } else {
-      logger.info(`No org memberships found for ${email}, keeping original role: ${user.role}`);
-    }
-  } catch (error) {
-    logger.warn('Error checking org membership:', error);
-  }
-
-  if (user.twoFactorEnabled) {
-    const interimToken = JwtUtil.generateInterimToken({ userId: user.id, email: user.email, role: user.role });
-    await firestoreService.updateUser(user.id, { lastLoginAt: new Date() });
-    await ComplianceService.createAuditLog(user.id, 'LOGIN', '2FA challenge issued', { email, twoFactor: true }, requestInfo);
-    res.json({ success: true, message: 'TOTP required', data: { requires2FA: true, interimToken } });
-    return;
-  }
-
-  const tokens = JwtUtil.generateTokens({ userId: user.id, email: user.email, role: user.role });
-  
-  // Update last login time
-  await firestoreService.updateUser(user.id, { lastLoginAt: new Date() });
-  
-  await ComplianceService.createAuditLog(user.id, 'LOGIN', 'User logged in successfully', { email }, requestInfo);
-  logger.info(`User logged in successfully: ${email}`, { userId: user.id });
-
-  const requiresLegalAcceptance = (user.termsVersionAccepted !== config.legal.termsVersion) || (user.privacyPolicyVersionAccepted !== config.legal.privacyVersion);
-
-  // For team members, get their project access and licenses
-  let teamMemberData = null;
-  if (isTeamMember) {
-    try {
-      const projectAccess = await firestoreService.getTeamMemberProjectAccess(user.id);
-      const licenses = await firestoreService.getTeamMemberLicenses(user.id);
-      
-      teamMemberData = {
-        projectAccess,
-        licenses,
-        organizationId: organizationId,
-        memberRole: memberRole,
-        memberStatus: memberStatus
-      };
-    } catch (error) {
-      logger.warn('Error fetching team member data:', error);
-      teamMemberData = {
-        projectAccess: [],
-        licenses: [],
-        organizationId: organizationId,
-        memberRole: memberRole,
-        memberStatus: memberStatus
-      };
-    }
-  }
-
-  // Add hybrid context for desktop/web routing: org and active license summary
-  const [ownedOrgs, memberOrgs] = await Promise.all([
-    firestoreService.getOrganizationsOwnedByUser(user.id),
-    firestoreService.getOrganizationsForMemberUser(user.id),
-  ]);
-  let primaryOrgId: string | null = null;
-  let activeOrgSubscription: any = null;
-  if (ownedOrgs && ownedOrgs.length > 0) {
-    primaryOrgId = ownedOrgs[0].id;
-  } else if (memberOrgs && memberOrgs.length > 0) {
-    primaryOrgId = memberOrgs[0].id;
-  }
-  if (primaryOrgId) {
-    const subs = await firestoreService.getSubscriptionsByOrganizationId(primaryOrgId);
-    activeOrgSubscription = subs.find(s => s.status === 'ACTIVE') || null;
-  }
-
-  // Log the final response for debugging
-  const responseUser = { 
-    id: user.id, 
-    email: user.email, 
-    name: user.name, 
-    role: user.role, // This now preserves the original role
-    isEmailVerified: user.isEmailVerified,
-    isTeamMember: isTeamMember,
-    organizationId: organizationId,
-    memberRole: memberRole,
-    memberStatus: memberStatus
-  };
-  
-  logger.info(`Login response for ${email}: role=${responseUser.role}, isTeamMember=${responseUser.isTeamMember}`);
-  
+  // For Firebase-only project, we should use Firebase Auth for login
+  // This endpoint should redirect to Firebase Auth or handle Firebase Auth tokens
+  // For now, let's return a message directing users to use Firebase Auth
   res.json({
-    success: true,
-    message: 'Login successful',
-    data: {
-      user: responseUser,
-      tokens,
-      requiresLegalAcceptance,
-      requiredVersions: { terms: config.legal.termsVersion, privacy: config.legal.privacyVersion },
-      orgContext: { primaryOrgId, activeOrgSubscription },
-      teamMemberData
-    }
+    success: false,
+    message: 'Please use Firebase Authentication for login. This endpoint is for Firebase Auth integration only.',
+    firebaseAuth: true,
+    redirectTo: '/auth/firebase-login'
   });
-  return;
 }));
 
 router.post('/verify-2fa', [body('token').notEmpty()], asyncHandler(async (req: Request, res: Response): Promise<void> => {

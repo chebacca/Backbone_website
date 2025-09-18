@@ -65,6 +65,11 @@ const StartupWorkflow = React.lazy(() => import('@/components/StartupWorkflow'))
 // Test page for offline functionality
 const OfflineTestPage = React.lazy(() => import('@/pages/test/OfflineTestPage'));
 
+// Test page for invite dialog
+const TestInviteDialog = React.lazy(() => import('@/pages/TestInviteDialog'));
+const TestTeamMemberCreation = React.lazy(() => import('@/pages/TestTeamMemberCreation'));
+const TestTeamMemberCreationSimple = React.lazy(() => import('@/pages/TestTeamMemberCreationSimple'));
+
 // Auth bridge for webonly mode - removed to fix context issues
 // import CloudProjectAuthBridge from '@/components/CloudProjectAuthBridge';
 
@@ -115,6 +120,11 @@ function App() {
               
               {/* Test Route for Offline Functionality */}
               <Route path="/test/offline" element={<OfflineTestPage />} />
+              
+              {/* Test Route for Invite Dialog */}
+        <Route path="/test/invite-dialog" element={<TestInviteDialog />} />
+        <Route path="/test/team-member-creation" element={<TestTeamMemberCreation />} />
+        <Route path="/test/team-member-simple" element={<TestTeamMemberCreationSimple />} />
               
               {/* Auth Routes */}
               <Route 

@@ -309,7 +309,12 @@ export const getCurrentFirebaseUser = () => {
  * Check if a specific email is already authenticated
  */
 export const isEmailAuthenticated = (email: string): boolean => {
-  return auth.currentUser?.email === email;
+  try {
+    return auth?.currentUser?.email === email;
+  } catch (error) {
+    console.warn('⚠️ [Firebase] Error checking email authentication:', error);
+    return false;
+  }
 };
 
 /**
@@ -388,6 +393,12 @@ export const tryRestoreFirebaseSession = async (email: string): Promise<boolean>
   try {
     console.log('🔑 [Firebase] Attempting to restore Firebase Auth session for:', email);
     
+    // Validate email parameter
+    if (!email || typeof email !== 'string') {
+      console.warn('⚠️ [Firebase] Invalid email parameter for session restoration:', email);
+      return false;
+    }
+    
     // Check if already authenticated with the right user
     if (isEmailAuthenticated(email)) {
       console.log('✅ [Firebase] User already authenticated with correct email');
@@ -395,7 +406,7 @@ export const tryRestoreFirebaseSession = async (email: string): Promise<boolean>
     }
     
     // Check if there's a different user authenticated
-    if (auth.currentUser && auth.currentUser.email !== email) {
+    if (auth?.currentUser && auth.currentUser.email !== email) {
       console.log('🔄 [Firebase] Different user authenticated, signing out first');
       const { signOut } = await import('firebase/auth');
       await signOut(auth);

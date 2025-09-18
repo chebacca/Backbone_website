@@ -996,8 +996,8 @@ class CloudProjectIntegrationService {
   /**
    * Remove a team member from a project
    */
-  public async removeTeamMemberFromProject(projectId: string, teamMemberId: string): Promise<void> {
-    await this.serviceFactory.getTeamMemberService().removeTeamMemberFromProject(projectId, teamMemberId);
+  public async removeTeamMemberFromProject(projectId: string, teamMemberId: string): Promise<boolean> {
+    return await this.serviceFactory.getTeamMemberService().removeTeamMemberFromProject(projectId, teamMemberId);
   }
 
   /**

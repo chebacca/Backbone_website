@@ -6,71 +6,6 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Grid,
-  Card,
-  CardContent,
-  Button,
-  Chip,
-  IconButton,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  Alert,
-  AlertTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Tooltip,
-  LinearProgress,
-  List,
-  ListItem,
-  ListItemText,
-  Divider,
-  CircularProgress,
-  Avatar,
-  Fab,
-  InputAdornment,
-} from '@mui/material';
-import {
-  Add,
-  MoreVert,
-  Edit,
-  Delete,
-  ContentCopy,
-  Block,
-  CheckCircle,
-  Schedule,
-  CardMembership,
-  PersonAdd,
-  Key,
-  Security,
-  Star,
-  Visibility,
-  Warning,
-  Info,
-  Assignment,
-  Download,
-  People,
-  Business,
-  Email,
-  AccessTime,
-} from '@mui/icons-material';
-import { useSnackbar } from 'notistack';
 import { 
   useCurrentUser, 
   useOrganizationContext, 
@@ -85,6 +20,70 @@ import MetricCard from '@/components/common/MetricCard';
 import LicensePurchaseFlow from '@/components/payment/LicensePurchaseFlow';
 import LicenseRenewalWizard from '@/components/payment/LicenseRenewalWizard';
 
+// Material-UI imports
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  InputAdornment,
+  Avatar,
+  Fab,
+  Alert,
+  AlertTitle,
+  List,
+  ListItem,
+  ListItemIcon as ListItemIconAlert,
+  CircularProgress,
+  LinearProgress
+} from '@mui/material';
+import {
+  Add,
+  MoreVert,
+  ContentCopy,
+  PersonAdd,
+  Edit,
+  Delete,
+  Block,
+  CheckCircle,
+  Schedule,
+  Warning,
+  CardMembership,
+  Star,
+  People,
+  Download,
+  Key,
+  Assignment,
+  Business,
+  AccessTime,
+  Email,
+  Security
+} from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -97,6 +96,10 @@ interface LicenseStats {
   activeLicenses: number;
   expiringSoon: number;
   unassignedLicenses: number;
+  // Enterprise license info
+  enterpriseAvailable: number;
+  enterpriseTotal: number;
+  enterpriseAssigned: number;
 }
 
 // ============================================================================
@@ -199,10 +202,13 @@ const LicensesPage: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   
   // 🚀 STREAMLINED: Use UnifiedDataService hooks
+  
+  // 🚀 STREAMLINED: Use UnifiedDataService hooks
   const { data: currentUser, loading: userLoading, error: userError } = useCurrentUser();
   const { data: orgContext, loading: orgLoading, error: orgError } = useOrganizationContext();
   const { data: licenses, loading: licensesLoading, error: licensesError, refetch: refetchLicenses } = useOrganizationLicenses();
   const { data: teamMembers, loading: teamMembersLoading, error: teamMembersError } = useOrganizationTeamMembers();
+
   
   // Mutation hooks
   const updateLicense = useUpdateLicense();
@@ -268,6 +274,7 @@ const LicensesPage: React.FC = () => {
       };
     }
 
+    
     // Calculate stats from real license data
     const totalLicenses = licenses.length;
     const activeLicenses = licenses.filter(l => l.status === 'ACTIVE').length;
@@ -278,11 +285,66 @@ const LicensesPage: React.FC = () => {
     }).length;
     const unassignedLicenses = licenses.filter(l => !l.assignedTo).length;
 
+    // Calculate used licenses: organization owner (1) + team members + active licenses
+    // Note: Owner is always 1 license, team members are additional licenses
+    const organizationOwnerCount = 1; // Always count the organization owner as 1 used license
+    
+    // Filter out the owner from team members to avoid double counting
+    const ownerEmail = currentUser?.email;
+    const teamMemberCount = teamMembers ? teamMembers.filter(m => 
+      m.status?.toLowerCase() === 'active' && m.email !== ownerEmail
+    ).length : 0;
+    
+    // Filter out licenses assigned to the owner to avoid double counting
+    // The owner's license should not be counted separately from the owner count
+    const ownerAssignedLicenses = licenses ? licenses.filter(l => 
+      l.status === 'ACTIVE' && l.assignedTo?.email === ownerEmail
+    ).length : 0;
+    
+    // Debug: Log the raw data to understand what we're counting
+    console.log('🔍 [LicensesPage] Raw data for calculation:', {
+      ownerEmail,
+      teamMembers: teamMembers?.map(m => ({ email: m.email, status: m.status, role: m.role })) || [],
+      licenses: licenses?.map(l => ({ id: l.id, name: l.name, status: l.status, assignedTo: l.assignedTo })) || [],
+      ownerAssignedLicenses
+    });
+    
+    // Calculate used licenses: owner (1) + other team members + other active licenses
+    const usedLicenses = organizationOwnerCount + teamMemberCount + (activeLicenses - ownerAssignedLicenses);
+    
+    // Debug logging for license calculation
+    console.log('🔢 [LicensesPage] License calculation breakdown:', {
+      organizationOwnerCount,
+      teamMemberCount,
+      activeLicenses,
+      ownerAssignedLicenses,
+      otherActiveLicenses: activeLicenses - ownerAssignedLicenses,
+      usedLicenses,
+      totalTeamMembers: teamMembers?.length || 0,
+      activeTeamMembers: teamMemberCount,
+      calculation: `${organizationOwnerCount} (owner) + ${teamMemberCount} (other team members) + ${activeLicenses - ownerAssignedLicenses} (other active licenses) = ${usedLicenses} total used`
+    });
+    
+    // For Enterprise users, show 250 total licenses with proper calculation
+    const enterpriseTotal = 250;
+    const enterpriseAssigned = usedLicenses; // Count owner + team members + active licenses
+    const enterpriseAvailable = Math.max(0, enterpriseTotal - enterpriseAssigned); // Ensure non-negative
+    
+    console.log('📊 [LicensesPage] Enterprise license stats:', {
+      enterpriseTotal,
+      enterpriseAssigned,
+      enterpriseAvailable
+    });
+
     const stats: LicenseStats = {
       totalLicenses,
       activeLicenses,
       expiringSoon,
       unassignedLicenses,
+      // Enterprise license info - now properly calculated
+      enterpriseAvailable,
+      enterpriseTotal,
+      enterpriseAssigned
     };
 
     // Filter licenses based on status filter
@@ -631,42 +693,51 @@ const LicensesPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* License Filter Cards */}
+      {/* Consolidated License Overview Cards - 3 Cards in One Row */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        {/* Card 1: License Pool Overview */}
+        <Grid item xs={12} md={4}>
           <Card 
             sx={{ 
-              background: statusFilter === 'all' 
-                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
-                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               color: 'white',
               height: '100%',
               cursor: 'pointer',
               transition: 'transform 0.2s ease-in-out',
               '&:hover': {
-                transform: 'translateY(-4px)',
+                transform: 'translateY(-2px)',
                 boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)'
               }
             }}
             onClick={() => setStatusFilter('all')}
           >
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                 <Box>
-                  <Typography variant="h4" fontWeight="bold">
-                    {licenseData.stats.totalLicenses}
+                  <Typography variant="h3" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Star /> {licenseData.stats.enterpriseTotal}
                   </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Total Licenses
+                  <Typography variant="h6" sx={{ opacity: 0.9, mb: 1 }}>
+                    Enterprise Licenses
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                    Available: {licenseData.stats.enterpriseAvailable}/{licenseData.stats.enterpriseTotal}
+                  </Typography>
+                  <Typography variant="caption" sx={{ opacity: 0.7, fontSize: '0.75rem', display: 'block', mt: 0.5 }}>
+                    Used: {licenseData.stats.enterpriseAssigned} (1 owner + {teamMembers ? teamMembers.filter(m => m.status?.toLowerCase() === 'active' && m.email !== currentUser?.email).length : 0} team members + {Math.max(0, (licenseData.stats.activeLicenses - (licenses ? licenses.filter(l => l.status === 'ACTIVE' && l.assignedTo?.email === currentUser?.email).length : 0)))} other active licenses)
                   </Typography>
                 </Box>
-                <CardMembership sx={{ fontSize: 40, opacity: 0.8 }} />
+                <CardMembership sx={{ fontSize: 48, opacity: 0.8 }} />
               </Box>
+              <Typography variant="body2" sx={{ opacity: 0.7, fontSize: '0.875rem' }}>
+                Unlimited projects • Full feature access • Team collaboration
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
+
+        {/* Card 2: Active Licenses */}
+        <Grid item xs={12} md={4}>
           <Card 
             sx={{ 
               background: statusFilter === 'ACTIVE' 
@@ -677,73 +748,45 @@ const LicensesPage: React.FC = () => {
               cursor: 'pointer',
               transition: 'transform 0.2s ease-in-out',
               '&:hover': {
-                transform: 'translateY(-4px)',
+                transform: 'translateY(-2px)',
                 boxShadow: '0 8px 25px rgba(17, 153, 142, 0.3)'
               }
             }}
             onClick={() => setStatusFilter('ACTIVE')}
           >
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                 <Box>
-                  <Typography variant="h4" fontWeight="bold">
+                  <Typography variant="h3" fontWeight="bold">
                     {licenseData.stats.activeLicenses}
                   </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  <Typography variant="h6" sx={{ opacity: 0.9, mb: 1 }}>
                     Active Licenses
                   </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                    Currently in use
+                  </Typography>
                 </Box>
-                <CheckCircle sx={{ fontSize: 40, opacity: 0.8 }} />
+                <CheckCircle sx={{ fontSize: 48, opacity: 0.8 }} />
               </Box>
+              <Typography variant="body2" sx={{ opacity: 0.7, fontSize: '0.875rem' }}>
+                {licenseData.stats.activeLicenses} of {licenseData.stats.totalLicenses} total licenses
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
+
+        {/* Card 3: License Status Summary */}
+        <Grid item xs={12} md={4}>
           <Card 
             sx={{ 
-              background: statusFilter === 'PENDING' 
-                ? 'linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%)' 
-                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
               color: 'white',
               height: '100%',
               cursor: 'pointer',
               transition: 'transform 0.2s ease-in-out',
               '&:hover': {
-                transform: 'translateY(-4px)',
-                boxShadow: '0 8px 25px rgba(252, 74, 26, 0.3)'
-              }
-            }}
-            onClick={() => setStatusFilter('PENDING')}
-          >
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Box>
-                  <Typography variant="h4" fontWeight="bold">
-                    {licenses?.filter(l => l.status === 'PENDING').length || 0}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Pending Licenses
-                  </Typography>
-                </Box>
-                <Schedule sx={{ fontSize: 40, opacity: 0.8 }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card 
-            sx={{ 
-              background: statusFilter === 'EXPIRED' 
-                ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' 
-                : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-              color: 'white',
-              height: '100%',
-              cursor: 'pointer',
-              transition: 'transform 0.2s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-4px)',
+                transform: 'translateY(-2px)',
                 boxShadow: '0 8px 25px rgba(79, 172, 254, 0.3)'
               }
             }}
@@ -752,16 +795,19 @@ const LicensesPage: React.FC = () => {
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                 <Box>
-                  <Typography variant="h4" fontWeight="bold">
+                  <Typography variant="h3" fontWeight="bold">
                     {licenseData.stats.expiringSoon}
                   </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  <Typography variant="h6" sx={{ opacity: 0.9, mb: 1 }}>
                     Expiring Soon
                   </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                    Need attention
+                  </Typography>
                 </Box>
-                <Warning sx={{ fontSize: 40, opacity: 0.8 }} />
+                <Warning sx={{ fontSize: 48, opacity: 0.8 }} />
               </Box>
-              {licenseData.stats.expiringSoon > 0 && (
+              {licenseData.stats.expiringSoon > 0 ? (
                 <Button 
                   variant="contained" 
                   size="small" 
@@ -778,8 +824,12 @@ const LicensesPage: React.FC = () => {
                     }
                   }}
                 >
-                  Renew Licenses
+                  Renew Now
                 </Button>
+              ) : (
+                <Typography variant="body2" sx={{ opacity: 0.7, fontSize: '0.875rem' }}>
+                  All licenses are up to date
+                </Typography>
               )}
             </CardContent>
           </Card>

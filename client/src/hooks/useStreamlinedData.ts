@@ -24,6 +24,25 @@ import {
 } from '../services/UnifiedDataService';
 import { useAuth } from '../context/AuthContext';
 
+
+// ============================================================================
+// LICENSE POOL TYPES
+// ============================================================================
+
+export interface LicensePool {
+  id: string;
+  tier: 'DEMO' | 'BASIC' | 'PRO' | 'ENTERPRISE';
+  totalLicenses: number;
+  availableLicenses: number;
+  assignedLicenses: number;
+  maxProjects: number;
+  maxCollaborators: number;
+  maxTeamMembers: number;
+  features: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // COMMON HOOK TYPES
 // ============================================================================
@@ -796,6 +815,59 @@ export function useUserPermissions() {
     isTeamMember: user?.userType === 'TEAM_MEMBER',
     isAdmin: user?.userType === 'ADMIN',
     organizationTier: user?.organization?.tier || 'BASIC'
+  };
+}
+
+/**
+ * Get license pools for the current organization
+ */
+export function useLicensePools(): UseDataListResult<LicensePool> {
+  const [data, setData] = useState<LicensePool[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { data: currentUser, loading: userLoading } = useCurrentUser();
+
+  const fetchLicensePools = useCallback(async () => {
+    // Don't fetch if user is still loading or not authenticated
+    if (userLoading || !currentUser) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      const pools = await unifiedDataService.getLicensePools();
+      setData(pools);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch license pools');
+    } finally {
+      setLoading(false);
+    }
+  }, [userLoading, currentUser]);
+
+  useEffect(() => {
+    // Only fetch when currentUser is loaded
+    if (!userLoading && currentUser) {
+      fetchLicensePools();
+    } else if (!userLoading && !currentUser) {
+      // User loaded but not authenticated, set loading to false
+      setLoading(false);
+      setData([]);
+    }
+  }, [userLoading, currentUser, fetchLicensePools]);
+
+  // Reset loading state when user loading changes
+  useEffect(() => {
+    if (userLoading) {
+      setLoading(true);
+    }
+  }, [userLoading]);
+
+  return {
+    data,
+    loading: loading || userLoading,
+    error,
+    refetch: fetchLicensePools
   };
 }
 

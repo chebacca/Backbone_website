@@ -127,10 +127,13 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
       try {
         if (userRole === 'DEV_ADMIN') {
           // DEV ADMIN: Get alerts from both platforms
-          const [dashboardAlerts, licensingAlerts] = await Promise.all([
-            fetch('/api/security/alerts?source=dashboard_app').then(res => res.json()).catch(() => []),
-            fetch('/api/security/alerts?source=licensing_website').then(res => res.json()).catch(() => [])
+          const [dashboardResponse, licensingResponse] = await Promise.all([
+            fetch('/api/security/alerts?source=dashboard_app').then(res => res.json()).catch(() => ({ success: false, data: [] })),
+            fetch('/api/security/alerts?source=licensing_website').then(res => res.json()).catch(() => ({ success: false, data: [] }))
           ]);
+
+          const dashboardAlerts = dashboardResponse.success ? dashboardResponse.data : [];
+          const licensingAlerts = licensingResponse.success ? licensingResponse.data : [];
 
           const allAlerts = [...dashboardAlerts, ...licensingAlerts];
           const activeAlerts = allAlerts.filter(alert => !alert.resolved);
@@ -140,10 +143,11 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
           setCriticalAlerts(critical.length);
         } else if (userRole === 'ORG_ADMIN' && organizationId) {
           // ORG ADMIN: Get alerts only for their organization
-          const orgAlerts = await fetch(`/api/security/alerts?source=licensing_website&organizationId=${organizationId}`)
+          const response = await fetch(`/api/security/alerts?source=licensing_website&organizationId=${organizationId}`)
             .then(res => res.json())
-            .catch(() => []);
+            .catch(() => ({ success: false, data: [] }));
 
+          const orgAlerts = response.success ? response.data : [];
           const activeAlerts = orgAlerts.filter(alert => !alert.resolved);
           const critical = activeAlerts.filter(alert => alert.severity === 'critical');
 

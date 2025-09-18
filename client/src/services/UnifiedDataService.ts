@@ -26,6 +26,7 @@ import {
   limit,
   arrayUnion,
   arrayRemove,
+  writeBatch,
   Timestamp 
 } from 'firebase/firestore';
 import { firestoreCollectionManager, COLLECTIONS } from './FirestoreCollectionManager';
@@ -1079,6 +1080,11 @@ class UnifiedDataService {
     try {
       console.log('🎫 [UnifiedDataService] Assigning license', licenseId, 'to user', userId);
       
+      // Ensure Firebase is initialized
+      if (!this.auth || !this.db) {
+        await this.initializeFirebase();
+      }
+      
       // Get user info
       const userDoc = await getDoc(doc(this.db, 'users', userId));
       if (!userDoc.exists()) throw new Error('User not found');
@@ -1094,10 +1100,11 @@ class UnifiedDataService {
       console.log('🔍 [UnifiedDataService] User data:', { id: userId, email: userData.email, name: userData.name });
       console.log('🔍 [UnifiedDataService] License data:', { id: licenseId, key: licenseData.key, tier: licenseData.tier });
       
-      // 🚀 ENHANCED: Update ALL collections for complete license coordination
+      // 🚀 ENHANCED: Use batch operations for atomic updates across all collections
+      const batch = writeBatch(this.db);
       
       // 1. Update license with assignment (marks license as taken from org pool)
-      await updateDoc(doc(this.db, 'licenses', licenseId), {
+      batch.update(doc(this.db, 'licenses', licenseId), {
         assignedTo: {
           userId: userId,
           name: userData.name || userData.firstName + ' ' + userData.lastName || userData.email,
@@ -1109,7 +1116,7 @@ class UnifiedDataService {
       });
       
       // 2. Update user record with license assignment
-      await updateDoc(doc(this.db, 'users', userId), {
+      batch.update(doc(this.db, 'users', userId), {
         licenseAssignment: {
           licenseId: licenseId,
           licenseKey: licenseData.key,
@@ -1130,7 +1137,7 @@ class UnifiedDataService {
         
         if (!teamMemberDocs.empty) {
           const teamMemberDoc = teamMemberDocs.docs[0];
-          await updateDoc(teamMemberDoc.ref, {
+          batch.update(teamMemberDoc.ref, {
             licenseAssignment: {
               licenseId: licenseId,
               licenseKey: licenseData.key,
@@ -1139,10 +1146,10 @@ class UnifiedDataService {
             },
             updatedAt: new Date()
           });
-          console.log('✅ [UnifiedDataService] Updated teamMembers collection with license assignment');
+          console.log('✅ [UnifiedDataService] Added teamMembers collection update to batch');
         }
       } catch (teamMemberError) {
-        console.warn('⚠️ [UnifiedDataService] Failed to update teamMembers collection:', teamMemberError);
+        console.warn('⚠️ [UnifiedDataService] Failed to find team member for batch update:', teamMemberError);
         // Don't fail the license assignment if team member update fails
       }
 
@@ -1157,7 +1164,7 @@ class UnifiedDataService {
         
         if (!orgMemberDocs.empty) {
           const orgMemberDoc = orgMemberDocs.docs[0];
-          await updateDoc(orgMemberDoc.ref, {
+          batch.update(orgMemberDoc.ref, {
             licenseAssignment: {
               licenseId: licenseId,
               licenseKey: licenseData.key,
@@ -1166,14 +1173,16 @@ class UnifiedDataService {
             },
             updatedAt: new Date()
           });
-          console.log('✅ [UnifiedDataService] Updated orgMembers collection with license assignment');
+          console.log('✅ [UnifiedDataService] Added orgMembers collection update to batch');
         }
       } catch (orgMemberError) {
-        console.warn('⚠️ [UnifiedDataService] Failed to update orgMembers collection:', orgMemberError);
+        console.warn('⚠️ [UnifiedDataService] Failed to find org member for batch update:', orgMemberError);
         // Don't fail the license assignment if org member update fails
       }
 
-      console.log('✅ [UnifiedDataService] License assignment completed - all collections updated');
+      // Commit all updates atomically
+      await batch.commit();
+      console.log('✅ [UnifiedDataService] License assignment completed - all collections updated atomically');
 
       // Clear caches for both licenses and team members
       this.clearCacheByPattern('org-licenses-');
@@ -1189,6 +1198,11 @@ class UnifiedDataService {
     try {
       console.log('🎫 [UnifiedDataService] Unassigning license', licenseId);
       
+      // Ensure Firebase is initialized
+      if (!this.auth || !this.db) {
+        await this.initializeFirebase();
+      }
+      
       // Get license info to find the assigned user
       const licenseDoc = await getDoc(doc(this.db, 'licenses', licenseId));
       if (!licenseDoc.exists()) throw new Error('License not found');
@@ -1196,10 +1210,13 @@ class UnifiedDataService {
       const licenseData = licenseDoc.data();
       const assignedUserId = licenseData.assignedTo?.userId;
       
-      // 🚀 ENHANCED: Update ALL collections to release license back to org pool
+      console.log('🔍 [UnifiedDataService] License data:', { id: licenseId, assignedUserId, status: licenseData.status });
+      
+      // 🚀 ENHANCED: Use batch operations for atomic updates across all collections
+      const batch = writeBatch(this.db);
       
       // 1. Update license to remove assignment (returns to org pool as PENDING)
-      await updateDoc(doc(this.db, 'licenses', licenseId), {
+      batch.update(doc(this.db, 'licenses', licenseId), {
         assignedTo: null,
         status: 'PENDING', // Reset to PENDING status - available for assignment
         updatedAt: new Date()
@@ -1207,11 +1224,11 @@ class UnifiedDataService {
       
       // 2. Update user record to remove license assignment
       if (assignedUserId) {
-        await updateDoc(doc(this.db, 'users', assignedUserId), {
+        batch.update(doc(this.db, 'users', assignedUserId), {
           licenseAssignment: null,
           updatedAt: new Date()
         });
-        console.log('✅ [UnifiedDataService] Removed license assignment from user record', assignedUserId);
+        console.log('✅ [UnifiedDataService] Added user record update to batch');
       }
 
       // 3. Update team member record to remove license assignment
@@ -1226,14 +1243,14 @@ class UnifiedDataService {
           
           if (!teamMemberDocs.empty) {
             const teamMemberDoc = teamMemberDocs.docs[0];
-            await updateDoc(teamMemberDoc.ref, {
+            batch.update(teamMemberDoc.ref, {
               licenseAssignment: null,
               updatedAt: new Date()
             });
-            console.log('✅ [UnifiedDataService] Removed license assignment from teamMembers collection');
+            console.log('✅ [UnifiedDataService] Added teamMembers collection update to batch');
           }
         } catch (teamMemberError) {
-          console.warn('⚠️ [UnifiedDataService] Failed to update teamMembers collection:', teamMemberError);
+          console.warn('⚠️ [UnifiedDataService] Failed to find team member for batch update:', teamMemberError);
         }
       }
 
@@ -1249,18 +1266,20 @@ class UnifiedDataService {
           
           if (!orgMemberDocs.empty) {
             const orgMemberDoc = orgMemberDocs.docs[0];
-            await updateDoc(orgMemberDoc.ref, {
+            batch.update(orgMemberDoc.ref, {
               licenseAssignment: null,
               updatedAt: new Date()
             });
-            console.log('✅ [UnifiedDataService] Removed license assignment from orgMembers collection');
+            console.log('✅ [UnifiedDataService] Added orgMembers collection update to batch');
           }
         } catch (orgMemberError) {
-          console.warn('⚠️ [UnifiedDataService] Failed to update orgMembers collection:', orgMemberError);
+          console.warn('⚠️ [UnifiedDataService] Failed to find org member for batch update:', orgMemberError);
         }
       }
 
-      console.log('✅ [UnifiedDataService] License unassignment completed - license returned to org pool');
+      // Commit all updates atomically
+      await batch.commit();
+      console.log('✅ [UnifiedDataService] License unassignment completed - all collections updated atomically');
 
       // Clear caches for both licenses and team members
       this.clearCacheByPattern('org-licenses-');
@@ -1276,8 +1295,21 @@ class UnifiedDataService {
   // TEAM MEMBER OPERATIONS
   // ============================================================================
 
+  /**
+   * Safely convert various date formats to Date objects
+   */
+  private safeDateConversion(dateValue: any): Date {
+    if (!dateValue) return new Date();
+    if (dateValue instanceof Date) return dateValue;
+    if (typeof dateValue === 'string') return new Date(dateValue);
+    if (typeof dateValue === 'number') return new Date(dateValue);
+    // Handle Firestore Timestamp objects
+    if (dateValue && typeof dateValue === 'object' && dateValue.toDate) {
+      return dateValue.toDate();
+    }
+    return new Date();
+  }
 
-  
   async getTeamMembersForOrganization(): Promise<StreamlinedTeamMember[]> {
     const user = await this.getCurrentUser();
     if (!user) return [];
@@ -1409,11 +1441,11 @@ class UnifiedDataService {
               department: tmData.department || '',
               assignedProjects: tmData.assignedProjects || [],
               avatar: tmData.avatar,
-              joinedAt: tmData.joinedAt || tmData.createdAt || new Date(),
-              lastActive: tmData.lastActive ? (tmData.lastActive instanceof Date ? tmData.lastActive : new Date(tmData.lastActive)) : undefined,
+              joinedAt: this.safeDateConversion(tmData.joinedAt || tmData.createdAt),
+              lastActive: tmData.lastActive ? this.safeDateConversion(tmData.lastActive) : undefined,
               invitedBy: tmData.invitedBy || user.id,
-              createdAt: tmData.createdAt || new Date(),
-              updatedAt: tmData.updatedAt || new Date()
+              createdAt: this.safeDateConversion(tmData.createdAt),
+              updatedAt: this.safeDateConversion(tmData.updatedAt)
             };
             
             allUsers.set(tmData.email, teamMember);
@@ -1701,19 +1733,39 @@ class UnifiedDataService {
 
   async updateTeamMember(memberId: string, updates: Partial<StreamlinedTeamMember>): Promise<void> {
     try {
+      console.log('🔍 [UnifiedDataService] Updating team member:', memberId, updates);
+      
+      // Ensure Firebase is initialized
+      if (!this.auth || !this.db) {
+        await this.initializeFirebase();
+      }
+
       const updateData = {
         ...updates,
         updatedAt: new Date()
       };
 
-      // Team members are stored in the 'teamMembers' collection
-      await updateDoc(doc(this.db, 'teamMembers', memberId), updateData);
+      // 🔧 ENHANCED: Update both users and teamMembers collections for consistency
+      const batch = writeBatch(this.db);
+      
+      // Update users collection (primary source)
+      const userRef = doc(this.db, 'users', memberId);
+      batch.update(userRef, updateData);
+      
+      // Update teamMembers collection (team management)
+      const teamMemberRef = doc(this.db, 'teamMembers', memberId);
+      batch.update(teamMemberRef, updateData);
+      
+      // Commit both updates atomically
+      await batch.commit();
+      
+      console.log('✅ [UnifiedDataService] Team member updated successfully in both collections');
       
       // Clear related caches
       this.clearCacheByPattern('org-team-members-');
       this.clearCacheByPattern('org-users-');
     } catch (error) {
-      console.error('Error updating team member:', error);
+      console.error('❌ [UnifiedDataService] Error updating team member:', error);
       throw error;
     }
   }
@@ -2189,7 +2241,44 @@ class UnifiedDataService {
     }
     return UnifiedDataService.instance;
   }
-}
+
+  /**
+   * Get license pools for the organization
+   */
+  async getLicensePools(): Promise<LicensePool[]> {
+    try {
+      console.log('🔍 [UnifiedDataService] Fetching license pools...');
+      
+      const poolsSnapshot = await getDocs(collection(this.db, 'licensePools'));
+      const pools: LicensePool[] = [];
+      
+      poolsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        pools.push({
+          id: doc.id,
+          tier: data.tier,
+          totalLicenses: data.totalLicenses || 0,
+          availableLicenses: data.availableLicenses || 0,
+          assignedLicenses: data.assignedLicenses || 0,
+          maxProjects: data.maxProjects || 0,
+          maxCollaborators: data.maxCollaborators || 0,
+          maxTeamMembers: data.maxTeamMembers || 0,
+          features: data.features || [],
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || new Date().toISOString()
+        });
+      });
+      
+      console.log(`✅ [UnifiedDataService] Found ${pools.length} license pools`);
+      return pools;
+      
+    } catch (error) {
+      console.error('❌ [UnifiedDataService] Error fetching license pools:', error);
+      throw error;
+    }
+  }
+
+  }
 
 // Export singleton instance
 export const unifiedDataService = UnifiedDataService.getInstance();

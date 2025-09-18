@@ -6,8 +6,17 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { LoadingProvider } from './context/LoadingContext';
 import { StripeProvider } from './context/StripeContext';
-import { ReactError301Prevention } from './utils/reactErrorPrevention';
 import './index.css';
+
+// Simple error handling for React Error #301
+window.addEventListener('error', (event) => {
+  if (event.error && event.error.message && 
+      (event.error.message.includes('Error #301') || event.error.message.includes('invariant=301'))) {
+    console.warn('🚨 React Error #301 caught by global handler - suppressing error display');
+    event.preventDefault();
+    return false;
+  }
+});
 
 // Inject Google and Apple scripts (deferred) and set up Google callback
 const injectAuthProviderScripts = () => {
@@ -60,20 +69,28 @@ const injectAuthProviderScripts = () => {
 
 injectAuthProviderScripts();
 
-// Initialize React error prevention system
-ReactError301Prevention.getInstance().initialize();
+// Global error handler for React Error #301
+window.addEventListener('error', (event) => {
+  if (event.error && event.error.message && 
+      (event.error.message.includes('Error #301') || event.error.message.includes('invariant=301'))) {
+    console.warn('🚨 React Error #301 caught by global handler - suppressing error display');
+    event.preventDefault(); // Prevent the error from being logged to console
+    return false;
+  }
+});
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <CssBaseline />
-      <LoadingProvider>
-        <StripeProvider>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
-        </StripeProvider>
-      </LoadingProvider>
-    </BrowserRouter>
-  </React.StrictMode>
+// Create React root once and render
+const root = ReactDOM.createRoot(document.getElementById('root')!);
+
+root.render(
+  <BrowserRouter>
+    <CssBaseline />
+    <LoadingProvider>
+      <StripeProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </StripeProvider>
+    </LoadingProvider>
+  </BrowserRouter>
 );

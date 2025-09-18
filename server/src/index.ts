@@ -42,6 +42,15 @@ const app: Application = express();
 // Trust proxy (required when behind Firebase Hosting/Cloud Run for correct IPs)
 app.set('trust proxy', true);
 
+// Firebase Functions v2 strips the function name from the path
+// Add middleware to restore the /api prefix for proper routing
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
+
 // Security middleware - Disable CSP here since Firebase Hosting handles it
 app.use(helmet({
   // Enable HSTS in production
@@ -158,7 +167,7 @@ app.use('/api/accounting', accountingRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/datasets', datasetsRouter);
 app.use('/api/team-members', teamMembersRouter);
-app.use('/api/team-members', teamMemberManagementRouter);
+app.use('/api/team-member-management', teamMemberManagementRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/demo', demoRouter);
 app.use('/api/validation', userValidationRouter);

@@ -1,41 +1,5 @@
-# Content Security Policy for WebOnly mode - allows Firebase Auth and WebAssembly
 /*
-  Content-Security-Policy: default-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; script-src-elem * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; script-src-attr * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline' 'unsafe-eval' data: blob:; font-src * data: blob:; img-src * data: blob:; connect-src * data: blob: ws: wss:; frame-src * data: blob:; worker-src * data: blob:; object-src *; base-uri *; form-action *; media-src * data: blob:; manifest-src * data: blob:;
-
-# MIME type headers for proper JavaScript module loading
-/*.js
-  Content-Type: application/javascript; charset=utf-8
-
-/*.mjs
-  Content-Type: application/javascript; charset=utf-8
-
-# Cache control for static assets
-/*.js
-  Cache-Control: max-age=31536000
-
-/*.mjs
-  Cache-Control: max-age=31536000
-
-/*.css
-  Cache-Control: max-age=31536000
-
-/*.png
-  Cache-Control: max-age=31536000
-
-/*.jpg
-  Cache-Control: max-age=31536000
-
-/*.jpeg
-  Cache-Control: max-age=31536000
-
-/*.gif
-  Cache-Control: max-age=31536000
-
-/*.svg
-  Cache-Control: max-age=31536000
-
-/*.ico
-  Cache-Control: max-age=31536000
-
-/*.woff2
-  Cache-Control: max-age=31536000
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()

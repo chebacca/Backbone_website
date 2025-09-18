@@ -178,6 +178,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth when restoring session
             try {
               console.log('🔑 [Auth] Restoring Firebase Auth session for existing user...');
+              
+              // Check if validatedUser has required properties
+              if (!validatedUser || !validatedUser.email) {
+                console.warn('⚠️ [Auth] Invalid validatedUser object - missing email property:', validatedUser);
+                return;
+              }
+              
               const { tryRestoreFirebaseSession, isEmailAuthenticated } = await import('../services/firebase');
               
               // Try to restore Firebase Auth session

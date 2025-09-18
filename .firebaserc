@@ -12,6 +12,9 @@
         ],
         "backbone-client.web": [
           "backbone-client"
+        ],
+        "backbone-logic": [
+          "main"
         ]
       }
     }

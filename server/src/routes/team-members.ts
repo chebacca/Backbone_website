@@ -1,7 +1,7 @@
 import type { Router as ExpressRouter, Request, Response } from 'express';
 import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, authenticateFirebaseToken } from '../middleware/auth.js';
 import { firestoreService } from '../services/firestoreService.js';
 import { logger } from '../utils/logger.js';
 import { PasswordUtil } from '../utils/password.js';
@@ -190,6 +190,33 @@ router.post('/auth/login', [
 }));
 
 // Get licensed team members (available for assignment to projects)
+// GET /api/team-members/test - Simple test endpoint
+router.get('/test', (req: any, res: Response) => {
+  res.json({ success: true, message: 'Team members router is working' });
+});
+
+// GET /api/team-members - List all team members for an organization
+router.get('/', authenticateFirebaseToken, asyncHandler(async (req: any, res: Response): Promise<void> => {
+  const { organizationId } = req.query;
+  
+  if (!organizationId) {
+    throw createApiError('Organization ID is required', 400);
+  }
+
+  try {
+    const teamMembers = await firestoreService.getTeamMembersByOrganization(organizationId);
+    
+    res.json({
+      success: true,
+      data: teamMembers,
+      count: teamMembers.length
+    });
+  } catch (error) {
+    logger.error('Failed to fetch team members:', error);
+    throw createApiError('Failed to fetch team members', 500);
+  }
+}));
+
 router.get('/licensed', authenticateToken, async (req: any, res) => {
   try {
     const userId = req.user?.id as string;
@@ -496,7 +523,7 @@ router.get('/getLicensedTeamMembers', authenticateToken, async (req: any, res) =
  * Create Team Member - Account owners can create team members automatically
  * POST /api/team-members/create
  */
-router.post('/create', authenticateToken, [
+router.post('/create', authenticateFirebaseToken, [
   body('email').isEmail().normalizeEmail(),
   body('firstName').trim().isLength({ min: 1 }),
   body('lastName').trim().isLength({ min: 1 }),
@@ -609,7 +636,7 @@ router.post('/create', authenticateToken, [
  * Bulk Create Team Members
  * POST /api/team-members/bulk-create
  */
-router.post('/bulk-create', authenticateToken, [
+router.post('/bulk-create', authenticateFirebaseToken, [
   body('teamMembers').isArray({ min: 1, max: 50 }),
   body('teamMembers.*.email').isEmail().normalizeEmail(),
   body('teamMembers.*.firstName').trim().isLength({ min: 1 }),

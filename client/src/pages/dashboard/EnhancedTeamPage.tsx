@@ -15,6 +15,7 @@ import {
   Grid,
   Card,
   CardContent,
+  CardHeader,
   Button,
   Avatar,
   Chip,
@@ -41,48 +42,28 @@ import {
   Paper,
   Tooltip,
   CircularProgress,
-  FormControlLabel,
-  Switch,
   InputAdornment,
-  IconButton as MuiIconButton,
   Checkbox,
   Divider,
   Pagination,
   Skeleton,
 } from '@mui/material';
 import {
-  Add,
   MoreVert,
   Email,
-  Block,
   CheckCircle,
   Schedule,
-  Group,
   PersonAdd,
-  AdminPanelSettings,
-  Work,
   Star,
-  Send,
-  Warning,
-  Security,
-  Info,
   People,
-  Phone,
-  Badge,
-  AccessTime,
-  Lock,
-  VpnKey,
-  Folder,
   Download,
   Upload,
   FilterList,
   Search,
   Edit,
   Delete,
-  Refresh,
-  Clear,
-  ExpandMore,
-  ExpandLess,
+  Lock,
+  VpnKey,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import {
@@ -102,6 +83,7 @@ import { StreamlinedTeamMember } from '@/services/UnifiedDataService';
 import { csvService, CSVImportResult } from '@/services/CSVService';
 import { teamMemberFilterService, FilterCriteria, SortOptions, PaginationOptions } from '@/services/TeamMemberFilterService';
 import MetricCard from '@/components/common/MetricCard';
+import SimpleInviteTeamMemberDialog from '@/components/SimpleInviteTeamMemberDialog';
 
 // ============================================================================
 // TYPES
@@ -133,7 +115,7 @@ interface TeamStats {
 // MAIN COMPONENT
 // ============================================================================
 
-const EnhancedTeamPage: React.FC = () => {
+const EnhancedTeamPage: React.FC = React.memo(() => {
   const { enqueueSnackbar } = useSnackbar();
   
   // State management
@@ -153,6 +135,7 @@ const EnhancedTeamPage: React.FC = () => {
   const [selectedMember, setSelectedMember] = useState<StreamlinedTeamMember | null>(null);
   
   // Dialog states for team member actions
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [editMemberDialogOpen, setEditMemberDialogOpen] = useState(false);
   const [assignLicenseDialogOpen, setAssignLicenseDialogOpen] = useState(false);
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
@@ -196,26 +179,31 @@ const EnhancedTeamPage: React.FC = () => {
 
   // Filtered and sorted team members
   const filteredMembers = useMemo(() => {
-    if (!teamMembers) return [];
+    if (!teamMembers || !Array.isArray(teamMembers)) return [];
     
-    const criteria = {
-      ...filterCriteria,
-      search: searchQuery || undefined
-    };
-    
-    const result = teamMemberFilterService.filterTeamMembers(
-      teamMembers,
-      criteria,
-      sortOptions,
-      pagination
-    );
-    
-    return result.filteredMembers;
+    try {
+      const criteria = {
+        ...filterCriteria,
+        search: searchQuery || undefined
+      };
+      
+      const result = teamMemberFilterService.filterTeamMembers(
+        teamMembers,
+        criteria,
+        sortOptions,
+        pagination
+      );
+      
+      return result.filteredMembers || [];
+    } catch (error) {
+      console.error('Error filtering team members:', error);
+      return teamMembers || [];
+    }
   }, [teamMembers, filterCriteria, searchQuery, sortOptions, pagination]);
 
   // Team statistics
   const teamStats = useMemo((): TeamStats => {
-    if (!teamMembers) {
+    if (!teamMembers || !Array.isArray(teamMembers)) {
       return {
         totalMembers: 0,
         activeMembers: 0,
@@ -226,29 +214,45 @@ const EnhancedTeamPage: React.FC = () => {
       };
     }
 
-    const totalMembers = teamMembers.length;
-    const activeMembers = teamMembers.filter(m => m.status === 'active').length;
-    const pendingInvites = teamMembers.filter(m => m.status === 'pending').length;
-    const assignedLicenses = teamMembers.filter(m => m.licenseType && m.licenseType !== 'BASIC').length;
-    const totalLicenses = licenses?.length || 0;
-    const availableLicenses = totalLicenses - assignedLicenses;
+    try {
+      const totalMembers = teamMembers.length;
+      const activeMembers = teamMembers.filter(m => m?.status === 'active').length;
+      const pendingInvites = teamMembers.filter(m => m?.status === 'pending').length;
+      const assignedLicenses = teamMembers.filter(m => m?.licenseType && m.licenseType !== 'BASIC').length;
+      const totalLicenses = licenses?.length || 0;
+      const availableLicenses = Math.max(0, totalLicenses - assignedLicenses);
 
-    return {
-      totalMembers,
-      activeMembers,
-      pendingInvites,
-      availableLicenses,
-      totalLicenses,
-      assignedLicenses
-    };
+      return {
+        totalMembers,
+        activeMembers,
+        pendingInvites,
+        availableLicenses,
+        totalLicenses,
+        assignedLicenses
+      };
+    } catch (error) {
+      console.error('Error calculating team statistics:', error);
+      return {
+        totalMembers: 0,
+        activeMembers: 0,
+        pendingInvites: 0,
+        availableLicenses: 0,
+        totalLicenses: 0,
+        assignedLicenses: 0
+      };
+    }
   }, [teamMembers, licenses]);
 
 
   // Handle CSV export
   const handleCSVExport = useCallback(async () => {
-    if (!teamMembers) return;
+    if (!teamMembers || teamMembers.length === 0) {
+      enqueueSnackbar('No team members to export', { variant: 'warning' });
+      return;
+    }
     
     try {
+      setIsLoading(true);
       const csvContent = await csvService.exportTeamMembers(teamMembers, {
         includeInactive: true,
         includeAuditInfo: true
@@ -259,20 +263,27 @@ const EnhancedTeamPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to export CSV:', error);
       enqueueSnackbar('Failed to export CSV', { variant: 'error' });
+    } finally {
+      setIsLoading(false);
     }
   }, [teamMembers, enqueueSnackbar]);
 
   // Handle CSV import
   const handleCSVImport = useCallback(async (file: File) => {
-    if (!orgContext?.organization?.id) return;
+    if (!orgContext?.organization?.id) {
+      enqueueSnackbar('Organization not found', { variant: 'error' });
+      return;
+    }
     
     try {
+      setIsLoading(true);
       const csvContent = await file.text();
       const result = await csvService.importTeamMembers(
         csvContent,
         orgContext.organization.id,
         (progress) => {
           // Handle progress
+          console.log('CSV Import Progress:', progress);
         }
       );
       
@@ -287,6 +298,8 @@ const EnhancedTeamPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to import CSV:', error);
       enqueueSnackbar('Failed to import CSV', { variant: 'error' });
+    } finally {
+      setIsLoading(false);
     }
   }, [orgContext?.organization?.id, enqueueSnackbar, refetchTeamMembers]);
 
@@ -478,6 +491,18 @@ const EnhancedTeamPage: React.FC = () => {
     setPagination(newPagination);
   };
 
+  // Add error boundary for React Error #301
+  if (!currentUser) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h4" gutterBottom>Team Management</Typography>
+        <Alert severity="info">
+          Please log in to access team management features.
+        </Alert>
+      </Box>
+    );
+  }
+
   // Render loading state
   if (userLoading || orgLoading || teamLoading) {
     return (
@@ -515,9 +540,28 @@ const EnhancedTeamPage: React.FC = () => {
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
+            variant="contained"
+            startIcon={<PersonAdd />}
+            onClick={() => {
+              console.log('🔍 [EnhancedTeamPage] Invite Member button clicked');
+              setInviteDialogOpen(true);
+            }}
+            sx={{
+              background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+              color: '#000',
+              fontWeight: 600,
+              '&:hover': {
+                background: 'linear-gradient(135deg, #00b8e6 0%, #5a6fd8 100%)',
+              }
+            }}
+          >
+            Invite Member
+          </Button>
+          <Button
             variant="outlined"
-            startIcon={<Download />}
+            startIcon={isLoading ? <CircularProgress size={16} /> : <Download />}
             onClick={handleCSVExport}
+            disabled={isLoading || !teamMembers || teamMembers.length === 0}
           >
             Export CSV
           </Button>
@@ -525,15 +569,9 @@ const EnhancedTeamPage: React.FC = () => {
             variant="outlined"
             startIcon={<Upload />}
             onClick={() => setShowCSVImport(true)}
+            disabled={isLoading}
           >
             Import CSV
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<PersonAdd />}
-            onClick={() => {/* Handle invite */}}
-          >
-            Invite Member
           </Button>
         </Box>
       </Box>
@@ -701,72 +739,86 @@ const EnhancedTeamPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredMembers.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        checked={selectedMembers.includes(member.id)}
-                        onChange={(e) => handleMemberSelection(member.id, e.target.checked)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Avatar>
-                          {member.firstName?.[0]}{member.lastName?.[0]}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="subtitle2">
-                            {member.firstName} {member.lastName}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {member.email}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={member.role}
-                        color={member.role === 'admin' ? 'primary' : 'default'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={member.status}
-                        color={member.status === 'active' ? 'success' : 'default'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>{member.department || '-'}</TableCell>
-                    <TableCell>
-                      {member.licenseType ? (
-                        <Chip
-                          label={member.licenseType}
-                          color="info"
-                          size="small"
-                        />
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {member.lastActive ? (
-                        new Date(member.lastActive).toLocaleDateString()
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <IconButton 
-                        size="small"
-                        onClick={(event) => handleMenuClick(event, member)}
-                      >
-                        <MoreVert />
-                      </IconButton>
+                {filteredMembers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} align="center">
+                      <Typography variant="body2" color="text.secondary">
+                        No team members found
+                      </Typography>
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredMembers.map((member) => {
+                    if (!member || !member.id) return null;
+                    
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={selectedMembers.includes(member.id)}
+                            onChange={(e) => handleMemberSelection(member.id, e.target.checked)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <Avatar>
+                              {member.firstName?.[0] || '?'}{member.lastName?.[0] || '?'}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="subtitle2">
+                                {member.firstName || 'Unknown'} {member.lastName || 'User'}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {member.email || 'No email'}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={member.role || 'member'}
+                            color={member.role === 'admin' ? 'primary' : 'default'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={member.status || 'unknown'}
+                            color={member.status === 'active' ? 'success' : 'default'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{member.department || '-'}</TableCell>
+                        <TableCell>
+                          {member.licenseType ? (
+                            <Chip
+                              label={member.licenseType}
+                              color="info"
+                              size="small"
+                            />
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {member.lastActive ? (
+                            new Date(member.lastActive).toLocaleDateString()
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <IconButton 
+                            size="small"
+                            onClick={(event) => handleMenuClick(event, member)}
+                          >
+                            <MoreVert />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </TableContainer>
@@ -1055,8 +1107,25 @@ const EnhancedTeamPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Simple Invite Team Member Dialog */}
+      <SimpleInviteTeamMemberDialog
+        open={inviteDialogOpen}
+        onClose={() => setInviteDialogOpen(false)}
+        onSuccess={(teamMember) => {
+          console.log('✅ [EnhancedTeamPage] Team member created successfully:', teamMember);
+          // Refresh team members list
+          refetchTeamMembers();
+          refetchLicenses();
+        }}
+        currentUser={currentUser}
+        organization={orgContext}
+        availableLicenses={licenses?.filter(l => 
+          (l.status === 'PENDING' || l.status === 'ACTIVE') && !l.assignedTo
+        ) || []}
+      />
     </Box>
   );
-};
+});
 
 export default EnhancedTeamPage;

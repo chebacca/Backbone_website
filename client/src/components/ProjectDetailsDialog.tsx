@@ -32,7 +32,21 @@ import {
     InputLabel,
     Select,
     MenuItem,
-    CircularProgress
+    CircularProgress,
+    Menu,
+    ListItemIcon,
+    ListItemText,
+    Tooltip,
+    Alert,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Paper,
+    Avatar,
+    Checkbox
 } from '@mui/material';
 import {
     Settings as SettingsIcon,
@@ -45,7 +59,12 @@ import {
     Computer as ComputerIcon,
     NetworkWifi as NetworkIcon,
     Storage as StorageIcon,
-    Cloud as CloudIcon
+    Cloud as CloudIcon,
+    Edit as EditIcon,
+    MoreVert as MoreVertIcon,
+    Save as SaveIcon,
+    Cancel as CancelIcon,
+    Check as CheckIcon
 } from '@mui/icons-material';
 
 // Import services and utilities
@@ -124,6 +143,22 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
     const theme = useTheme();
     const [currentTab, setCurrentTab] = useState(0);
     
+    // Team member management state
+    const [teamMemberMenuAnchor, setTeamMemberMenuAnchor] = useState<null | HTMLElement>(null);
+    const [selectedTeamMember, setSelectedTeamMember] = useState<any>(null);
+    const [editTeamMemberDialog, setEditTeamMemberDialog] = useState(false);
+    const [removeTeamMemberDialog, setRemoveTeamMemberDialog] = useState(false);
+    const [teamMemberRole, setTeamMemberRole] = useState('');
+    const [teamMemberLoading, setTeamMemberLoading] = useState(false);
+    const [teamMemberError, setTeamMemberError] = useState<string | null>(null);
+    
+    // Inline editing state
+    const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+    const [editingRole, setEditingRole] = useState('');
+    const [editingDepartment, setEditingDepartment] = useState('');
+    const [editingPermissions, setEditingPermissions] = useState<string[]>([]);
+    const [savingMember, setSavingMember] = useState<string | null>(null);
+    
     // Debug logging
     console.log('🔍 ProjectDetailsDialog rendered:', { open, project: project?.name, currentTab });
 
@@ -138,6 +173,152 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
         setCurrentTab(0);
         onClose();
     }, [onClose]);
+
+    // Team member management handlers
+    const handleTeamMemberMenuOpen = (event: React.MouseEvent<HTMLElement>, member: any) => {
+        event.stopPropagation();
+        setTeamMemberMenuAnchor(event.currentTarget);
+        setSelectedTeamMember(member);
+    };
+
+    const handleTeamMemberMenuClose = () => {
+        setTeamMemberMenuAnchor(null);
+        setSelectedTeamMember(null);
+    };
+
+    const handleEditTeamMember = () => {
+        if (selectedTeamMember) {
+            setTeamMemberRole(selectedTeamMember.role || 'MEMBER');
+            setEditTeamMemberDialog(true);
+        }
+        handleTeamMemberMenuClose();
+    };
+
+    const handleRemoveTeamMember = () => {
+        setRemoveTeamMemberDialog(true);
+        handleTeamMemberMenuClose();
+    };
+
+    const handleUpdateTeamMemberRole = async () => {
+        if (!selectedTeamMember || !project) return;
+        
+        setTeamMemberLoading(true);
+        setTeamMemberError(null);
+        
+        try {
+            // Update team member role via API
+            await cloudProjectIntegration.updateTeamMemberRole(
+                project.id,
+                selectedTeamMember.id,
+                teamMemberRole
+            );
+            
+            // Refresh team members list
+            await onLoadTeamMembersForProject(project);
+            
+            setEditTeamMemberDialog(false);
+            setSelectedTeamMember(null);
+            setTeamMemberRole('');
+        } catch (error: any) {
+            console.error('Failed to update team member role:', error);
+            setTeamMemberError(error.message || 'Failed to update team member role');
+        } finally {
+            setTeamMemberLoading(false);
+        }
+    };
+
+    const handleConfirmRemoveTeamMember = async () => {
+        if (!selectedTeamMember || !project) return;
+        
+        setTeamMemberLoading(true);
+        setTeamMemberError(null);
+        
+        try {
+            console.log('🔍 [ProjectDetailsDialog] Removing team member:', {
+                projectId: project.id,
+                teamMemberId: selectedTeamMember.id,
+                teamMemberIdAlt: selectedTeamMember.teamMemberId,
+                teamMemberName: selectedTeamMember.name || selectedTeamMember.email,
+                fullMemberData: selectedTeamMember
+            });
+            
+            // Use teamMemberId if available, otherwise fall back to id
+            const memberIdToRemove = selectedTeamMember.teamMemberId || selectedTeamMember.id;
+            
+            // Remove team member via API
+            const success = await cloudProjectIntegration.removeTeamMemberFromProject(
+                project.id,
+                memberIdToRemove
+            );
+            
+            if (success) {
+                console.log('✅ [ProjectDetailsDialog] Team member removed successfully');
+                
+                // Refresh team members list
+                await onLoadTeamMembersForProject(project);
+                
+                setRemoveTeamMemberDialog(false);
+                setSelectedTeamMember(null);
+            } else {
+                throw new Error('Failed to remove team member - operation returned false');
+            }
+        } catch (error: any) {
+            console.error('❌ [ProjectDetailsDialog] Failed to remove team member:', error);
+            setTeamMemberError(error.message || 'Failed to remove team member');
+        } finally {
+            setTeamMemberLoading(false);
+        }
+    };
+
+    // Inline editing handlers
+    const handleStartEdit = (member: any) => {
+        setEditingMemberId(member.id);
+        setEditingRole(member.role || 'MEMBER');
+        setEditingDepartment(member.department || '');
+        setEditingPermissions(member.permissions || []);
+    };
+
+    const handleCancelEdit = () => {
+        setEditingMemberId(null);
+        setEditingRole('');
+        setEditingDepartment('');
+        setEditingPermissions([]);
+    };
+
+    const handleSaveEdit = async (member: any) => {
+        if (!project) return;
+        
+        setSavingMember(member.id);
+        setTeamMemberError(null);
+        
+        try {
+            // Update team member role and department
+            await cloudProjectIntegration.updateTeamMemberRole(
+                project.id,
+                member.id,
+                editingRole
+            );
+            
+            // Refresh team members list
+            await onLoadTeamMembersForProject(project);
+            
+            // Exit edit mode
+            handleCancelEdit();
+        } catch (error: any) {
+            console.error('Failed to update team member:', error);
+            setTeamMemberError(error.message || 'Failed to update team member');
+        } finally {
+            setSavingMember(null);
+        }
+    };
+
+    const handlePermissionToggle = (permission: string) => {
+        setEditingPermissions(prev => 
+            prev.includes(permission) 
+                ? prev.filter(p => p !== permission)
+                : [...prev, permission]
+        );
+    };
 
     const getStatusIcon = (status: string) => {
         switch (status) {
@@ -910,57 +1091,216 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                     </Button>
                                 </Box>
                                 
-                                {/* Team Members List */}
+                                {/* Team Members Table */}
                                 {projectTeamMembers.length > 0 ? (
-                                    <Grid container spacing={2}>
-                                        {projectTeamMembers.map((member: any) => (
-                                            <Grid item xs={12} sm={6} md={4} key={member.id}>
-                                                <Card sx={{
-                                                    p: 2,
-                                                    borderRadius: theme.shape.borderRadius,
-                                                    background: theme.palette.background.paper,
-                                                    border: `1px solid ${theme.palette.divider}`,
-                                                    boxShadow: theme.shadows[2],
-                                                    transition: 'all 0.2s ease',
-                                                    '&:hover': {
-                                                        boxShadow: theme.shadows[4],
-                                                        borderColor: theme.palette.primary.main + '40'
-                                                    }
-                                                }}>
-                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                                        <Box
-                                                            sx={{
-                                                                width: 40,
-                                                                height: 40,
-                                                                borderRadius: theme.shape.borderRadius,
-                                                                background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                color: 'white',
-                                                                fontWeight: theme.typography.fontWeightBold
-                                                            }}
-                                                        >
-                                                            {(member.name || member.email || 'U').charAt(0).toUpperCase()}
-                                                        </Box>
-                                                        <Box sx={{ flex: 1 }}>
+                                    <TableContainer component={Paper} sx={{
+                                        borderRadius: theme.shape.borderRadius,
+                                        background: theme.palette.background.paper,
+                                        border: `1px solid ${theme.palette.divider}`,
+                                        boxShadow: theme.shadows[2]
+                                    }}>
+                                        <Table>
+                                            <TableHead>
+                                                <TableRow sx={{ backgroundColor: theme.palette.primary.main + '10' }}>
+                                                    <TableCell sx={{ 
+                                                        fontWeight: theme.typography.fontWeightBold,
+                                                        color: theme.palette.text.primary,
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                    }}>
+                                                        Team Member
+                                                    </TableCell>
+                                                    <TableCell sx={{ 
+                                                        fontWeight: theme.typography.fontWeightBold,
+                                                        color: theme.palette.text.primary,
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                    }}>
+                                                        Email
+                                                    </TableCell>
+                                                    <TableCell sx={{ 
+                                                        fontWeight: theme.typography.fontWeightBold,
+                                                        color: theme.palette.text.primary,
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                    }}>
+                                                        Role
+                                                    </TableCell>
+                                                    <TableCell sx={{ 
+                                                        fontWeight: theme.typography.fontWeightBold,
+                                                        color: theme.palette.text.primary,
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                    }}>
+                                                        Department
+                                                    </TableCell>
+                                                    <TableCell sx={{ 
+                                                        fontWeight: theme.typography.fontWeightBold,
+                                                        color: theme.palette.text.primary,
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`,
+                                                        textAlign: 'center'
+                                                    }}>
+                                                        Actions
+                                                    </TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {projectTeamMembers.map((member: any) => (
+                                                    <TableRow 
+                                                        key={member.id}
+                                                        sx={{
+                                                            '&:hover': {
+                                                                backgroundColor: theme.palette.action.hover
+                                                            }
+                                                        }}
+                                                    >
+                                                        <TableCell>
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                                <Avatar sx={{
+                                                                    width: 32,
+                                                                    height: 32,
+                                                                    background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                                                                    fontSize: '0.875rem',
+                                                                    fontWeight: theme.typography.fontWeightBold
+                                                                }}>
+                                                                    {(member.name || member.email || 'U').charAt(0).toUpperCase()}
+                                                                </Avatar>
+                                                                <Typography variant="body2" sx={{ 
+                                                                    color: theme.palette.text.primary,
+                                                                    fontWeight: theme.typography.fontWeightMedium
+                                                                }}>
+                                                                    {member.name || 'Unknown User'}
+                                                                </Typography>
+                                                            </Box>
+                                                        </TableCell>
+                                                        <TableCell>
                                                             <Typography variant="body2" sx={{ 
-                                                                color: theme.palette.text.primary,
-                                                                fontWeight: theme.typography.fontWeightMedium
-                                                            }}>
-                                                                {member.name || member.email}
-                                                            </Typography>
-                                                            <Typography variant="caption" sx={{ 
                                                                 color: theme.palette.text.secondary
                                                             }}>
-                                                                {member.role || 'Member'}
+                                                                {member.email || 'No email'}
                                                             </Typography>
-                                                        </Box>
-                                                    </Box>
-                                                </Card>
-                                            </Grid>
-                                        ))}
-                                    </Grid>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {editingMemberId === member.id ? (
+                                                                <FormControl size="small" sx={{ minWidth: 120 }}>
+                                                                    <Select
+                                                                        value={editingRole}
+                                                                        onChange={(e) => setEditingRole(e.target.value)}
+                                                                        displayEmpty
+                                                                        sx={{ fontSize: '0.875rem' }}
+                                                                    >
+                                                                        <MenuItem value="MEMBER">Member</MenuItem>
+                                                                        <MenuItem value="ADMIN">Admin</MenuItem>
+                                                                        <MenuItem value="VIEWER">Viewer</MenuItem>
+                                                                    </Select>
+                                                                </FormControl>
+                                                            ) : (
+                                                                <Chip 
+                                                                    label={member.role || 'Member'}
+                                                                    size="small"
+                                                                    sx={{
+                                                                        backgroundColor: member.role === 'ADMIN' 
+                                                                            ? theme.palette.error.main + '20'
+                                                                            : theme.palette.primary.main + '20',
+                                                                        color: member.role === 'ADMIN' 
+                                                                            ? theme.palette.error.main
+                                                                            : theme.palette.primary.main,
+                                                                        fontWeight: theme.typography.fontWeightMedium
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {editingMemberId === member.id ? (
+                                                                <TextField
+                                                                    size="small"
+                                                                    value={editingDepartment}
+                                                                    onChange={(e) => setEditingDepartment(e.target.value)}
+                                                                    placeholder="Department"
+                                                                    sx={{ minWidth: 120 }}
+                                                                />
+                                                            ) : (
+                                                                <Typography variant="body2" sx={{ 
+                                                                    color: theme.palette.text.secondary
+                                                                }}>
+                                                                    {member.department || 'Not specified'}
+                                                                </Typography>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell sx={{ textAlign: 'center' }}>
+                                                            {editingMemberId === member.id ? (
+                                                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                                                    <Tooltip title="Save changes">
+                                                                        <IconButton
+                                                                            size="small"
+                                                                            onClick={() => handleSaveEdit(member)}
+                                                                            disabled={savingMember === member.id}
+                                                                            sx={{
+                                                                                color: theme.palette.success.main,
+                                                                                '&:hover': {
+                                                                                    backgroundColor: theme.palette.success.main + '10'
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            {savingMember === member.id ? (
+                                                                                <CircularProgress size={16} />
+                                                                            ) : (
+                                                                                <CheckIcon />
+                                                                            )}
+                                                                        </IconButton>
+                                                                    </Tooltip>
+                                                                    <Tooltip title="Cancel">
+                                                                        <IconButton
+                                                                            size="small"
+                                                                            onClick={handleCancelEdit}
+                                                                            disabled={savingMember === member.id}
+                                                                            sx={{
+                                                                                color: theme.palette.text.secondary,
+                                                                                '&:hover': {
+                                                                                    backgroundColor: theme.palette.error.main + '10',
+                                                                                    color: theme.palette.error.main
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <CancelIcon />
+                                                                        </IconButton>
+                                                                    </Tooltip>
+                                                                </Box>
+                                                            ) : (
+                                                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                                                    <Tooltip title="Edit team member">
+                                                                        <IconButton
+                                                                            size="small"
+                                                                            onClick={() => handleStartEdit(member)}
+                                                                            sx={{
+                                                                                color: theme.palette.primary.main,
+                                                                                '&:hover': {
+                                                                                    backgroundColor: theme.palette.primary.main + '10'
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <EditIcon />
+                                                                        </IconButton>
+                                                                    </Tooltip>
+                                                                    <Tooltip title="Team member options">
+                                                                        <IconButton
+                                                                            size="small"
+                                                                            onClick={(e) => handleTeamMemberMenuOpen(e, member)}
+                                                                            sx={{
+                                                                                color: theme.palette.text.secondary,
+                                                                                '&:hover': {
+                                                                                    color: theme.palette.primary.main,
+                                                                                    backgroundColor: theme.palette.primary.main + '10'
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <MoreVertIcon />
+                                                                        </IconButton>
+                                                                    </Tooltip>
+                                                                </Box>
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>
                                 ) : (
                                     <Box sx={{ 
                                         textAlign: 'center', 
@@ -1012,6 +1352,151 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                     Close
                 </Button>
             </DialogActions>
+
+            {/* Team Member Actions Menu */}
+            <Menu
+                anchorEl={teamMemberMenuAnchor}
+                open={Boolean(teamMemberMenuAnchor)}
+                onClose={handleTeamMemberMenuClose}
+                PaperProps={{
+                    sx: {
+                        borderRadius: theme.shape.borderRadius,
+                        boxShadow: theme.shadows[8],
+                        minWidth: 160
+                    }
+                }}
+            >
+                <MenuItem onClick={handleEditTeamMember}>
+                    <ListItemIcon>
+                        <EditIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText>Edit Role</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={handleRemoveTeamMember} sx={{ color: theme.palette.error.main }}>
+                    <ListItemIcon>
+                        <DeleteIcon fontSize="small" sx={{ color: theme.palette.error.main }} />
+                    </ListItemIcon>
+                    <ListItemText>Remove Member</ListItemText>
+                </MenuItem>
+            </Menu>
+
+            {/* Edit Team Member Role Dialog */}
+            <Dialog
+                open={editTeamMemberDialog}
+                onClose={() => setEditTeamMemberDialog(false)}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: theme.shape.borderRadius,
+                        boxShadow: theme.shadows[8]
+                    }
+                }}
+            >
+                <DialogTitle sx={{ 
+                    background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                    color: 'white',
+                    fontWeight: theme.typography.fontWeightBold
+                }}>
+                    Edit Team Member Role
+                </DialogTitle>
+                <DialogContent sx={{ p: 3 }}>
+                    {teamMemberError && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                            {teamMemberError}
+                        </Alert>
+                    )}
+                    
+                    <Typography variant="body2" sx={{ mb: 2, color: theme.palette.text.secondary }}>
+                        Editing role for: <strong>{selectedTeamMember?.name || selectedTeamMember?.email}</strong>
+                    </Typography>
+                    
+                    <FormControl fullWidth sx={{ mt: 2 }}>
+                        <InputLabel>Role</InputLabel>
+                        <Select
+                            value={teamMemberRole}
+                            onChange={(e) => setTeamMemberRole(e.target.value)}
+                            label="Role"
+                        >
+                            <MenuItem value="MEMBER">Member</MenuItem>
+                            <MenuItem value="ADMIN">Admin</MenuItem>
+                            <MenuItem value="VIEWER">Viewer</MenuItem>
+                        </Select>
+                    </FormControl>
+                </DialogContent>
+                <DialogActions sx={{ p: 3 }}>
+                    <Button
+                        onClick={() => setEditTeamMemberDialog(false)}
+                        variant="outlined"
+                        disabled={teamMemberLoading}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={handleUpdateTeamMemberRole}
+                        variant="contained"
+                        disabled={teamMemberLoading || !teamMemberRole}
+                        startIcon={teamMemberLoading ? <CircularProgress size={16} /> : null}
+                    >
+                        {teamMemberLoading ? 'Updating...' : 'Update Role'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Remove Team Member Confirmation Dialog */}
+            <Dialog
+                open={removeTeamMemberDialog}
+                onClose={() => setRemoveTeamMemberDialog(false)}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: theme.shape.borderRadius,
+                        boxShadow: theme.shadows[8]
+                    }
+                }}
+            >
+                <DialogTitle sx={{ 
+                    background: `linear-gradient(135deg, ${theme.palette.error.main}, ${theme.palette.warning.main})`,
+                    color: 'white',
+                    fontWeight: theme.typography.fontWeightBold
+                }}>
+                    Remove Team Member
+                </DialogTitle>
+                <DialogContent sx={{ p: 3 }}>
+                    {teamMemberError && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                            {teamMemberError}
+                        </Alert>
+                    )}
+                    
+                    <Typography variant="body1" sx={{ mb: 2 }}>
+                        Are you sure you want to remove <strong>{selectedTeamMember?.name || selectedTeamMember?.email}</strong> from this project?
+                    </Typography>
+                    
+                    <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
+                        This action cannot be undone. The team member will lose access to this project and all its data.
+                    </Typography>
+                </DialogContent>
+                <DialogActions sx={{ p: 3 }}>
+                    <Button
+                        onClick={() => setRemoveTeamMemberDialog(false)}
+                        variant="outlined"
+                        disabled={teamMemberLoading}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={handleConfirmRemoveTeamMember}
+                        variant="contained"
+                        color="error"
+                        disabled={teamMemberLoading}
+                        startIcon={teamMemberLoading ? <CircularProgress size={16} /> : <DeleteIcon />}
+                    >
+                        {teamMemberLoading ? 'Removing...' : 'Remove Member'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Dialog>
     );
 };

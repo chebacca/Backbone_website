@@ -76,24 +76,29 @@ export const authService = {
    * Login user
    */
   async login(email: string, password: string): Promise<LoginResponse | Login2FAChallengeResponse> {
-    const response = await api.post(endpoints.auth.login(), { email, password });
-
-    if (!response.data.success) {
-      throw new Error(response.data.message || 'Login failed');
+    // For Firebase-only project, use Firebase Auth directly
+    try {
+      const { auth } = await import('./firebase');
+      const { signInWithEmailAndPassword } = await import('firebase/auth');
+      
+      // Sign in with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      // Load user data from Firestore
+      const { loadUserFromFirestore } = await import('./firebase');
+      const userData = await loadUserFromFirestore(firebaseUser);
+      
+      // Return user data in expected format
+      return {
+        user: userData,
+        token: await firebaseUser.getIdToken(), // Firebase ID token
+        refreshToken: await firebaseUser.getIdToken(true), // Force refresh
+      };
+    } catch (error: any) {
+      console.error('Firebase Auth login failed:', error);
+      throw new Error(error.message || 'Login failed');
     }
-
-    const data = response.data.data;
-    // 2FA challenge passthrough
-    if (data?.requires2FA && data?.interimToken) {
-      return { requires2FA: true, interimToken: data.interimToken };
-    }
-
-    // Normalize tokens → token (accessToken) + refreshToken
-    return {
-      user: data.user,
-      token: data.tokens?.accessToken,
-      refreshToken: data.tokens?.refreshToken,
-    } as LoginResponse;
   },
 
   /**

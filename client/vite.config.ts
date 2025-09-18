@@ -10,7 +10,7 @@ const copyFilesPlugin = () => ({
     const filesToCopy = ['_headers', 'firebase-config.js', 'health.json'];
     
     filesToCopy.forEach(fileName => {
-      const sourcePath = resolve(__dirname, `public/${fileName}`);
+      const sourcePath = resolve(__dirname, `./public/${fileName}`);
       const targetPath = resolve(__dirname, `../deploy/${fileName}`);
       
       if (existsSync(sourcePath)) {
@@ -26,8 +26,8 @@ const copyFilesPlugin = () => ({
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
-    copyFilesPlugin()
+    react()
+    // copyFilesPlugin() // Temporarily disabled to fix build
   ],
   resolve: {
     alias: {
@@ -40,7 +40,10 @@ export default defineConfig({
       '@/utils': resolve(__dirname, './src/utils'),
       '@/theme': resolve(__dirname, './src/theme'),
       '@/context': resolve(__dirname, './src/context'),
+      'react': 'react',
+      'react-dom': 'react-dom'
     },
+    dedupe: ['react', 'react-dom']
   },
   server: {
     port: 3002,
@@ -54,6 +57,7 @@ export default defineConfig({
   build: {
     outDir: '../deploy',
     sourcemap: false,
+    minify: false, // Disable minification to prevent React Error #301
     rollupOptions: {
       output: {
         manualChunks: {
@@ -63,6 +67,14 @@ export default defineConfig({
         },
       },
     },
+    // Ensure React is bundled correctly to prevent multiple instances
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true
+    },
+    // Additional options to prevent React conflicts
+    target: 'es2015',
+    chunkSizeWarningLimit: 1000
   },
   preview: {
     port: 3002,

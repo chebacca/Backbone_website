@@ -356,22 +356,6 @@ export const NAVIGATION_ITEMS: NavigationItem[] = [
     description: 'Billing and payment management (Owner only)'
   },
   {
-    id: 'analytics',
-    text: 'Usage Analytics',
-    icon: 'Receipt',
-    path: '/dashboard/analytics',
-    requiredPermission: Permission.VIEW_ANALYTICS,
-    description: 'Usage analytics and reporting'
-  },
-  {
-    id: 'downloads',
-    text: 'Downloads',
-    icon: 'Download',
-    path: '/dashboard/downloads',
-    requiredPermission: Permission.VIEW_DOWNLOADS,
-    description: 'SDK and documentation downloads'
-  },
-  {
     id: 'organization',
     text: 'Organization',
     icon: 'Business',

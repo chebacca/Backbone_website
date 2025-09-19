@@ -2584,6 +2584,22 @@ export class FirestoreService {
       return [];
     }
   }
+
+  async getTeamMembersByOrganization(organizationId: string): Promise<any[]> {
+    try {
+      const teamMembersSnap = await db.collection('teamMembers')
+        .where('organizationId', '==', organizationId)
+        .get();
+
+      return teamMembersSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
+      console.error('Error fetching team members by organization:', error);
+      throw error;
+    }
+  }
 }
 
 export const firestoreService = new FirestoreService();

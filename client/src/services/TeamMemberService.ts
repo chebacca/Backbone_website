@@ -82,6 +82,44 @@ export class TeamMemberService extends BaseService {
   }
 
   /**
+   * 🚀 PERFORMANCE OPTIMIZATION: Get team members for multiple projects in batch
+   * This reduces the number of Firestore calls by loading all team members at once
+   */
+  public async getProjectTeamMembersBatch(projectIds: string[]): Promise<Record<string, ProjectTeamMember[]>> {
+    try {
+      console.log('🚀 [TeamMemberService] Getting team members for projects in batch:', projectIds);
+      
+      if (this.isWebOnlyMode()) {
+        return await this.getProjectTeamMembersFromFirestoreBatch(projectIds);
+      }
+      
+      // For non-webonly mode, make individual API calls in parallel
+      const promises = projectIds.map(async (projectId) => {
+        try {
+          const result = await this.apiRequest<ProjectTeamMember[]>(`projects/${projectId}/team-members`);
+          return { projectId, teamMembers: result };
+        } catch (error) {
+          console.warn(`⚠️ [TeamMemberService] API request failed for project ${projectId}, falling back to Firestore`);
+          const teamMembers = await this.getProjectTeamMembersFromFirestore(projectId);
+          return { projectId, teamMembers };
+        }
+      });
+      
+      const results = await Promise.all(promises);
+      const batchResult: Record<string, ProjectTeamMember[]> = {};
+      
+      results.forEach(({ projectId, teamMembers }) => {
+        batchResult[projectId] = teamMembers;
+      });
+      
+      return batchResult;
+    } catch (error) {
+      this.handleError(error, `getProjectTeamMembersBatch(${projectIds.join(', ')})`);
+      return {};
+    }
+  }
+
+  /**
    * Add a team member to a project with a specific role
    */
   public async addTeamMemberToProject(
@@ -673,6 +711,168 @@ export class TeamMemberService extends BaseService {
     } catch (error) {
       this.handleError(error, `getProjectTeamMembersFromFirestore(${projectId})`);
       return [];
+    }
+  }
+
+  /**
+   * 🚀 PERFORMANCE OPTIMIZATION: Get team members for multiple projects from Firestore in batch
+   * This reduces Firestore calls by loading all team members at once
+   */
+  private async getProjectTeamMembersFromFirestoreBatch(projectIds: string[]): Promise<Record<string, ProjectTeamMember[]>> {
+    try {
+      console.log('🔍 [TeamMemberService] Fetching team members from Firestore for projects in batch:', projectIds);
+      
+      await this.firestoreAdapter.initialize();
+      
+      const batchResult: Record<string, ProjectTeamMember[]> = {};
+      
+      // Initialize empty arrays for all projects
+      projectIds.forEach(projectId => {
+        batchResult[projectId] = [];
+      });
+      
+      // First, get all projects at once
+      const projectPromises = projectIds.map(async (projectId) => {
+        try {
+          const project = await this.firestoreAdapter.getDocumentById('projects', projectId);
+          return { projectId, project };
+        } catch (error) {
+          console.warn(`⚠️ [TeamMemberService] Failed to get project ${projectId}:`, error);
+          return { projectId, project: null };
+        }
+      });
+      
+      const projects = await Promise.all(projectPromises);
+      
+      // Collect all team member IDs from all projects
+      const allTeamMemberIds = new Set<string>();
+      const projectTeamMembersMap = new Map<string, any[]>();
+      
+      projects.forEach(({ projectId, project }) => {
+        if (project) {
+          const projectTeamMembers = project.teamMembers || [];
+          projectTeamMembersMap.set(projectId, projectTeamMembers);
+          
+          // Collect team member IDs
+          projectTeamMembers.forEach(tm => {
+            const teamMemberId = tm.userId || tm.id;
+            if (teamMemberId) {
+              allTeamMemberIds.add(teamMemberId);
+            }
+          });
+        }
+      });
+      
+      // Also check projectTeamMembers collection for all projects at once
+      try {
+        const projectTeamMembersCollection = await this.firestoreAdapter.queryDocuments<ProjectTeamMember>('projectTeamMembers', [
+          { field: 'projectId', operator: 'in', value: projectIds }
+        ]);
+        
+        // Group by project ID
+        projectTeamMembersCollection.forEach(ptm => {
+          if (!projectTeamMembersMap.has(ptm.projectId)) {
+            projectTeamMembersMap.set(ptm.projectId, []);
+          }
+          projectTeamMembersMap.get(ptm.projectId)!.push(ptm);
+        });
+      } catch (collectionError) {
+        console.log('ℹ️ [TeamMemberService] projectTeamMembers collection not found or accessible');
+      }
+      
+      // Now get all team member profiles at once
+      const teamMemberProfiles = new Map<string, any>();
+      
+      if (allTeamMemberIds.size > 0) {
+        try {
+          // Get profiles from teamMembers collection
+          const teamMemberPromises = Array.from(allTeamMemberIds).map(async (teamMemberId) => {
+            try {
+              const profile = await this.firestoreAdapter.getDocumentById('teamMembers', teamMemberId);
+              return { teamMemberId, profile };
+            } catch (error) {
+              console.warn(`⚠️ [TeamMemberService] Failed to get team member profile ${teamMemberId}:`, error);
+              return { teamMemberId, profile: null };
+            }
+          });
+          
+          const profiles = await Promise.all(teamMemberPromises);
+          profiles.forEach(({ teamMemberId, profile }) => {
+            if (profile) {
+              teamMemberProfiles.set(teamMemberId, profile);
+            }
+          });
+        } catch (error) {
+          console.warn('⚠️ [TeamMemberService] Failed to load team member profiles:', error);
+        }
+      }
+      
+      // Now process each project's team members
+      projectTeamMembersMap.forEach((projectTeamMembers, projectId) => {
+        const enrichedTeamMembers: ProjectTeamMember[] = [];
+        
+        projectTeamMembers.forEach(tm => {
+          const teamMemberId = tm.userId || tm.id;
+          const fullProfile = teamMemberProfiles.get(teamMemberId);
+          
+          if (fullProfile) {
+            // Extract display name using the same logic as the single method
+            let displayName = fullProfile.name;
+            
+            if (!displayName && fullProfile.firstName && fullProfile.lastName) {
+              displayName = `${fullProfile.firstName} ${fullProfile.lastName}`;
+            } else if (!displayName && fullProfile.firstName) {
+              displayName = fullProfile.firstName;
+            } else if (!displayName && fullProfile.email) {
+              const emailParts = fullProfile.email.split('@');
+              displayName = emailParts[0]
+                .replace(/[._-]/g, ' ')
+                .split(' ')
+                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+            }
+            
+            enrichedTeamMembers.push({
+              id: teamMemberId,
+              teamMemberId: teamMemberId,
+              projectId: projectId,
+              role: tm.role || 'member',
+              permissions: tm.permissions || ['read'],
+              assignedAt: tm.assignedAt || new Date().toISOString(),
+              isActive: tm.isActive !== false,
+              email: fullProfile.email || tm.email || 'No email',
+              name: displayName || tm.name || tm.email || 'Unknown',
+              status: tm.status || 'active',
+              teamMember: {
+                ...fullProfile,
+                name: displayName
+              }
+            });
+          } else {
+            // If no full profile found, use the basic data
+            enrichedTeamMembers.push({
+              id: teamMemberId,
+              teamMemberId: teamMemberId,
+              projectId: projectId,
+              role: tm.role || 'member',
+              permissions: tm.permissions || ['read'],
+              assignedAt: tm.assignedAt || new Date().toISOString(),
+              isActive: tm.isActive !== false,
+              email: tm.email || 'No email',
+              name: tm.name || tm.email || 'Unknown',
+              status: tm.status || 'active'
+            });
+          }
+        });
+        
+        batchResult[projectId] = enrichedTeamMembers;
+        console.log(`✅ [TeamMemberService] Found ${enrichedTeamMembers.length} team members for project ${projectId}`);
+      });
+      
+      return batchResult;
+    } catch (error) {
+      this.handleError(error, `getProjectTeamMembersFromFirestoreBatch(${projectIds.join(', ')})`);
+      return {};
     }
   }
 

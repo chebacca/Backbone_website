@@ -177,6 +177,11 @@ app.use('/api/sessions', sessionsRouter);
 app.use('/api/callsheets', callsheetsRouter);
 app.use('/api/timecard', timecardRouter);
 
+// Public test endpoints (no authentication required)
+app.get('/api/test', (req, res) => {
+  res.json({ success: true, message: 'API is working' });
+});
+
 // Legacy API endpoints for backward compatibility - direct access to team member functions
 app.get('/api/getProjectTeamMembers', async (req, res) => {
   try {

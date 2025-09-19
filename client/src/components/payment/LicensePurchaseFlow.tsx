@@ -433,47 +433,34 @@ const LicensePurchaseFlow: React.FC<LicensePurchaseFlowProps> = ({
     try {
       console.log('🛒 [LicensePurchaseFlow] Processing payment with method:', paymentMethod.id);
       
-      // Call backend to process the purchase
-      const response = await fetch('/api/licenses/purchase', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await getAuthToken()}`, // Implement this
-        },
-        body: JSON.stringify({
-          planId: selectedPlan.id,
-          quantity,
-          paymentMethodId: paymentMethod.id,
-          total,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Payment processing failed');
-      }
-
-      const result = await response.json();
+      // Import UnifiedDataService to use proper cache clearing
+      const { UnifiedDataService } = await import('@/services/UnifiedDataService');
+      const dataService = UnifiedDataService.getInstance();
       
-      if (result.success) {
-        // Mark payment step as completed
-        const newSteps = [...steps];
-        newSteps[2].completed = true;
-        setSteps(newSteps);
-        
-        // Move to confirmation step
-        setActiveStep(3);
-        
-        enqueueSnackbar('Payment processed successfully!', { variant: 'success' });
-        
-        // Complete the purchase flow
-        setTimeout(() => {
-          onPurchaseComplete(result.data);
-          handleClose();
-        }, 3000);
-        
-      } else {
-        throw new Error(result.error || 'Payment failed');
-      }
+      // Use UnifiedDataService for proper cache management
+      const result = await dataService.purchaseLicenses({
+        planId: selectedPlan.id,
+        quantity,
+        paymentMethodId: paymentMethod.id,
+        billingAddress: purchaseData.billingAddress,
+        total,
+      });
+      
+      // Mark payment step as completed
+      const newSteps = [...steps];
+      newSteps[2].completed = true;
+      setSteps(newSteps);
+      
+      // Move to confirmation step
+      setActiveStep(3);
+      
+      enqueueSnackbar('Payment processed successfully!', { variant: 'success' });
+      
+      // Complete the purchase flow
+      setTimeout(() => {
+        onPurchaseComplete(result);
+        handleClose();
+      }, 3000);
       
     } catch (error: any) {
       console.error('❌ [LicensePurchaseFlow] Payment error:', error);

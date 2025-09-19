@@ -5,6 +5,7 @@
  */
 
 import '@testing-library/jest-dom';
+import React from 'react';
 
 // Mock Firebase services globally
 jest.mock('firebase/app', () => ({
@@ -222,11 +223,11 @@ global.testUtils = {
 };
 
 // Mock error boundaries
-global.ErrorBoundary = ({ children, fallback }) => {
+global.ErrorBoundary = ({ children, fallback }: any) => {
   try {
     return children;
-  } catch (error) {
-    return fallback || <div>Error: {error.message}</div>;
+  } catch (error: any) {
+    return fallback || React.createElement('div', null, `Error: ${error.message}`);
   }
 };
 

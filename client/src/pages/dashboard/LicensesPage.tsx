@@ -283,52 +283,41 @@ const LicensesPage: React.FC = () => {
       const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       return expiryDate <= thirtyDaysFromNow;
     }).length;
-    const unassignedLicenses = licenses.filter(l => !l.assignedTo).length;
+    const unassignedLicenses = licenses.filter(l => 
+      l.status === 'ACTIVE' && (!l.assignedToUserId || l.assignedToUserId === null)
+    ).length;
 
-    // Calculate used licenses: organization owner (1) + team members + active licenses
-    // Note: Owner is always 1 license, team members are additional licenses
-    const organizationOwnerCount = 1; // Always count the organization owner as 1 used license
-    
-    // Filter out the owner from team members to avoid double counting
-    const ownerEmail = currentUser?.email;
-    const teamMemberCount = teamMembers ? teamMembers.filter(m => 
-      m.status?.toLowerCase() === 'active' && m.email !== ownerEmail
-    ).length : 0;
-    
-    // Filter out licenses assigned to the owner to avoid double counting
-    // The owner's license should not be counted separately from the owner count
-    const ownerAssignedLicenses = licenses ? licenses.filter(l => 
-      l.status === 'ACTIVE' && l.assignedTo?.email === ownerEmail
-    ).length : 0;
+    // 🔧 FIXED: Calculate enterprise license stats based on ACTUAL licenses, not team member count
+    const enterpriseTotal = 250; // Enterprise plan comes with 250 licenses
+    const enterpriseAssigned = activeLicenses; // Count actual active licenses (each license = 1 assignment)
+    const enterpriseAvailable = Math.max(0, enterpriseTotal - enterpriseAssigned);
     
     // Debug: Log the raw data to understand what we're counting
     console.log('🔍 [LicensesPage] Raw data for calculation:', {
-      ownerEmail,
+      ownerEmail: currentUser?.email,
       teamMembers: teamMembers?.map(m => ({ email: m.email, status: m.status, role: m.role })) || [],
-      licenses: licenses?.map(l => ({ id: l.id, name: l.name, status: l.status, assignedTo: l.assignedTo })) || [],
-      ownerAssignedLicenses
+      licenses: licenses?.map(l => ({ 
+        id: l.id, 
+        key: l.key, 
+        status: l.status, 
+        assignedToUserId: l.assignedToUserId,
+        assignedToEmail: l.assignedToEmail 
+      })) || [],
+      totalLicenses,
+      activeLicenses,
+      unassignedLicenses
     });
-    
-    // Calculate used licenses: owner (1) + other team members + other active licenses
-    const usedLicenses = organizationOwnerCount + teamMemberCount + (activeLicenses - ownerAssignedLicenses);
     
     // Debug logging for license calculation
     console.log('🔢 [LicensesPage] License calculation breakdown:', {
-      organizationOwnerCount,
-      teamMemberCount,
+      totalLicenses,
       activeLicenses,
-      ownerAssignedLicenses,
-      otherActiveLicenses: activeLicenses - ownerAssignedLicenses,
-      usedLicenses,
-      totalTeamMembers: teamMembers?.length || 0,
-      activeTeamMembers: teamMemberCount,
-      calculation: `${organizationOwnerCount} (owner) + ${teamMemberCount} (other team members) + ${activeLicenses - ownerAssignedLicenses} (other active licenses) = ${usedLicenses} total used`
+      unassignedLicenses,
+      enterpriseTotal,
+      enterpriseAssigned,
+      enterpriseAvailable,
+      calculation: `${activeLicenses} active licenses assigned out of ${enterpriseTotal} total enterprise licenses`
     });
-    
-    // For Enterprise users, show 250 total licenses with proper calculation
-    const enterpriseTotal = 250;
-    const enterpriseAssigned = usedLicenses; // Count owner + team members + active licenses
-    const enterpriseAvailable = Math.max(0, enterpriseTotal - enterpriseAssigned); // Ensure non-negative
     
     console.log('📊 [LicensesPage] Enterprise license stats:', {
       enterpriseTotal,

@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useLoading } from './LoadingContext';
 import { authService } from '@/services/authService';
+import { 
+  restoreValidatedUserData, 
+  cleanupInvalidUserData, 
+  validateUserObject 
+} from '@/utils/authValidationUtils';
 
 interface User {
   id: string;
@@ -151,6 +156,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             return;
           }
           
+          // 🔧 ENHANCED: Validate user data before using it
+          if (!validateUserObject(userData)) {
+            console.warn('⚠️ [Auth] Invalid stored user data - missing email property:', userData?.email);
+            console.log('🔧 [Auth] Clearing invalid user data from localStorage');
+            cleanupInvalidUserData();
+            setAuthState(prev => ({ ...prev, isLoading: false }));
+            return;
+          }
+          
           // Set initial state immediately to prevent loading flicker
           setAuthState({
             user: userData,
@@ -179,9 +193,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             try {
               console.log('🔑 [Auth] Restoring Firebase Auth session for existing user...');
               
-              // Check if validatedUser has required properties
-              if (!validatedUser || !validatedUser.email) {
-                console.warn('⚠️ [Auth] Invalid validatedUser object - missing email property:', validatedUser);
+              // 🔧 ENHANCED: Use comprehensive validation for user data
+              if (!validateUserObject(validatedUser)) {
+                console.warn('⚠️ [Auth] Invalid validatedUser object - missing email property:', validatedUser?.email);
+                console.log('🔧 [Auth] Clearing invalid user data from localStorage');
+                cleanupInvalidUserData();
                 return;
               }
               

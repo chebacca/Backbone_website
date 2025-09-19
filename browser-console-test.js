@@ -169,3 +169,4 @@ testTeamMemberCreationInBrowser().then(result => {
 
 // Export function for manual testing
 window.testTeamMemberCreationInBrowser = testTeamMemberCreationInBrowser;
+

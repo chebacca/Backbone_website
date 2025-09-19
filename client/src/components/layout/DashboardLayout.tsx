@@ -371,7 +371,7 @@ export const DashboardLayout: React.FC = () => {
         )}
       </List>
 
-      {/* Quick Access Section */}
+      {/* Support Center Section */}
       <Box sx={{ mt: 'auto', p: 2 }}>
         <Divider sx={{ mb: 2, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
         <Typography 
@@ -386,87 +386,25 @@ export const DashboardLayout: React.FC = () => {
             letterSpacing: 1,
           }}
         >
-          Quick Access
+          Support
         </Typography>
-        <ListItem disablePadding sx={{ mb: 0.5 }}>
-          <ListItemButton
-            component={RouterLink}
-            to="/dashboard/support#analytics"
-            sx={{
-              borderRadius: 2,
-              py: 1,
-              '&:hover': {
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              },
-            }}
-          >
-            <ListItemIcon sx={{ color: 'text.secondary', minWidth: 40 }}>
-              <Analytics />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Usage Analytics"
-              sx={{ 
-                '& .MuiListItemText-primary': { 
-                  fontSize: '0.85rem',
-                  color: 'text.secondary',
-                } 
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
-        <ListItem disablePadding sx={{ mb: 0.5 }}>
-          <ListItemButton
-            component={RouterLink}
-            to="/dashboard/support#downloads"
-            sx={{
-              borderRadius: 2,
-              py: 1,
-              '&:hover': {
-                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              },
-            }}
-          >
-            <ListItemIcon sx={{ color: 'text.secondary', minWidth: 40 }}>
-              <Download />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Downloads"
-              sx={{ 
-                '& .MuiListItemText-primary': { 
-                  fontSize: '0.85rem',
-                  color: 'text.secondary',
-                } 
-              }}
-            />
-            <Chip
-              label="SDK"
-              size="small"
-              sx={{ 
-                fontSize: '0.6rem', 
-                height: 16,
-                backgroundColor: 'rgba(0, 212, 255, 0.2)',
-                color: 'primary.main',
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
         <ListItem disablePadding>
           <ListItemButton
             component={RouterLink}
-            to="/dashboard/support#documentation"
+            to="/dashboard/support"
             sx={{
               borderRadius: 2,
-              py: 1,
+              py: 1.5,
               '&:hover': {
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',
               },
             }}
           >
             <ListItemIcon sx={{ color: 'text.secondary', minWidth: 40 }}>
-              <Description />
+              <Support />
             </ListItemIcon>
             <ListItemText 
-              primary="Documentation"
+              primary="Support Center"
               sx={{ 
                 '& .MuiListItemText-primary': { 
                   fontSize: '0.85rem',

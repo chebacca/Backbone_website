@@ -53,9 +53,9 @@ export class TeamMemberCleanupService {
 
       // Step 2: Find and restore any assigned licenses back to the organization pool
       try {
-        // Find licenses assigned to this team member
+        // Find licenses assigned to this team member using the new field structure
         const licensesSnapshot = await db.collection('licenses')
-          .where('assignedTo.userId', '==', teamMemberId)
+          .where('assignedToUserId', '==', teamMemberId)
           .where('organizationId', '==', organizationId)
           .get();
 
@@ -65,8 +65,10 @@ export class TeamMemberCleanupService {
           licensesSnapshot.docs.forEach((doc: any) => {
             const licenseRef = db.collection('licenses').doc(doc.id);
             batch.update(licenseRef, {
-              assignedTo: null,
-              status: 'PENDING', // Return to available pool
+              assignedToUserId: null,
+              assignedToEmail: null,
+              assignedAt: null,
+              status: 'ACTIVE', // Keep as ACTIVE but unassigned (available for reassignment)
               updatedAt: new Date(),
               removedFrom: {
                 userId: teamMemberId,
@@ -332,7 +334,7 @@ export class TeamMemberCleanupService {
       
       // Check if team member has active licenses
       const licenses = await db.collection('licenses')
-        .where('assignedTo.userId', '==', teamMemberId)
+        .where('assignedToUserId', '==', teamMemberId)
         .where('organizationId', '==', organizationId)
         .get();
         

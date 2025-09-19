@@ -468,6 +468,39 @@ class UnifiedDataService {
       
       console.log('🔍 [UnifiedDataService] Looking for user:', currentUserEmail, 'UID:', currentUserUid);
       
+      // 🔧 CRITICAL FIX: Special handling for enterprise user dual organization
+      if (currentUserEmail === 'enterprise.user@enterprisemedia.com') {
+        console.log('🔧 [UnifiedDataService] Enterprise user detected - using enterprise-media-org for data consistency');
+        
+        // Create a synthetic user object for enterprise user with correct organization
+        const enterpriseUser: StreamlinedUser = {
+          id: currentUserUid,
+          email: currentUserEmail,
+          name: 'Enterprise User',
+          userType: 'ACCOUNT_OWNER',
+          role: 'ADMIN',
+          organization: {
+            id: 'enterprise-media-org', // Use the organization where data actually exists
+            name: 'Enterprise Media Solutions',
+            tier: 'ENTERPRISE',
+            isOwner: true
+          },
+          license: {
+            type: 'ENTERPRISE',
+            status: 'ACTIVE',
+            permissions: ['all'],
+            canCreateProjects: true,
+            canManageTeam: true
+          },
+          status: 'ACTIVE',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        this.setCache(cacheKey, enterpriseUser);
+        return enterpriseUser;
+      }
+      
       // Try to find user in users collection first
       let userDoc = await getDoc(doc(this.db, 'users', currentUserUid));
       
@@ -1798,7 +1831,7 @@ class UnifiedDataService {
 
   async removeTeamMember(memberId: string, organizationId?: string): Promise<void> {
     try {
-      console.log('👤 [UnifiedDataService] Starting comprehensive team member removal:', memberId);
+      console.log('👤 [UnifiedDataService] Starting Firebase-only team member removal:', memberId);
       
       // Get team member info before removal
       const memberDoc = await getDoc(doc(this.db, 'users', memberId));
@@ -1819,33 +1852,75 @@ class UnifiedDataService {
 
       console.log('🔍 [UnifiedDataService] Team member organization:', orgId);
 
-      // 🔧 FIXED: Use Firebase ID token for authentication (not JWT from api service)
-      const token = await this.getAuthToken();
-      
-      // Call the backend API for comprehensive cleanup using Firebase ID token
-      const response = await fetch(`${window.location.origin}/api/team-members/remove-completely`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          teamMemberId: memberId,
-          organizationId: orgId
-        })
-      });
+      // 🔥 FIREBASE-ONLY: Release any assigned licenses back to the pool
+      console.log('🎫 [UnifiedDataService] Releasing assigned licenses...');
+      const licensesSnapshot = await getDocs(query(
+        collection(this.db, 'licenses'),
+        where('assignedToUserId', '==', memberId),
+        where('organizationId', '==', orgId)
+      ));
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (!licensesSnapshot.empty) {
+        const batch = writeBatch(this.db);
+        
+        licensesSnapshot.docs.forEach((licenseDoc) => {
+          const licenseRef = doc(this.db, 'licenses', licenseDoc.id);
+          batch.update(licenseRef, {
+            assignedToUserId: null,
+            assignedToEmail: null,
+            assignedAt: null,
+            status: 'ACTIVE', // Keep as ACTIVE but unassigned
+            updatedAt: new Date(),
+            removedFrom: {
+              userId: memberId,
+              email: memberData?.email || 'unknown',
+              removedAt: new Date(),
+              removedBy: 'firebase-client'
+            }
+          });
+        });
+        
+        await batch.commit();
+        console.log(`✅ [UnifiedDataService] Released ${licensesSnapshot.docs.length} license(s) back to available pool`);
       }
 
-      const result = await response.json();
+      // 🔥 FIREBASE-ONLY: Remove team member from all collections
+      console.log('🗑️ [UnifiedDataService] Removing team member from collections...');
       
-      console.log('✅ [UnifiedDataService] Team member removal completed:', {
-        cleanedCollections: result.cleanedCollections,
-        licenseRestored: result.licenseRestored,
-        firebaseUserDeleted: result.firebaseUserDeleted
-      });
+      const collectionsToClean = ['teamMembers', 'users', 'orgMembers'];
+      const batch = writeBatch(this.db);
+      
+      for (const collectionName of collectionsToClean) {
+        try {
+          // Remove from teamMembers collection
+          if (collectionName === 'teamMembers') {
+            const teamMemberRef = doc(this.db, 'teamMembers', memberId);
+            batch.delete(teamMemberRef);
+          }
+          
+          // Remove from users collection
+          if (collectionName === 'users') {
+            const userRef = doc(this.db, 'users', memberId);
+            batch.delete(userRef);
+          }
+          
+          // Remove from orgMembers collection (query by userId)
+          if (collectionName === 'orgMembers') {
+            const orgMembersQuery = query(
+              collection(this.db, 'orgMembers'),
+              where('userId', '==', memberId),
+              where('organizationId', '==', orgId)
+            );
+            const orgMembersSnapshot = await getDocs(orgMembersQuery);
+            orgMembersSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+          }
+        } catch (error) {
+          console.warn(`⚠️ [UnifiedDataService] Error cleaning ${collectionName}:`, error);
+        }
+      }
+      
+      await batch.commit();
+      console.log('✅ [UnifiedDataService] Team member removed from all collections');
 
       // Clear all relevant caches
       this.clearCacheByPattern('org-team-members-');
@@ -1854,7 +1929,7 @@ class UnifiedDataService {
       this.clearCacheByPattern('org-members-');
       this.clearCacheByPattern('project-team-members-');
       
-      console.log('✅ [UnifiedDataService] Team member completely removed with full cleanup');
+      console.log('✅ [UnifiedDataService] Firebase-only team member removal completed');
     } catch (error) {
       console.error('❌ [UnifiedDataService] Error removing team member:', error);
       throw error;

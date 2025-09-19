@@ -707,11 +707,15 @@ export function useRemoveTeamMember(): UseMutationResult<void, { memberId: strin
 
   const mutate = useCallback(async ({ memberId }: { memberId: string }) => {
     try {
+      console.log('🔄 [useRemoveTeamMember] Starting team member removal:', memberId);
       setLoading(true);
       setError(null);
       await unifiedDataService.removeTeamMember(memberId);
+      console.log('✅ [useRemoveTeamMember] Team member removal completed successfully');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove team member');
+      console.error('❌ [useRemoveTeamMember] Error removing team member:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to remove team member';
+      setError(errorMessage);
       throw err;
     } finally {
       setLoading(false);

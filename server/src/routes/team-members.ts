@@ -217,7 +217,7 @@ router.get('/', authenticateFirebaseToken, asyncHandler(async (req: any, res: Re
   }
 }));
 
-router.get('/licensed', authenticateToken, async (req: any, res) => {
+router.get('/licensed', authenticateFirebaseToken, async (req: any, res) => {
   try {
     const userId = req.user?.id as string;
     const { search, excludeProjectId } = req.query;
@@ -351,7 +351,7 @@ router.get('/licensed', authenticateToken, async (req: any, res) => {
 });
 
 // Get team member by ID
-router.get('/:id', authenticateToken, async (req: any, res) => {
+router.get('/:id', authenticateFirebaseToken, async (req: any, res) => {
   try {
     const teamMemberId = req.params.id as string;
     const userId = req.user?.id as string;
@@ -384,7 +384,7 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
 });
 
 // Legacy endpoint for backward compatibility - Get project team members
-router.get('/getProjectTeamMembers', authenticateToken, async (req: any, res) => {
+router.get('/getProjectTeamMembers', authenticateFirebaseToken, async (req: any, res) => {
   try {
     const { projectId } = req.query;
     const userId = req.user?.id as string;
@@ -412,7 +412,7 @@ router.get('/getProjectTeamMembers', authenticateToken, async (req: any, res) =>
 });
 
 // Legacy endpoint for backward compatibility - Get licensed team members with exclusion
-router.get('/getLicensedTeamMembers', authenticateToken, async (req: any, res) => {
+router.get('/getLicensedTeamMembers', authenticateFirebaseToken, async (req: any, res) => {
   try {
     const { excludeProjectId } = req.query;
     const userId = req.user?.id as string;
@@ -732,7 +732,7 @@ router.post('/bulk-create', authenticateFirebaseToken, [
  * Reset Team Member Password
  * POST /api/team-members/:id/reset-password
  */
-router.post('/:id/reset-password', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/reset-password', authenticateFirebaseToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = (req as any).user?.id;
 
@@ -786,7 +786,7 @@ router.post('/:id/reset-password', authenticateToken, asyncHandler(async (req: R
  * Verify Team Member in Firebase Auth
  * POST /api/team-members/:id/verify
  */
-router.post('/:id/verify', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/verify', authenticateFirebaseToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = (req as any).user?.id;
 
@@ -841,7 +841,7 @@ router.post('/:id/verify', authenticateToken, asyncHandler(async (req: Request, 
  * Disable Team Member in Firebase Auth
  * POST /api/team-members/:id/disable
  */
-router.post('/:id/disable', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/disable', authenticateFirebaseToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = (req as any).user?.id;
 
@@ -896,7 +896,7 @@ router.post('/:id/disable', authenticateToken, asyncHandler(async (req: Request,
  * Enable Team Member in Firebase Auth
  * POST /api/team-members/:id/enable
  */
-router.post('/:id/enable', authenticateToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/enable', authenticateFirebaseToken, asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = (req as any).user?.id;
 

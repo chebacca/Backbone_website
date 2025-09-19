@@ -62,6 +62,7 @@ import {
   Search,
   Edit,
   Delete,
+  Refresh,
   Lock,
   VpnKey,
 } from '@mui/icons-material';
@@ -83,17 +84,24 @@ import { StreamlinedTeamMember } from '@/services/UnifiedDataService';
 import { csvService, CSVImportResult } from '@/services/CSVService';
 import { teamMemberFilterService, FilterCriteria, SortOptions, PaginationOptions } from '@/services/TeamMemberFilterService';
 import MetricCard from '@/components/common/MetricCard';
-import SimpleInviteTeamMemberDialog from '@/components/SimpleInviteTeamMemberDialog';
+import FirebaseOnlyInviteTeamMemberDialog from '@/components/FirebaseOnlyInviteTeamMemberDialog';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 enum TeamMemberRole {
-  VIEWER = 'viewer',
-  MEMBER = 'member',
-  ADMIN = 'admin',
-  OWNER = 'owner'
+  VIEWER = 'VIEWER',
+  MEMBER = 'MEMBER',
+  ADMIN = 'ADMIN',
+  OWNER = 'OWNER'
+}
+
+enum TeamMemberStatus {
+  ACTIVE = 'ACTIVE',
+  PENDING = 'PENDING',
+  SUSPENDED = 'SUSPENDED',
+  REMOVED = 'REMOVED'
 }
 
 type TeamMember = StreamlinedTeamMember;
@@ -182,13 +190,26 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
     if (!teamMembers || !Array.isArray(teamMembers)) return [];
     
     try {
+      // First filter to only show team members with proper license assignments or admin users
+      const realTeamMembers = teamMembers.filter(member => {
+        // Always show admin users
+        if (member.role === TeamMemberRole.ADMIN) return true;
+        
+        // Only show members with active status and proper license assignments
+        if (member.status === TeamMemberStatus.ACTIVE && (member.licenseAssignment?.licenseId || member.licenseType)) {
+          return true;
+        }
+        
+        return false;
+      });
+
       const criteria = {
         ...filterCriteria,
         search: searchQuery || undefined
       };
       
       const result = teamMemberFilterService.filterTeamMembers(
-        teamMembers,
+        realTeamMembers,
         criteria,
         sortOptions,
         pagination
@@ -201,7 +222,7 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
     }
   }, [teamMembers, filterCriteria, searchQuery, sortOptions, pagination]);
 
-  // Team statistics
+  // Team statistics - only count real team members with proper license assignments
   const teamStats = useMemo((): TeamStats => {
     if (!teamMembers || !Array.isArray(teamMembers)) {
       return {
@@ -215,10 +236,23 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
     }
 
     try {
-      const totalMembers = teamMembers.length;
-      const activeMembers = teamMembers.filter(m => m?.status === 'active').length;
-      const pendingInvites = teamMembers.filter(m => m?.status === 'pending').length;
-      const assignedLicenses = teamMembers.filter(m => m?.licenseType && m.licenseType !== 'BASIC').length;
+      // Filter to only real team members with proper license assignments or admin users
+      const realTeamMembers = teamMembers.filter(member => {
+        // Always count admin users
+        if (member.role === TeamMemberRole.ADMIN) return true;
+        
+        // Only count members with active status and proper license assignments
+        if (member.status === TeamMemberStatus.ACTIVE && (member.licenseAssignment?.licenseId || member.licenseType)) {
+          return true;
+        }
+        
+        return false;
+      });
+
+      const totalMembers = realTeamMembers.length;
+      const activeMembers = realTeamMembers.filter(m => m?.status === TeamMemberStatus.ACTIVE).length;
+      const pendingInvites = realTeamMembers.filter(m => m?.status === TeamMemberStatus.PENDING).length;
+      const assignedLicenses = realTeamMembers.filter(m => m?.licenseAssignment?.licenseId || m?.licenseType).length;
       const totalLicenses = licenses?.length || 0;
       const availableLicenses = Math.max(0, totalLicenses - assignedLicenses);
 
@@ -400,18 +434,50 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
   }, [selectedMember, editFormData, updateTeamMember, enqueueSnackbar, refetchTeamMembers]);
 
   const handleConfirmDeleteMember = useCallback(async () => {
-    if (!selectedMember) return;
+    if (!selectedMember) {
+      console.error('❌ [EnhancedTeamPage] No selected member for deletion');
+      return;
+    }
+    
+    console.log('🗑️ [EnhancedTeamPage] Remove Member button clicked!');
+    console.log('🗑️ [EnhancedTeamPage] Selected member:', selectedMember);
+    console.log('🗑️ [EnhancedTeamPage] Remove team member hook:', removeTeamMember);
+    
+    // Check if team member has an assigned license
+    const hasAssignedLicense = selectedMember.licenseAssignment?.licenseId || selectedMember.licenseType;
+    console.log('🎫 [EnhancedTeamPage] Has assigned license:', hasAssignedLicense);
     
     try {
-      removeTeamMember.mutate({ memberId: selectedMember.id });
+      // Use the mutation hook and wait for it to complete
+      console.log('🔄 [EnhancedTeamPage] Calling removeTeamMember.mutate...');
+      await removeTeamMember.mutate({ memberId: selectedMember.id });
+      console.log('✅ [EnhancedTeamPage] removeTeamMember.mutate completed successfully');
+      
       setDeleteMemberDialogOpen(false);
-      enqueueSnackbar('Team member removed successfully', { variant: 'success' });
-      refetchTeamMembers();
+      
+      // Show appropriate success message based on license status
+      if (hasAssignedLicense) {
+        enqueueSnackbar('Team member removed successfully! Their license has been released back to the available pool.', { 
+          variant: 'success',
+          autoHideDuration: 6000 
+        });
+      } else {
+        enqueueSnackbar('Team member removed successfully', { variant: 'success' });
+      }
+      
+      // Refresh both team members and licenses to show updated counts
+      console.log('🔄 [EnhancedTeamPage] Refreshing data after removal...');
+      await Promise.all([
+        refetchTeamMembers(),
+        refetchLicenses()
+      ]);
+      console.log('✅ [EnhancedTeamPage] Data refresh completed');
+      
     } catch (error) {
-      console.error('Failed to remove team member:', error);
-      enqueueSnackbar('Failed to remove team member', { variant: 'error' });
+      console.error('❌ [EnhancedTeamPage] Error in handleConfirmDeleteMember:', error);
+      enqueueSnackbar(`Failed to remove team member: ${error instanceof Error ? error.message : 'Unknown error'}`, { variant: 'error' });
     }
-  }, [selectedMember, removeTeamMember, enqueueSnackbar, refetchTeamMembers]);
+  }, [selectedMember, removeTeamMember, enqueueSnackbar, refetchTeamMembers, refetchLicenses]);
 
   const handleAssignLicenseToMember = useCallback(async () => {
     if (!selectedMember || !selectedLicenseId) return;
@@ -535,9 +601,16 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Team Management
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Team Management
+          </Typography>
+          {licenses && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {licenses.filter(l => l.status === 'ACTIVE' && (!l.assignedTo?.userId || l.assignedTo?.userId === null)).length} available licenses for team members
+            </Typography>
+          )}
+        </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
             variant="contained"
@@ -556,6 +629,26 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
             }}
           >
             Invite Member
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={async () => {
+              console.log('🔄 [EnhancedTeamPage] Manual refresh triggered');
+              enqueueSnackbar('Refreshing team data...', { variant: 'info' });
+              try {
+                await refetchTeamMembers();
+                await refetchLicenses();
+                enqueueSnackbar('Team data refreshed!', { variant: 'success' });
+              } catch (error) {
+                console.error('❌ [EnhancedTeamPage] Manual refresh failed:', error);
+                enqueueSnackbar('Failed to refresh data', { variant: 'error' });
+              }
+            }}
+            disabled={isLoading}
+            title="Refresh team members list"
+          >
+            Refresh
           </Button>
           <Button
             variant="outlined"
@@ -1090,6 +1183,15 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
               <AlertTitle>Warning</AlertTitle>
               This action cannot be undone. The team member will be permanently removed from your organization.
             </Alert>
+            
+            {/* Show license release information */}
+            {selectedMember && (selectedMember.licenseAssignment?.licenseId || selectedMember.licenseType) && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <AlertTitle>License Release</AlertTitle>
+                This team member has an assigned license. When removed, their license will be released back to the available pool and can be assigned to another team member.
+              </Alert>
+            )}
+            
             <Typography variant="body2">
               Are you sure you want to remove <strong>{selectedMember?.firstName} {selectedMember?.lastName}</strong> from the team?
             </Typography>
@@ -1109,21 +1211,38 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
       </Dialog>
 
       {/* Simple Invite Team Member Dialog */}
-      <SimpleInviteTeamMemberDialog
-        open={inviteDialogOpen}
-        onClose={() => setInviteDialogOpen(false)}
-        onSuccess={(teamMember) => {
-          console.log('✅ [EnhancedTeamPage] Team member created successfully:', teamMember);
-          // Refresh team members list
-          refetchTeamMembers();
-          refetchLicenses();
-        }}
-        currentUser={currentUser}
-        organization={orgContext}
-        availableLicenses={licenses?.filter(l => 
-          (l.status === 'PENDING' || l.status === 'ACTIVE') && !l.assignedTo
-        ) || []}
-      />
+        <FirebaseOnlyInviteTeamMemberDialog
+          open={inviteDialogOpen}
+          onClose={() => setInviteDialogOpen(false)}
+          onSuccess={async (teamMember) => {
+            console.log('✅ [EnhancedTeamPage] Team member created successfully via Firebase:', teamMember);
+            
+            // Close dialog first
+            setInviteDialogOpen(false);
+            
+            // Show success message
+            enqueueSnackbar('Team member created successfully! Refreshing data...', { variant: 'success' });
+            
+            // Refresh team members list with delay to ensure Firebase has processed
+            setTimeout(async () => {
+              try {
+                console.log('🔄 [EnhancedTeamPage] Refreshing team members data...');
+                await refetchTeamMembers();
+                await refetchLicenses();
+                console.log('✅ [EnhancedTeamPage] Data refresh completed');
+                enqueueSnackbar('Team member added to the list!', { variant: 'success' });
+              } catch (error) {
+                console.error('❌ [EnhancedTeamPage] Error refreshing data:', error);
+                enqueueSnackbar('Team member created but data refresh failed. Please refresh the page.', { variant: 'warning' });
+              }
+            }, 1000); // 1 second delay to ensure Firebase has processed the write
+          }}
+          currentUser={currentUser}
+          organization={orgContext}
+          availableLicenses={licenses?.filter(l => 
+            l.status === 'ACTIVE' && (!l.assignedTo?.userId || l.assignedTo?.userId === null)
+          ) || []}
+        />
     </Box>
   );
 });

@@ -108,7 +108,6 @@ export const Navigation: React.FC = () => {
       return [
         { label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> },
         { label: 'Accounting', path: '/accounting', icon: <ReceiptLongIcon /> },
-        { label: 'Documentation', path: '/documentation', icon: <Article /> },
         { label: 'Support', path: '/support', icon: <Support /> },
         { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
       ];
@@ -117,7 +116,6 @@ export const Navigation: React.FC = () => {
     if (isAccounting) {
       return [
         { label: 'Accounting', path: '/accounting', icon: <ReceiptLongIcon /> },
-        { label: 'Documentation', path: '/documentation', icon: <Article /> },
         { label: 'Support', path: '/support', icon: <Support /> },
       ];
     }
@@ -129,9 +127,6 @@ export const Navigation: React.FC = () => {
       { label: 'Cloud Projects', path: '/dashboard/cloud-projects', icon: <Cloud /> },
       { label: 'Team Management', path: '/dashboard/team', icon: <Group /> },
       { label: 'Billing & Payments', path: '/dashboard/billing', icon: <Payment /> },
-      { label: 'Usage Analytics', path: '/dashboard/analytics', icon: <Receipt /> },
-      { label: 'Downloads', path: '/dashboard/downloads', icon: <Download /> },
-      { label: 'Documentation', path: '/documentation', icon: <Article /> },
       { label: 'Support', path: '/support', icon: <Support /> },
       { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
     ];

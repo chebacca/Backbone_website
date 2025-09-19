@@ -98,3 +98,4 @@ checkAndCreateTestLicense()
     console.error('\n❌ Failed:', error);
     process.exit(1);
   });
+

@@ -523,7 +523,6 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             completeUser.role === 'SUPERADMIN' ||
             completeUser.role === 'ADMIN' ||
             String(completeUser.role).includes('ENTERPRISE')) {
-            console.log('🔍 [DashboardCloudProjectsBridge] User is account owner - NOT a team member');
             return false;
         }
         
@@ -551,32 +550,19 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             }
         }
         
-        console.log('🔍 [DashboardCloudProjectsBridge] User is team member:', isExplicitTeamMember);
         return isExplicitTeamMember;
     }, [completeUser]);
 
-    // Helper function to check if user can create projects
-    const canCreateProjects = useCallback(() => {
+    // Helper function to check if user can create projects (memoized for performance)
+    const canCreateProjects = useMemo(() => {
         if (!completeUser) {
-            console.log('🔍 [DashboardCloudProjectsBridge] No complete user data available');
             return false;
         }
-        
-        console.log('🔍 [DashboardCloudProjectsBridge] Checking permissions for user:', {
-            id: completeUser.id,
-            email: completeUser.email,
-            role: completeUser.role,
-            memberRole: completeUser.memberRole,
-            isTeamMember: completeUser.isTeamMember,
-            organizationId: completeUser.organizationId,
-            subscription: completeUser.subscription
-        });
         
         // 🔧 ENHANCED: Enterprise users and privileged users can always create projects
         if (completeUser.memberRole === 'ENTERPRISE_ADMIN' || 
             completeUser.role === 'ENTERPRISE_ADMIN' ||
             String(completeUser.role).includes('ENTERPRISE')) {
-            console.log('✅ [DashboardCloudProjectsBridge] User is enterprise user or admin, can create projects');
             return true;
         }
         
@@ -585,7 +571,6 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         if (!isTeamMember()) {
             // 🔧 CRITICAL FIX: OWNER role users can always create projects regardless of subscription
             if (completeUser.role === 'OWNER' || completeUser.memberRole === 'OWNER') {
-                console.log('✅ [DashboardCloudProjectsBridge] User is OWNER, can always create projects');
                 return true;
             }
             
@@ -596,23 +581,19 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                         completeUser.role === 'ADMIN';
             
             if (hasActiveSubscription) {
-                console.log('✅ [DashboardCloudProjectsBridge] User is account owner with active subscription, can create projects');
                 return true;
             } else {
                 // 🔧 ENHANCED: Check for subscription plan even without status
                 if (completeUser.subscription?.plan && ['BASIC', 'PRO', 'ENTERPRISE'].includes(completeUser.subscription.plan)) {
-                    console.log('✅ [DashboardCloudProjectsBridge] User is account owner with subscription plan, can create projects');
                     return true;
                 }
                 
                 // 🔧 ENHANCED: Check for demo user status
                 const isDemoUser = completeUser.isDemoUser || localStorage.getItem('demo_user_status') === 'ACTIVE';
                 if (isDemoUser) {
-                    console.log('✅ [DashboardCloudProjectsBridge] User is demo user, can create projects');
                     return true;
                 }
                 
-                console.log('⚠️ [DashboardCloudProjectsBridge] User is account owner but no active subscription or demo status');
                 // Still allow project creation for account owners even without subscription
                 // They can create projects but may have limited features
                 return true;
@@ -621,7 +602,6 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         
         // 🔧 ENHANCED: Team members with ADMIN role can create projects
         if (completeUser.memberRole === 'ADMIN' || completeUser.role === 'ADMIN') {
-            console.log('✅ [DashboardCloudProjectsBridge] Team member has ADMIN role, can create projects');
             return true;
         }
         
@@ -630,9 +610,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         if (teamMemberData) {
             try {
                 const parsed = JSON.parse(teamMemberData);
-                console.log('🔍 [DashboardCloudProjectsBridge] Team member data from localStorage:', parsed);
                 if (parsed.role === 'ADMIN' || parsed.memberRole === 'ADMIN' || parsed.role === 'TEAM_ADMIN') {
-                    console.log('✅ [DashboardCloudProjectsBridge] Team member data shows ADMIN role, can create projects');
                     return true;
                 }
             } catch (e) {
@@ -645,33 +623,29 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
         if (completeUser.memberRole === 'OWNER' || 
             completeUser.role === 'OWNER' ||
             String(completeUser.memberRole).includes('OWNER')) {
-            console.log('✅ [DashboardCloudProjectsBridge] User has OWNER role, can create projects');
             return true;
         }
         
         // 🔧 NEW: Check for SUPERADMIN role which should have full access
         if (completeUser.role === 'SUPERADMIN') {
-            console.log('✅ [DashboardCloudProjectsBridge] User is SUPERADMIN, can create projects');
             return true;
         }
         
         // 🔧 ENHANCED: Fallback check for users with any subscription plan (Basic, Pro, Enterprise)
         if (completeUser.subscription?.plan && ['BASIC', 'PRO', 'ENTERPRISE'].includes(completeUser.subscription.plan)) {
-            console.log('✅ [DashboardCloudProjectsBridge] User has subscription plan, allowing project creation');
             return true;
         }
         
         // 🔧 ENHANCED: Final fallback - check if user has any subscription data at all
         if (completeUser.subscription) {
-            console.log('✅ [DashboardCloudProjectsBridge] User has subscription data, allowing project creation');
             return true;
         }
         
-        console.log('❌ [DashboardCloudProjectsBridge] User cannot create projects - regular team member without admin privileges');
         return false;
     }, [completeUser, isTeamMember]);
     const [projects, setProjects] = useState<CloudProject[]>([]);
     const [loading, setLocalLoading] = useState(true);
+    const [datasetCountsLoading, setDatasetCountsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [tab, setTab] = useState(0); // 0 = Active, 1 = Archived
     const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -1028,24 +1002,20 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     // Helper to load team member counts for all projects
     const loadTeamMemberCountsForAllProjects = useCallback(async (projectList: CloudProject[]) => {
         try {
-            console.log('🔍 [DashboardCloudProjectsBridge] Loading team member counts for all projects...');
+            console.log('🔍 [DashboardCloudProjectsBridge] Loading team member counts for all projects in batch...');
             
-            const teamMemberCountPromises = projectList.map(async (project) => {
-                try {
-                    const teamMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
-                    return { projectId: project.id, count: teamMembers.length };
-                } catch (error) {
-                    console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load team members for project ${project.id}:`, error);
-                    return { projectId: project.id, count: 0 };
-                }
+            const projectIds = projectList.map(project => project.id);
+            
+            // Use batch method for better performance
+            const teamMemberBatch = await cloudProjectIntegration.getProjectTeamMembersBatch(projectIds).catch(error => {
+                console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to load team members in batch, falling back to individual calls:', error);
+                return {};
             });
-            
-            const teamMemberCounts = await Promise.all(teamMemberCountPromises);
             
             // Update the projectTeamMemberCounts state
             const newCounts: Record<string, number> = {};
-            teamMemberCounts.forEach(({ projectId, count }) => {
-                newCounts[projectId] = count;
+            projectIds.forEach(projectId => {
+                newCounts[projectId] = teamMemberBatch[projectId]?.length || 0;
             });
             
             setProjectTeamMemberCounts(newCounts);
@@ -1057,36 +1027,44 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
     }, []);
 
     // Helper to load dataset counts for all projects
+    // 🚀 PERFORMANCE OPTIMIZATION: Load dataset counts in parallel with better error handling
     const loadDatasetCountsForAllProjects = useCallback(async (projectList: CloudProject[]) => {
         try {
             console.log('🔍 [DashboardCloudProjectsBridge] Loading dataset counts for all projects...');
+            setDatasetCountsLoading(true);
             
-            // 🚨 CRITICAL FIX: Get ACTUAL dataset assignments per project, not organization totals
-            // Load dataset counts for each project individually to show real assignments
+            // 🚀 PERFORMANCE OPTIMIZATION: Batch all dataset count requests in parallel
+            // This reduces the total loading time from sequential to parallel execution
             const datasetCountPromises = projectList.map(async (project) => {
                 try {
                     const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
                     console.log(`🔍 [DashboardCloudProjectsBridge] Project "${project.name}" has ${datasets.length} assigned datasets`);
-                    return { projectId: project.id, count: datasets.length };
+                    return { projectId: project.id, count: datasets.length, success: true };
                 } catch (error) {
                     console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
-                    return { projectId: project.id, count: 0 };
+                    return { projectId: project.id, count: 0, success: false };
                 }
             });
             
+            // Wait for all dataset count requests to complete in parallel
             const datasetCounts = await Promise.all(datasetCountPromises);
             
             // Update the projectDatasetCounts state
             const newCounts: Record<string, number> = {};
-            datasetCounts.forEach(({ projectId, count }) => {
+            let successCount = 0;
+            
+            datasetCounts.forEach(({ projectId, count, success }) => {
                 newCounts[projectId] = count;
+                if (success) successCount++;
             });
             
-            setProjectDatasetCounts(newCounts);
-            console.log('✅ [DashboardCloudProjectsBridge] Loaded ACTUAL dataset assignments per project:', newCounts);
+            setProjectDatasetCounts(prev => ({ ...prev, ...newCounts }));
+            console.log(`✅ [DashboardCloudProjectsBridge] Updated dataset counts for ${successCount}/${projectList.length} projects:`, newCounts);
             
         } catch (error) {
             console.error('❌ [DashboardCloudProjectsBridge] Failed to load dataset counts for all projects:', error);
+        } finally {
+            setDatasetCountsLoading(false);
         }
     }, []);
 
@@ -1191,8 +1169,11 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                     
                     setProjects(transformedProjects);
                     
-                    // Load dataset counts for all team member projects
-                    await loadDatasetCountsForAllProjects(transformedProjects);
+                    // 🚀 PERFORMANCE OPTIMIZATION: Load dataset counts in parallel (non-blocking)
+                    // This allows the UI to show projects immediately while counts load in background
+                    loadDatasetCountsForAllProjects(transformedProjects).catch(error => {
+                        console.warn('⚠️ [DashboardCloudProjectsBridge] Background dataset count loading failed:', error);
+                    });
                     
                 } catch (teamMemberError) {
                     console.error('Failed to fetch team member projects:', teamMemberError);
@@ -1247,8 +1228,10 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 
                                 setProjects(fallbackProjects);
                                 
-                                // Load dataset counts for fallback projects
-                                await loadDatasetCountsForAllProjects(fallbackProjects);
+                                // 🚀 PERFORMANCE OPTIMIZATION: Load dataset counts in parallel (non-blocking)
+                                loadDatasetCountsForAllProjects(fallbackProjects).catch(error => {
+                                    console.warn('⚠️ [DashboardCloudProjectsBridge] Background dataset count loading failed for fallback projects:', error);
+                                });
                                 
                                 return;
                             }
@@ -1294,32 +1277,34 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 console.log('🔍 [DashboardCloudProjectsBridge] Raw service projects:', serviceProjects);
                 console.log('🔍 [DashboardCloudProjectsBridge] Service projects count:', serviceProjects.length);
                 
-                // Load team member and dataset counts first
-                console.log('🔍 [DashboardCloudProjectsBridge] Loading team member and dataset counts...');
-                const teamMemberCountPromises = serviceProjects.map(async (project) => {
-                    try {
-                        const teamMembers = await cloudProjectIntegration.getProjectTeamMembers(project.id);
-                        return { projectId: project.id, count: teamMembers.length };
-                    } catch (error) {
-                        console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load team members for project ${project.id}:`, error);
-                        return { projectId: project.id, count: 0 };
-                    }
-                });
+                // 🚀 PERFORMANCE OPTIMIZATION: Load team member and dataset counts in batch
+                console.log('🔍 [DashboardCloudProjectsBridge] Loading team member and dataset counts in batch...');
                 
-                const datasetCountPromises = serviceProjects.map(async (project) => {
-                    try {
-                        const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
-                        return { projectId: project.id, count: datasets.length };
-                    } catch (error) {
-                        console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
-                        return { projectId: project.id, count: 0 };
-                    }
-                });
+                const projectIds = serviceProjects.map(project => project.id);
                 
-                const [teamMemberCounts, datasetCounts] = await Promise.all([
-                    Promise.all(teamMemberCountPromises),
-                    Promise.all(datasetCountPromises)
+                const [teamMemberBatch, datasetCounts] = await Promise.all([
+                    // Use batch method for team members
+                    cloudProjectIntegration.getProjectTeamMembersBatch(projectIds).catch(error => {
+                        console.warn('⚠️ [DashboardCloudProjectsBridge] Failed to load team members in batch, falling back to individual calls:', error);
+                        return {};
+                    }),
+                    // Keep individual calls for datasets (already optimized)
+                    Promise.all(serviceProjects.map(async (project) => {
+                        try {
+                            const datasets = await cloudProjectIntegration.getProjectDatasets(project.id);
+                            return { projectId: project.id, count: datasets.length };
+                        } catch (error) {
+                            console.warn(`⚠️ [DashboardCloudProjectsBridge] Failed to load datasets for project ${project.id}:`, error);
+                            return { projectId: project.id, count: 0 };
+                        }
+                    }))
                 ]);
+                
+                // Convert batch result to count format
+                const teamMemberCounts = projectIds.map(projectId => ({
+                    projectId,
+                    count: teamMemberBatch[projectId]?.length || 0
+                }));
                 
                 // Create lookup maps
                 const teamMemberCountMap: Record<string, number> = {};
@@ -1787,7 +1772,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         </Typography>
                         <Typography variant="body1" color="text.secondary">
                             {isTeamMember() 
-                                ? (canCreateProjects() 
+                                ? (canCreateProjects 
                                     ? 'Manage and collaborate on projects. As an admin, you can create new projects and access assigned ones.'
                                     : 'Access and collaborate on projects assigned to you by your team administrator')
                                 : 'Manage your projects with Firebase and Google Cloud Storage integration. Available for all license tiers: Basic, Pro, and Enterprise.'
@@ -2049,7 +2034,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 {/* Consolidated Actions Dropdown */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     {/* Show message for users who cannot create projects */}
-                    {!canCreateProjects() && completeUser && (
+                    {!canCreateProjects && completeUser && (
                         <Box sx={{ 
                             display: 'flex', 
                             alignItems: 'center', 
@@ -2117,7 +2102,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         }}
                     >
                         {/* Create Project */}
-                        {canCreateProjects() && (
+                        {canCreateProjects && (
                             <MenuItem 
                                 onClick={() => {
                                     handleActionsDropdownClose();
@@ -2131,7 +2116,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         )}
 
                         {/* Create Collection */}
-                        {canCreateProjects() && (
+                        {canCreateProjects && (
                             <MenuItem 
                                 onClick={() => {
                                     handleActionsDropdownClose();
@@ -2145,7 +2130,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         )}
                         
                         {/* Create Dataset */}
-                        {canCreateProjects() && (
+                        {canCreateProjects && (
                             <MenuItem 
                                 onClick={() => {
                                     handleActionsDropdownClose();
@@ -2160,7 +2145,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         )}
                         
                         {/* Manage Datasets */}
-                        {canCreateProjects() && (
+                        {canCreateProjects && (
                             <MenuItem 
                                 onClick={() => {
                                     handleActionsDropdownClose();
@@ -2174,7 +2159,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                         )}
                         
                         {/* Dataset Insights */}
-                        {canCreateProjects() && (
+                        {canCreateProjects && (
                             <MenuItem 
                                 onClick={() => {
                                     handleActionsDropdownClose();
@@ -2442,7 +2427,14 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                                 )}
                                             </TableCell>
                                             <TableCell>
-                                                {typeof projectDatasetCounts[project.id] === 'number' ? (
+                                                {datasetCountsLoading ? (
+                                                    <Box display="flex" alignItems="center" gap={1}>
+                                                        <CircularProgress size={16} />
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            Loading...
+                                                        </Typography>
+                                                    </Box>
+                                                ) : typeof projectDatasetCounts[project.id] === 'number' ? (
                                                     <Chip
                                                         size="small"
                                                         icon={<DatasetIcon />}
@@ -2706,17 +2698,17 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 ? 'Try adjusting your search terms or browse all projects'
                                 : (tab === 0 
                                     ? isTeamMember()
-                                        ? canCreateProjects()
+                                        ? canCreateProjects
                                             ? 'No projects assigned yet. As a team admin, you can create new projects or wait for assignments from your organization administrator.'
                                             : 'No projects have been assigned to you yet. Contact your team administrator to get access to projects.'
-                                        : canCreateProjects()
+                                        : canCreateProjects
                                             ? 'Create your first cloud project to get started with Firebase and GCS integration'
                                             : 'You need an active subscription to create projects. Please upgrade your account or contact support.'
                                     : 'Archived projects will appear here'
                                 )
                             }
                         </Typography>
-                        {tab === 0 && !searchQuery && canCreateProjects() && (
+                        {tab === 0 && !searchQuery && canCreateProjects && (
                             <Button
                                 variant="contained"
                                 startIcon={<AddIcon />}
@@ -2738,7 +2730,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                                 Create Your First Project
                             </Button>
                         )}
-                        {tab === 0 && !searchQuery && isTeamMember() && !canCreateProjects() && (
+                        {tab === 0 && !searchQuery && isTeamMember() && !canCreateProjects && (
                             <Box sx={{ mt: 2 }}>
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                                     💡 Team members without admin privileges cannot create projects. Projects must be assigned by your administrator.

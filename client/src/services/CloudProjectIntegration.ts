@@ -628,12 +628,13 @@ class CloudProjectIntegrationService {
   /**
    * Get datasets for a project from Firestore (webonly mode)
    * 🚨 CRITICAL FIX: Use project_datasets collection for proper linking
+   * 🚀 PERFORMANCE OPTIMIZATION: Batch dataset queries to reduce Firestore calls
    */
   private async getProjectDatasetsFromFirestore(projectId: string): Promise<CloudDataset[]> {
     try {
       console.log('🔍 [CloudProjectIntegration] Getting datasets from Firestore for project:', projectId);
       
-      // Import Firebase modules
+      // Import Firebase modules (cached import)
       const { db, auth } = await import('./firebase');
       const { collection, query, where, getDocs, doc, getDoc } = await import('firebase/firestore');
       
@@ -644,10 +645,7 @@ class CloudProjectIntegrationService {
         return [];
       }
       
-      const datasets: CloudDataset[] = [];
-      
       // 🚨 CRITICAL FIX: First, get the project-dataset links from the project_datasets collection
-      // This is the SAME approach used by ProjectDatasetFilterService in the Dashboard
       const projectDatasetQuery = query(
         collection(db, 'project_datasets'),
         where('projectId', '==', projectId)
@@ -662,18 +660,26 @@ class CloudProjectIntegrationService {
       
       console.log(`🔍 [CloudProjectIntegration] Found ${projectDatasetSnapshot.size} dataset assignments for project ${projectId}`);
       
-      // Extract dataset IDs from the links and fetch the actual dataset documents
+      // 🚀 PERFORMANCE OPTIMIZATION: Extract all dataset IDs first, then batch fetch
+      const datasetIds: string[] = [];
       for (const linkDoc of projectDatasetSnapshot.docs) {
         const linkData = linkDoc.data();
         const datasetId = linkData.datasetId;
         
-        if (!datasetId) {
+        if (datasetId) {
+          datasetIds.push(datasetId);
+        } else {
           console.warn('⚠️ [CloudProjectIntegration] Project dataset link missing datasetId:', linkDoc.id);
-          continue;
         }
-        
+      }
+      
+      if (datasetIds.length === 0) {
+        return [];
+      }
+      
+      // 🚀 PERFORMANCE OPTIMIZATION: Batch fetch all dataset documents in parallel
+      const datasetPromises = datasetIds.map(async (datasetId) => {
         try {
-          // Get the actual dataset document
           const datasetDoc = await getDoc(doc(db, 'datasets', datasetId));
           
           if (datasetDoc.exists()) {
@@ -702,15 +708,23 @@ class CloudProjectIntegrationService {
               collectionAssignment: datasetData.collectionAssignment || null
             };
             
-            datasets.push(dataset);
             console.log(`✅ [CloudProjectIntegration] Added dataset "${dataset.name}" (${dataset.id}) for project ${projectId}`);
+            return dataset;
           } else {
             console.warn(`⚠️ [CloudProjectIntegration] Dataset ${datasetId} referenced in project_datasets but not found in datasets collection`);
+            return null;
           }
         } catch (datasetError) {
           console.error(`❌ [CloudProjectIntegration] Failed to fetch dataset ${datasetId}:`, datasetError);
+          return null;
         }
-      }
+      });
+      
+      // Wait for all dataset fetches to complete in parallel
+      const datasetResults = await Promise.all(datasetPromises);
+      
+      // Filter out null results and create final dataset array
+      const datasets = datasetResults.filter((dataset): dataset is CloudDataset => dataset !== null);
       
       // Sort by creation date (newest first)
       datasets.sort((a, b) => {
@@ -719,7 +733,7 @@ class CloudProjectIntegrationService {
         return bTime - aTime;
       });
       
-      console.log(`✅ [CloudProjectIntegration] Successfully loaded ${datasets.length} datasets for project ${projectId}`);
+      console.log(`✅ [CloudProjectIntegration] Successfully loaded ${datasets.length} datasets for project ${projectId} (parallel fetch)`);
       return datasets;
       
     } catch (error) {
@@ -980,6 +994,14 @@ class CloudProjectIntegrationService {
    */
   public async getProjectTeamMembers(projectId: string): Promise<ProjectTeamMember[]> {
     return await this.serviceFactory.getTeamMemberService().getProjectTeamMembers(projectId);
+  }
+
+  /**
+   * 🚀 PERFORMANCE OPTIMIZATION: Get team members for multiple projects in batch
+   * This reduces the number of Firestore calls by loading all team members at once
+   */
+  public async getProjectTeamMembersBatch(projectIds: string[]): Promise<Record<string, ProjectTeamMember[]>> {
+    return await this.serviceFactory.getTeamMemberService().getProjectTeamMembersBatch(projectIds);
   }
 
   /**

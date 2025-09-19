@@ -125,11 +125,27 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
     // Load security alerts count based on user role
     const loadSecurityAlerts = async () => {
       try {
+        // Get Firebase ID token for authentication
+        const { getAuth } = await import('firebase/auth');
+        const auth = getAuth();
+        const user = auth.currentUser;
+        
+        if (!user) {
+          console.warn('No authenticated user found for security alerts');
+          return;
+        }
+
+        const token = await user.getIdToken();
+        const headers = {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        };
+
         if (userRole === 'DEV_ADMIN') {
           // DEV ADMIN: Get alerts from both platforms
           const [dashboardResponse, licensingResponse] = await Promise.all([
-            fetch('/api/security/alerts?source=dashboard_app').then(res => res.json()).catch(() => ({ success: false, data: [] })),
-            fetch('/api/security/alerts?source=licensing_website').then(res => res.json()).catch(() => ({ success: false, data: [] }))
+            fetch('/api/security/alerts?source=dashboard_app', { headers }).then(res => res.json()).catch(() => ({ success: false, data: [] })),
+            fetch('/api/security/alerts?source=licensing_website', { headers }).then(res => res.json()).catch(() => ({ success: false, data: [] }))
           ]);
 
           const dashboardAlerts = dashboardResponse.success ? dashboardResponse.data : [];
@@ -143,7 +159,7 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
           setCriticalAlerts(critical.length);
         } else if (userRole === 'ORG_ADMIN' && organizationId) {
           // ORG ADMIN: Get alerts only for their organization
-          const response = await fetch(`/api/security/alerts?source=licensing_website&organizationId=${organizationId}`)
+          const response = await fetch(`/api/security/alerts?source=licensing_website&organizationId=${organizationId}`, { headers })
             .then(res => res.json())
             .catch(() => ({ success: false, data: [] }));
 

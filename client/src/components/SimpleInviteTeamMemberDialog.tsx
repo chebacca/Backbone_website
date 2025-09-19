@@ -121,7 +121,7 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle form submission
+  // Handle form submission using Firebase directly
   const handleSubmit = async () => {
     if (!validateForm()) {
       enqueueSnackbar('Please fix the form errors', { variant: 'error' });
@@ -131,53 +131,82 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
     setLoading(true);
     
     try {
-      // Get auth token
-      const getAuthToken = async (): Promise<string> => {
-        try {
-          const { auth } = await import('@/services/firebase');
-          const user = auth.currentUser;
-          if (user) {
-            return await user.getIdToken();
-          }
-        } catch (error) {
-          console.warn('Failed to get Firebase Auth token:', error);
-        }
-        return localStorage.getItem('authToken') || 'placeholder-token';
+      // Import Firebase v9 services
+      const { auth, db } = await import('@/services/firebase');
+      const { collection, addDoc, getDocs, query, where } = await import('firebase/firestore');
+      
+      if (!auth.currentUser) {
+        throw new Error('User not authenticated');
+      }
+
+      const currentUser = auth.currentUser;
+      const organizationId = organization?.organization?.id || organization?.id;
+      
+      if (!organizationId) {
+        throw new Error('Organization ID not found');
+      }
+
+      // Create team member document in Firestore
+      const teamMemberData = {
+        email: formData.email,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        role: formData.role,
+        department: formData.department || '',
+        position: formData.position || '',
+        phone: formData.phone || '',
+        organizationId: organizationId,
+        createdBy: currentUser.uid,
+        createdByEmail: currentUser.email,
+        status: 'PENDING', // New team member starts as pending
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        // Store temporary password (in real app, this would be sent via email)
+        temporaryPassword: formData.password,
+        // License assignment will be handled separately
+        assignedLicenseId: null,
+        assignedLicenseKey: null
       };
 
-      const apiBaseUrl = window.location.hostname === 'localhost'
-        ? 'http://localhost:5001/backbone-logic/us-central1/api'
-        : 'https://us-central1-backbone-logic.cloudfunctions.net/api';
-
-      const response = await fetch(`${apiBaseUrl}/team-members/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await getAuthToken()}`
-        },
-        body: JSON.stringify({
-          ...formData,
-          organizationId: organization?.organization?.id,
-          createdBy: currentUser?.id
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
+      // Add to teamMembers collection using v9 API
+      const teamMemberRef = await addDoc(collection(db, 'teamMembers'), teamMemberData);
       
-      if (result.success) {
-        enqueueSnackbar('Team member created successfully!', { variant: 'success' });
-        onSuccess(result.data);
-        onClose();
-      } else {
-        throw new Error(result.error || 'Failed to create team member');
-      }
-    } catch (error) {
+      // Also add to users collection for consistency
+      const userData = {
+        email: formData.email,
+        name: `${formData.firstName} ${formData.lastName}`,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        role: formData.role,
+        organizationId: organizationId,
+        isTeamMember: true,
+        memberRole: formData.role,
+        memberStatus: 'PENDING',
+        createdBy: currentUser.uid,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        // Store temporary password
+        temporaryPassword: formData.password,
+        // Firebase Auth will be created separately
+        firebaseUid: null, // Will be set when they first log in
+        emailVerified: false
+      };
+
+      await addDoc(collection(db, 'users'), userData);
+
+      // Create the result object
+      const result = {
+        id: teamMemberRef.id,
+        ...teamMemberData
+      };
+
+      enqueueSnackbar('Team member created successfully!', { variant: 'success' });
+      onSuccess(result);
+      onClose();
+      
+    } catch (error: any) {
       console.error('Error creating team member:', error);
-      enqueueSnackbar('Failed to create team member', { variant: 'error' });
+      enqueueSnackbar(`Failed to create team member: ${error?.message || 'Unknown error'}`, { variant: 'error' });
     } finally {
       setLoading(false);
     }
@@ -211,7 +240,7 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
       </DialogTitle>
 
       <DialogContent>
-        <Box sx={{ mt: 2 }}>
+        <Box component="form" sx={{ mt: 2 }}>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -222,6 +251,9 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
                 error={!!errors.firstName}
                 helperText={errors.firstName}
                 required
+                inputProps={{
+                  autoComplete: 'given-name'
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -233,6 +265,9 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
                 error={!!errors.lastName}
                 helperText={errors.lastName}
                 required
+                inputProps={{
+                  autoComplete: 'family-name'
+                }}
               />
             </Grid>
             <Grid item xs={12}>
@@ -245,6 +280,9 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
                 error={!!errors.email}
                 helperText={errors.email}
                 required
+                inputProps={{
+                  autoComplete: 'email'
+                }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -289,6 +327,9 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
                 label="Phone"
                 value={formData.phone}
                 onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                inputProps={{
+                  autoComplete: 'tel'
+                }}
               />
             </Grid>
             <Grid item xs={12}>
@@ -301,6 +342,9 @@ const SimpleInviteTeamMemberDialog: React.FC<SimpleInviteTeamMemberDialogProps> 
                 error={!!errors.password}
                 helperText={errors.password || 'Minimum 8 characters'}
                 required
+                inputProps={{
+                  autoComplete: 'new-password'
+                }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">

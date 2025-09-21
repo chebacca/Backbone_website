@@ -18,6 +18,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  useTheme
 } from '@mui/material';
 import {
   Check,
@@ -66,6 +67,7 @@ interface PricingTier {
 const PricingPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  const theme = useTheme();
   const [isYearly, setIsYearly] = useState(false);
 
   const pricingTiers: PricingTier[] = [
@@ -223,7 +225,14 @@ const PricingPage: React.FC = () => {
       <Navigation />
       
       {/* Hero Section */}
-      <Box sx={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', pt: { xs: 12, md: 16 }, pb: { xs: 6, md: 8 }, position: 'relative', }} >
+      <Box sx={{ 
+        background: theme.palette.mode === 'dark' 
+          ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' 
+          : 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 50%, #667eea 100%)', 
+        pt: { xs: 12, md: 16 }, 
+        pb: { xs: 6, md: 8 }, 
+        position: 'relative' 
+      }} >
         <Container maxWidth="lg">
           <Box sx={{ ...staggerAnimation, '@keyframes fadeInUp': { '0%': { opacity: 0, transform: 'translateY(60px)', }, '100%': { opacity: 1, transform: 'translateY(0)', }, }, '@keyframes staggerFadeIn': { '0%': { opacity: 0, }, '100%': { opacity: 1, }, }, }} >
             <Box textAlign="center" sx={{ mb: 6 }}>
@@ -234,7 +243,9 @@ const PricingPage: React.FC = () => {
                     fontSize: { xs: '2.5rem', md: '3.5rem' },
                     fontWeight: 700,
                     mb: 2,
-                    background: 'linear-gradient(135deg, #ffffff 0%, #00d4ff 100%)',
+                    background: theme.palette.mode === 'dark' 
+                      ? 'linear-gradient(135deg, #ffffff 0%, #00d4ff 100%)'
+                      : 'linear-gradient(135deg, #1a1a2e 0%, #00d4ff 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
                     backgroundClip: 'text',

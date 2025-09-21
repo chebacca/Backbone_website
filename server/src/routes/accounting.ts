@@ -223,38 +223,6 @@ router.get('/tax/summary', [
   res.json({ success: true, data: { byJurisdiction, byCountry } });
 }));
 
-/**
- * Accounting: KYC overview
- */
-router.get('/kyc', [
-  query('status').optional().isIn(['PENDING','IN_PROGRESS','COMPLETED','FAILED','EXPIRED'])
-], asyncHandler(async (req: Request, res: Response) => {
-  const status = (req.query.status as string) || undefined;
-  const users = await firestoreService.getAllUsers();
-
-  const kyc = users
-    .filter(u => !status || (u as any).kycStatus === status)
-    .map(u => ({
-      id: u.id,
-      email: u.email,
-      kycStatus: (u as any).kycStatus,
-      kycCompletedAt: (u as any).kycCompletedAt,
-      identityVerified: (u as any).identityVerified,
-      complianceProfile: {
-        firstName: (u as any)?.complianceProfile?.firstName,
-        lastName: (u as any)?.complianceProfile?.lastName,
-        nationality: (u as any)?.complianceProfile?.nationality,
-        countryOfResidence: (u as any)?.complianceProfile?.countryOfResidence,
-      },
-      businessProfile: {
-        companyName: (u as any)?.businessProfile?.companyName,
-        registrationNumber: (u as any)?.businessProfile?.registrationNumber,
-        country: (u as any)?.businessProfile?.country,
-      }
-    }));
-
-  res.json({ success: true, data: { users: kyc } });
-}));
 
 /**
  * Accounting: Payment detail with invoice data (complianceData)

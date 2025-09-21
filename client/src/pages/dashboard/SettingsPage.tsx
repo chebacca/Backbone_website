@@ -119,20 +119,6 @@ const SettingsPage: React.FC = () => {
   const [deleteConfirmEmail, setDeleteConfirmEmail] = useState('');
   const [deleteReason, setDeleteReason] = useState('');
   const [activeTab, setActiveTab] = useState('profile');
-  // KYC form state
-  const [kyc, setKyc] = useState({
-    firstName: '',
-    lastName: '',
-    dateOfBirth: '',
-    nationality: '',
-    countryOfResidence: '',
-    phoneNumber: '',
-    governmentIdType: '',
-    governmentIdNumber: '',
-    governmentIdCountry: '',
-    governmentIdExpiry: '',
-  });
-  const kycStatus = String((user as any)?.kycStatus || '').toUpperCase();
 
   // Sync tab with URL hash (e.g., #compliance)
   useEffect(() => {
@@ -696,7 +682,7 @@ const SettingsPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Compliance Tab (KYC) */}
+      {/* Compliance Tab - Now handled by Stripe */}
       {activeTab === 'compliance' && (
         <Box>
           <Paper
@@ -709,63 +695,15 @@ const SettingsPage: React.FC = () => {
             }}
           >
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-              Identity Verification (KYC)
+              Identity Verification
             </Typography>
-            <Alert severity={kycStatus === 'COMPLETED' ? 'success' : 'warning'} sx={{ mb: 2 }}>
-              Status: {kycStatus || 'PENDING'}
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Identity verification is now handled by Stripe during the payment process. No additional verification is required.
             </Alert>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="First Name" value={kyc.firstName} onChange={(e) => setKyc({ ...kyc, firstName: e.target.value })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="Last Name" value={kyc.lastName} onChange={(e) => setKyc({ ...kyc, lastName: e.target.value })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth type="date" label="Date of Birth" InputLabelProps={{ shrink: true }} value={kyc.dateOfBirth} onChange={(e) => setKyc({ ...kyc, dateOfBirth: e.target.value })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="Nationality (ISO alpha-2)" placeholder="US" value={kyc.nationality} onChange={(e) => setKyc({ ...kyc, nationality: e.target.value.toUpperCase() })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="Country of Residence (ISO alpha-2)" placeholder="US" value={kyc.countryOfResidence} onChange={(e) => setKyc({ ...kyc, countryOfResidence: e.target.value.toUpperCase() })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="Phone Number" value={kyc.phoneNumber} onChange={(e) => setKyc({ ...kyc, phoneNumber: e.target.value })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="Government ID Type (optional)" value={kyc.governmentIdType} onChange={(e) => setKyc({ ...kyc, governmentIdType: e.target.value })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="Government ID Number (optional)" value={kyc.governmentIdNumber} onChange={(e) => setKyc({ ...kyc, governmentIdNumber: e.target.value })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth label="Government ID Country (ISO alpha-2)" value={kyc.governmentIdCountry} onChange={(e) => setKyc({ ...kyc, governmentIdCountry: e.target.value.toUpperCase() })} />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField fullWidth type="date" label="Government ID Expiry (optional)" InputLabelProps={{ shrink: true }} value={kyc.governmentIdExpiry} onChange={(e) => setKyc({ ...kyc, governmentIdExpiry: e.target.value })} />
-              </Grid>
-            </Grid>
-
-            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-              <Button
-                variant="contained"
-                onClick={async () => {
-                  try {
-                    await apiUtils.withLoading(async () => api.post(endpoints.users.kycVerify(), kyc));
-                    enqueueSnackbar('KYC submitted successfully', { variant: 'success' });
-                  } catch (e: any) {
-                    enqueueSnackbar(e.message || 'Failed to submit KYC', { variant: 'error' });
-                  }
-                }}
-                sx={{ background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)', color: '#000' }}
-              >
-                Submit Verification
-              </Button>
-              <Button variant="outlined" onClick={() => setKyc({
-                firstName: '', lastName: '', dateOfBirth: '', nationality: '', countryOfResidence: '', phoneNumber: '', governmentIdType: '', governmentIdNumber: '', governmentIdCountry: '', governmentIdExpiry: ''
-              })}>Clear</Button>
-            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Stripe will automatically collect and verify identity information when you make payments or set up billing. 
+              This ensures compliance with financial regulations while providing a seamless user experience.
+            </Typography>
           </Paper>
         </Box>
       )}

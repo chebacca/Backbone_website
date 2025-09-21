@@ -23,10 +23,12 @@ import { Box, ThemeProvider, CssBaseline } from '@mui/material';
 import { useAuth } from '@/context/AuthContext';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
-import { theme } from './theme/theme';
+import { createAppTheme } from './theme/theme';
+import { ThemeProvider as CustomThemeProvider, useTheme as useCustomTheme } from '@/context/ThemeContext';
 
 // Lazy load pages for better performance
 const LandingPage = React.lazy(() => import('@/pages/LandingPage'));
+const MarketplacePage = React.lazy(() => import('@/pages/MarketplacePage'));
 const LoginPage = React.lazy(() => import('@/pages/auth/LoginPage'));
 const BridgeAuthPage = React.lazy(() => import('@/pages/auth/BridgeAuthPage'));
 const RegisterPage = React.lazy(() => import('@/pages/auth/RegisterPage'));
@@ -39,6 +41,8 @@ const PrivacyPolicyPage = React.lazy(() => import('@/pages/legal/PrivacyPolicyPa
 const SlaPage = React.lazy(() => import('@/pages/legal/SlaPage'));
 const CookiePolicyPage = React.lazy(() => import('@/pages/legal/CookiePolicyPage'));
 const CheckoutPage = React.lazy(() => import('@/pages/checkout/CheckoutPage'));
+const StandaloneCheckoutPage = React.lazy(() => import('@/pages/checkout/StandaloneCheckoutPage'));
+const DownloadPage = React.lazy(() => import('@/pages/DownloadPage'));
 const DashboardLayout = React.lazy(() => import('@/components/layout/DashboardLayout'));
 const DashboardOverview = React.lazy(() => import('@/pages/dashboard/DashboardOverview'));
 const DashboardCloudProjectsBridge = React.lazy(() => import('@/components/DashboardCloudProjectsBridge'));
@@ -79,19 +83,20 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 // Utility to clear auth warnings
 import '@/utils/clearAuthWarnings';
 
-// Public route wrapper (redirects authenticated users)
+// Public route wrapper (allows authenticated users to access marketplace and landing page)
 interface PublicRouteProps {
   children: React.ReactNode;
+  allowAuthenticated?: boolean; // New prop to allow authenticated users
 }
 
-const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
+const PublicRoute: React.FC<PublicRouteProps> = ({ children, allowAuthenticated = false }) => {
   const { isAuthenticated, user, isLoading } = useAuth();
 
   if (isLoading) {
     return <LoadingSpinner />;
   }
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !allowAuthenticated) {
     // Redirect based on user role and plan
     const roleUpper = String(user?.role || '').toUpperCase();
     if (roleUpper === 'SUPERADMIN') {
@@ -103,7 +108,11 @@ const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   return <>{children}</>;
 };
 
-function App() {
+// Component that uses the theme context
+const AppContent: React.FC = () => {
+  const { mode } = useCustomTheme();
+  const theme = createAppTheme(mode);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -111,8 +120,17 @@ function App() {
         <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default', color: 'text.primary', }} >
           <Suspense fallback={<LoadingSpinner />}>
             <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<LandingPage />} />
+              {/* Public Routes - Allow authenticated users to access marketplace and landing page */}
+              <Route path="/" element={
+                <PublicRoute allowAuthenticated={true}>
+                  <LandingPage />
+                </PublicRoute>
+              } />
+              <Route path="/marketplace" element={
+                <PublicRoute allowAuthenticated={true}>
+                  <MarketplacePage />
+                </PublicRoute>
+              } />
               <Route path="/pricing" element={<PricingPage />} />
               
               {/* Startup Workflow Route */}
@@ -183,6 +201,14 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
+              <Route 
+                path="/checkout/standalone" 
+                element={
+                  <ProtectedRoute>
+                    <StandaloneCheckoutPage />
+                  </ProtectedRoute>
+                } 
+              />
 
               {/* Invitation acceptance (requires auth to bind user) */}
               <Route
@@ -202,6 +228,10 @@ function App() {
               <Route 
                 path="/support" 
                 element={<SupportPage />}
+              />
+              <Route 
+                path="/download/standalone/:productId" 
+                element={<DownloadPage />}
               />
               {/* Legal Routes */}
               <Route path="/terms" element={<TermsPage />} />
@@ -271,6 +301,14 @@ function App() {
         </Box>
       </ErrorBoundary>
     </ThemeProvider>
+  );
+};
+
+function App() {
+  return (
+    <CustomThemeProvider>
+      <AppContent />
+    </CustomThemeProvider>
   );
 }
 

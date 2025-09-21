@@ -161,65 +161,9 @@ export const WebOnlyAuthProvider: React.FC<WebOnlyAuthProviderProps> = ({ childr
       // Type assertion since we know it's LoginResponse at this point
       const loginResult = result as LoginResponse;
       
-      // 🔥 CRITICAL FIX: Also authenticate with Firebase Auth for Firestore access
-      try {
-        console.log('🔑 [WebOnlyAuth] Authenticating with Firebase Auth for Firestore access...');
-        const { auth } = await import('../services/firebase');
-        const { signInWithEmailAndPassword, createUserWithEmailAndPassword } = await import('firebase/auth');
-        
-        let firebaseAuthSuccess = false;
-        
-        // First, try to sign in with existing Firebase Auth user
-        try {
-          await signInWithEmailAndPassword(auth, email, password);
-          console.log('✅ [WebOnlyAuth] Successfully signed in with existing Firebase Auth user');
-          firebaseAuthSuccess = true;
-        } catch (signInError: any) {
-          console.log('ℹ️ [WebOnlyAuth] Sign in failed:', signInError.code);
-          
-          // If user doesn't exist, try to create one
-          if (signInError.code === 'auth/user-not-found') {
-            try {
-              console.log('🆕 [WebOnlyAuth] Creating new Firebase Auth user...');
-              await createUserWithEmailAndPassword(auth, email, password);
-              console.log('✅ [WebOnlyAuth] Successfully created and authenticated with Firebase Auth');
-              firebaseAuthSuccess = true;
-            } catch (createError: any) {
-              if (createError.code === 'auth/email-already-in-use') {
-                // User exists but password might be different
-                console.log('⚠️ [WebOnlyAuth] User exists in Firebase Auth but password doesn\'t match');
-                console.log('💡 [WebOnlyAuth] This user needs to be created in Firebase Auth with the correct password');
-              } else {
-                console.warn('⚠️ [WebOnlyAuth] Failed to create Firebase Auth user:', createError.code);
-              }
-            }
-          } else if (signInError.code === 'auth/wrong-password') {
-            console.log('⚠️ [WebOnlyAuth] Wrong password for existing Firebase Auth user');
-            console.log('💡 [WebOnlyAuth] This user exists in Firebase Auth but with a different password');
-          } else {
-            console.warn('⚠️ [WebOnlyAuth] Firebase Auth sign in failed:', signInError.code);
-          }
-        }
-        
-        if (firebaseAuthSuccess) {
-          // Reinitialize Firebase collections with authenticated user
-          try {
-            const { firebaseInitializer } = await import('../services/FirebaseInitializer');
-            await firebaseInitializer.reinitialize();
-            console.log('✅ [WebOnlyAuth] Firebase collections reinitialized with authenticated user');
-          } catch (initError) {
-            console.warn('⚠️ [WebOnlyAuth] Failed to reinitialize Firebase collections:', initError);
-          }
-        } else {
-          console.log('ℹ️ [WebOnlyAuth] Firebase Auth authentication failed - Firestore access will be limited');
-          console.log('💡 [WebOnlyAuth] Contact your administrator to create a Firebase Auth user for this email');
-        }
-        
-      } catch (firebaseError) {
-        console.warn('⚠️ [WebOnlyAuth] Failed to authenticate with Firebase Auth:', firebaseError);
-        console.log('ℹ️ [WebOnlyAuth] Firestore access may be limited without Firebase Auth');
-        // Don't throw here - server auth succeeded, so continue with login
-      }
+      // 🔥 CRITICAL FIX: Firebase Auth is now handled by the authService using Firebase Functions API
+      // No need for additional Firebase Auth calls here since authService.login() already handles it
+      console.log('✅ [WebOnlyAuth] Firebase Auth authentication handled by authService');
       
       // Persist tokens for API interceptor (Authorization header) and user cache
       try {

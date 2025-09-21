@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import { useAuth } from '../hooks/useAuth';
+import ThemeToggle from '../../client/src/components/common/ThemeToggle';
 
 interface SecurityNavigationProps {
   onMenuClick?: () => void;
@@ -227,6 +228,9 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = ({ onMenuClick }) 
           <Button color="inherit" startIcon={<SettingsIcon />} onClick={handleSettings}>
             Settings
           </Button>
+
+          {/* Theme Toggle */}
+          <ThemeToggle size="medium" sx={{ ml: 1 }} />
 
           {/* User Menu */}
           <IconButton

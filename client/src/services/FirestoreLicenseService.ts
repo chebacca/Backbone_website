@@ -130,11 +130,18 @@ export class FirestoreLicenseService {
                 return false;
             }
             
-            // Sign in with email/password
-            console.log('🔑 [FirestoreLicenseService] Authenticating with Firebase Auth...');
-            await signInWithEmailAndPassword(auth, email, password);
-            console.log('✅ [FirestoreLicenseService] Successfully authenticated with Firebase Auth');
-            return true;
+            // Firebase Auth is now handled by the authService using Firebase Functions API
+            // This method is kept for compatibility but Firebase Auth should already be set up
+            console.log('ℹ️ [FirestoreLicenseService] Firebase Auth should be handled by authService');
+            
+            // Check if user is authenticated
+            if (auth.currentUser) {
+                console.log('✅ [FirestoreLicenseService] Firebase Auth user available');
+                return true;
+            }
+            
+            console.warn('⚠️ [FirestoreLicenseService] No Firebase Auth user - authentication may have failed');
+            return false;
             
         } catch (error) {
             console.error('❌ [FirestoreLicenseService] Failed to authenticate with Firebase Auth:', error);

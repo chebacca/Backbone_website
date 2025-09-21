@@ -143,6 +143,12 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
     const theme = useTheme();
     const [currentTab, setCurrentTab] = useState(0);
     
+    // Safety check for theme
+    if (!theme || !theme.palette) {
+        console.warn('⚠️ [ProjectDetailsDialog] Theme not available, skipping render');
+        return null;
+    }
+    
     // Team member management state
     const [teamMemberMenuAnchor, setTeamMemberMenuAnchor] = useState<null | HTMLElement>(null);
     const [selectedTeamMember, setSelectedTeamMember] = useState<any>(null);
@@ -1013,120 +1019,121 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                     {/* Tab Panel 2: Team Members */}
                     {currentTab === 2 && (
                         <Box sx={{ 
-                            p: theme.spacing(3), 
+                            p: 0, 
                             overflow: 'auto',
-                            flex: 1
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column'
                         }}>
-                            <Typography variant="h6" sx={{ 
-                                color: theme.palette.text.primary, 
-                                mb: 3, 
-                                fontWeight: theme.typography.fontWeightBold,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 1
-                            }}>
-                                <Box
-                                    sx={{
-                                        width: 8,
-                                        height: 8,
-                                        borderRadius: theme.shape.borderRadius,
-                                        background: `linear-gradient(135deg, ${theme.palette.success.main}, ${theme.palette.info.main})`,
-                                        boxShadow: `0 0 8px ${theme.palette.success.main}40`
-                                    }}
-                                />
-                                Team Management
-                            </Typography>
-                            
-                            <Card
-                                sx={{
-                                    p: 3,
-                                    borderRadius: theme.shape.borderRadius,
-                                    background: theme.palette.background.paper,
-                                    border: `1px solid ${theme.palette.divider}`,
-                                    boxShadow: theme.shadows[4]
-                                }}
-                            >
+                            <Box sx={{ p: theme.spacing(3), pb: 0 }}>
+                                <Typography variant="h6" sx={{ 
+                                    color: theme.palette.text.primary, 
+                                    mb: 3, 
+                                    fontWeight: theme.typography.fontWeightBold,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1
+                                }}>
+                                    <Box
+                                        sx={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: theme.shape.borderRadius,
+                                            background: `linear-gradient(135deg, ${theme.palette.success.main}, ${theme.palette.info.main})`,
+                                            boxShadow: `0 0 8px ${theme.palette.success.main}40`
+                                        }}
+                                    />
+                                    Team Management
+                                </Typography>
+                                
                                 {/* Team Actions */}
                                 <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-                                    <Button
-                                        variant="contained"
-                                        startIcon={<GroupAddIcon />}
-                                        onClick={onShowTeamRoleWizard}
-                                        sx={{
-                                            backgroundColor: theme.palette.primary.main,
-                                            color: 'white',
-                                            borderRadius: theme.shape.borderRadius,
-                                            px: 3,
-                                            py: 1,
-                                            textTransform: 'none',
-                                            fontWeight: theme.typography.fontWeightMedium,
-                                            '&:hover': {
-                                                backgroundColor: theme.palette.primary.dark
-                                            }
-                                        }}
-                                    >
-                                        Manage Team & Roles
-                                    </Button>
-                                    
-                                    <Button
-                                        variant="outlined"
-                                        startIcon={<RefreshIcon />}
-                                        onClick={() => onLoadTeamMembersForProject(project)}
-                                        disabled={teamMembersLoading}
-                                        sx={{
-                                            borderColor: theme.palette.primary.main + '80',
-                                            color: theme.palette.primary.main,
-                                            borderRadius: theme.shape.borderRadius,
-                                            px: 3,
-                                            py: 1,
-                                            textTransform: 'none',
-                                            fontWeight: theme.typography.fontWeightMedium,
-                                            '&:hover': {
-                                                borderColor: theme.palette.primary.main,
-                                                backgroundColor: theme.palette.primary.main + '10'
-                                            }
-                                        }}
-                                    >
-                                        {teamMembersLoading ? 'Refreshing...' : 'Refresh'}
-                                    </Button>
-                                </Box>
-                                
-                                {/* Team Members Table */}
-                                {projectTeamMembers.length > 0 ? (
-                                    <TableContainer component={Paper} sx={{
+                                <Button
+                                    variant="contained"
+                                    startIcon={<GroupAddIcon />}
+                                    onClick={onShowTeamRoleWizard}
+                                    sx={{
+                                        backgroundColor: theme.palette.primary.main,
+                                        color: 'white',
                                         borderRadius: theme.shape.borderRadius,
-                                        background: theme.palette.background.paper,
-                                        border: `1px solid ${theme.palette.divider}`,
-                                        boxShadow: theme.shadows[2]
-                                    }}>
-                                        <Table>
+                                        px: 3,
+                                        py: 1,
+                                        textTransform: 'none',
+                                        fontWeight: theme.typography.fontWeightMedium,
+                                        '&:hover': {
+                                            backgroundColor: theme.palette.primary.dark
+                                        }
+                                    }}
+                                >
+                                    Manage Team & Roles
+                                </Button>
+                                
+                                <Button
+                                    variant="outlined"
+                                    startIcon={<RefreshIcon />}
+                                    onClick={() => onLoadTeamMembersForProject(project)}
+                                    disabled={teamMembersLoading}
+                                    sx={{
+                                        borderColor: theme.palette.primary.main + '80',
+                                        color: theme.palette.primary.main,
+                                        borderRadius: theme.shape.borderRadius,
+                                        px: 3,
+                                        py: 1,
+                                        textTransform: 'none',
+                                        fontWeight: theme.typography.fontWeightMedium,
+                                        '&:hover': {
+                                            borderColor: theme.palette.primary.main,
+                                            backgroundColor: theme.palette.primary.main + '10'
+                                        }
+                                    }}
+                                >
+                                    {teamMembersLoading ? 'Refreshing...' : 'Refresh'}
+                                </Button>
+                                </Box>
+                            </Box>
+                            
+                            {/* Team Members Table */}
+                            {projectTeamMembers.length > 0 ? (
+                                <Box sx={{
+                                    maxHeight: '400px',
+                                    overflow: 'auto',
+                                    width: '100%',
+                                    border: `1px solid ${theme.palette.divider}`,
+                                    borderRadius: theme.shape.borderRadius,
+                                    flex: 1
+                                }}>
+                                    <Table stickyHeader sx={{ width: '100%', minWidth: '100%' }}>
                                             <TableHead>
                                                 <TableRow sx={{ backgroundColor: theme.palette.primary.main + '10' }}>
                                                     <TableCell sx={{ 
                                                         fontWeight: theme.typography.fontWeightBold,
                                                         color: theme.palette.text.primary,
-                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`,
+                                                        width: '25%'
                                                     }}>
                                                         Team Member
                                                     </TableCell>
                                                     <TableCell sx={{ 
                                                         fontWeight: theme.typography.fontWeightBold,
                                                         color: theme.palette.text.primary,
-                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`,
+                                                        width: '30%'
                                                     }}>
                                                         Email
                                                     </TableCell>
                                                     <TableCell sx={{ 
                                                         fontWeight: theme.typography.fontWeightBold,
                                                         color: theme.palette.text.primary,
-                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`,
+                                                        width: '15%'
                                                     }}>
                                                         Role
                                                     </TableCell>
                                                     <TableCell sx={{ 
                                                         fontWeight: theme.typography.fontWeightBold,
                                                         color: theme.palette.text.primary,
-                                                        borderBottom: `2px solid ${theme.palette.primary.main}`
+                                                        borderBottom: `2px solid ${theme.palette.primary.main}`,
+                                                        width: '20%'
                                                     }}>
                                                         Department
                                                     </TableCell>
@@ -1134,7 +1141,8 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                                         fontWeight: theme.typography.fontWeightBold,
                                                         color: theme.palette.text.primary,
                                                         borderBottom: `2px solid ${theme.palette.primary.main}`,
-                                                        textAlign: 'center'
+                                                        textAlign: 'center',
+                                                        width: '10%'
                                                     }}>
                                                         Actions
                                                     </TableCell>
@@ -1150,7 +1158,7 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                                             }
                                                         }}
                                                     >
-                                                        <TableCell>
+                                                        <TableCell sx={{ width: '25%' }}>
                                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                                 <Avatar sx={{
                                                                     width: 32,
@@ -1169,14 +1177,14 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                                                 </Typography>
                                                             </Box>
                                                         </TableCell>
-                                                        <TableCell>
+                                                        <TableCell sx={{ width: '30%' }}>
                                                             <Typography variant="body2" sx={{ 
                                                                 color: theme.palette.text.secondary
                                                             }}>
                                                                 {member.email || 'No email'}
                                                             </Typography>
                                                         </TableCell>
-                                                        <TableCell>
+                                                        <TableCell sx={{ width: '15%' }}>
                                                             {editingMemberId === member.id ? (
                                                                 <FormControl size="small" sx={{ minWidth: 120 }}>
                                                                     <Select
@@ -1206,7 +1214,7 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                                                 />
                                                             )}
                                                         </TableCell>
-                                                        <TableCell>
+                                                        <TableCell sx={{ width: '20%' }}>
                                                             {editingMemberId === member.id ? (
                                                                 <TextField
                                                                     size="small"
@@ -1223,7 +1231,7 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                                                 </Typography>
                                                             )}
                                                         </TableCell>
-                                                        <TableCell sx={{ textAlign: 'center' }}>
+                                                        <TableCell sx={{ textAlign: 'center', width: '10%' }}>
                                                             {editingMemberId === member.id ? (
                                                                 <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                                                                     <Tooltip title="Save changes">
@@ -1300,7 +1308,7 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                                 ))}
                                             </TableBody>
                                         </Table>
-                                    </TableContainer>
+                                    </Box>
                                 ) : (
                                     <Box sx={{ 
                                         textAlign: 'center', 
@@ -1316,7 +1324,6 @@ export const ProjectDetailsDialog: React.FC<ProjectDetailsDialogProps> = ({
                                         </Typography>
                                     </Box>
                                 )}
-                            </Card>
                         </Box>
                     )}
                 </Box>

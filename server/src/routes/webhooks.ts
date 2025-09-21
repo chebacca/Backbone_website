@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import express from 'express';
 import { PaymentService } from '../services/paymentService.js';
+import { StandalonePaymentService } from '../services/standalonePaymentService.js';
 import { EmailService } from '../services/emailService.js';
 import { ComplianceService } from '../services/complianceService.js';
 import { logger } from '../utils/logger.js';
@@ -27,7 +28,42 @@ router.post('/stripe', express.raw({ type: 'application/json' }), asyncHandler(a
   }
 
   try {
-    const result = await PaymentService.handleWebhook(rawBody, signature);
+    // Verify webhook signature and construct event
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const payload = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
+    const event = require('stripe')(process.env.STRIPE_SECRET_KEY).webhooks.constructEvent(payload, signature, webhookSecret);
+    
+    // Log webhook event
+    await firestoreService.createWebhookEvent({
+      type: event.type,
+      stripeId: event.id,
+      data: event.data,
+    });
+
+    let result;
+    
+    // Handle different event types
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        // Check if this is a standalone payment
+        const paymentIntent = event.data.object;
+        if (paymentIntent.metadata?.orderType === 'standalone') {
+          result = await StandalonePaymentService.handlePaymentSuccess(paymentIntent.id);
+        } else {
+          result = await PaymentService.handleWebhook(rawBody, signature);
+        }
+        break;
+
+      default:
+        // Use the existing PaymentService webhook handler for other events
+        result = await PaymentService.handleWebhook(rawBody, signature);
+    }
+
+    // Mark webhook as processed
+    const existing = await firestoreService.getWebhookEventByStripeId(event.id);
+    if (existing) {
+      await firestoreService.updateWebhookEvent(existing.id, { processed: true });
+    }
     
     logger.info('Stripe webhook processed successfully');
 

@@ -152,39 +152,6 @@ router.put('/business-profile', [
   });
 }));
 
-/**
- * Complete KYC verification
- */
-router.post('/kyc/verify', [
-  body('firstName').trim().isLength({ min: 2 }).withMessage('First name required'),
-  body('lastName').trim().isLength({ min: 2 }).withMessage('Last name required'),
-  body('dateOfBirth').isISO8601().withMessage('Valid date of birth required'),
-  body('nationality').isLength({ min: 2, max: 2 }).withMessage('Valid nationality required'),
-  body('countryOfResidence').isLength({ min: 2, max: 2 }).withMessage('Valid country of residence required'),
-  body('phoneNumber').optional().trim(),
-  body('governmentIdType').optional().trim(),
-  body('governmentIdNumber').optional().trim(),
-  body('governmentIdCountry').optional().isLength({ min: 2, max: 2 }).withMessage('Valid ID country required'),
-], asyncHandler(async (req: Request, res: Response) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    throw validationErrorHandler(errors.array());
-  }
-
-  const userId = req.user!.id;
-  const kycData = req.body;
-
-  const result = await ComplianceService.performKYC(userId, kycData);
-
-  res.json({
-    success: true,
-    message: `KYC verification ${result.status.toLowerCase()}`,
-    data: {
-      status: result.status,
-      complianceProfile: result.complianceProfile,
-    },
-  });
-}));
 
 /**
  * Grant or withdraw consent

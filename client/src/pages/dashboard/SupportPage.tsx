@@ -213,15 +213,38 @@ const SupportPage: React.FC = () => {
     <Box sx={{ minHeight: '100vh', backgroundColor: 'background.default' }}>
       {!inDashboard && <Navigation />}
       
-      <Container maxWidth="lg" sx={{ pt: inDashboard ? { xs: 2, md: 4 } : { xs: 12, md: 16 }, pb: inDashboard ? { xs: 2, md: 4 } : { xs: 4, md: 8 } }}>
-        <Box sx={{ background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%)', borderRadius: 2, p: { xs: 2, md: 4 }, }} >
+      <Box sx={{ 
+        width: '100%', 
+        pt: inDashboard ? { xs: 1, sm: 2, md: 4 } : { xs: 8, sm: 12, md: 16 }, 
+        pb: inDashboard ? { xs: 1, sm: 2, md: 4 } : { xs: 4, sm: 6, md: 8 },
+        px: { xs: 1, sm: 2, md: 3, lg: 4, xl: 6 }
+      }}>
+        <Box sx={{ 
+          background: (theme) => theme.palette.mode === 'dark' 
+            ? 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%)'
+            : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%)',
+          borderRadius: 2, 
+          p: { xs: 1.5, sm: 2, md: 3, lg: 4 },
+          border: (theme) => theme.palette.mode === 'dark' 
+            ? '1px solid rgba(255, 255, 255, 0.1)'
+            : '1px solid rgba(0, 0, 0, 0.1)',
+          boxShadow: (theme) => theme.palette.mode === 'dark'
+            ? '0 8px 32px rgba(0, 0, 0, 0.3)'
+            : '0 8px 32px rgba(0, 0, 0, 0.1)',
+        }} >
           {/* Header */}
           <Box >
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+          <Typography variant="h4" sx={{ 
+            fontWeight: 700, 
+            mb: 1,
+            fontSize: { xs: '1.75rem', sm: '2rem', md: '2.125rem' }
+          }}>
             Support Center
           </Typography>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" color="text.secondary" sx={{
+            fontSize: { xs: '0.875rem', sm: '1rem' }
+          }}>
             Get help with your BackboneLogic, Inc. platform
           </Typography>
         </Box>
@@ -229,19 +252,25 @@ const SupportPage: React.FC = () => {
 
       {/* Support Channels */}
       <Box >
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid container spacing={{ xs: 2, sm: 3, md: 4 }} sx={{ mb: { xs: 3, sm: 4, md: 5 } }}>
           {supportChannels.map((channel, index) => (
-            <Grid item xs={12} sm={6} md={3} key={index}>
+            <Grid item xs={12} sm={6} lg={3} key={index}>
               <Card
                 sx={{
                   height: '100%',
-                  background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                  background: (theme) => theme.palette.mode === 'dark'
+                    ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                    : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                   backdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  border: (theme) => theme.palette.mode === 'dark'
+                    ? '1px solid rgba(255,255,255,0.1)'
+                    : '1px solid rgba(0,0,0,0.1)',
                   transition: 'all 0.3s ease',
                   '&:hover': {
                     transform: 'translateY(-4px)',
-                    boxShadow: '0 12px 24px rgba(0, 212, 255, 0.2)',
+                    boxShadow: (theme) => theme.palette.mode === 'dark'
+                      ? '0 12px 24px rgba(0, 212, 255, 0.2)'
+                      : '0 12px 24px rgba(0, 212, 255, 0.15)',
                   },
                 }}
               >
@@ -281,9 +310,13 @@ const SupportPage: React.FC = () => {
       <Box >
         <Paper
           sx={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+            background: (theme) => theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+              : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
             backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: (theme) => theme.palette.mode === 'dark'
+              ? '1px solid rgba(255,255,255,0.1)'
+              : '1px solid rgba(0,0,0,0.1)',
           }}
         >
           <Tabs
@@ -293,7 +326,9 @@ const SupportPage: React.FC = () => {
             scrollButtons="auto"
             sx={{
               borderBottom: 1,
-              borderColor: 'rgba(255,255,255,0.1)',
+              borderColor: (theme) => theme.palette.mode === 'dark'
+                ? 'rgba(255,255,255,0.1)'
+                : 'rgba(0,0,0,0.1)',
               '& .MuiTab-root': {
                 color: 'text.secondary',
                 '&.Mui-selected': {
@@ -323,8 +358,12 @@ const SupportPage: React.FC = () => {
                   onChange={handleFAQChange(faq.id)}
                   sx={{
                     mb: 2,
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    backgroundColor: (theme) => theme.palette.mode === 'dark'
+                      ? 'rgba(255,255,255,0.05)'
+                      : 'rgba(0,0,0,0.02)',
+                    border: (theme) => theme.palette.mode === 'dark'
+                      ? '1px solid rgba(255,255,255,0.1)'
+                      : '1px solid rgba(0,0,0,0.1)',
                     '&:before': { display: 'none' },
                   }}
                 >
@@ -367,9 +406,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={4}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                       textAlign: 'center',
                       p: 2,
                     }}
@@ -390,9 +433,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={4}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                       textAlign: 'center',
                       p: 2,
                     }}
@@ -413,9 +460,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={4}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                       textAlign: 'center',
                       p: 2,
                     }}
@@ -465,9 +516,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -502,9 +557,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -535,9 +594,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -562,9 +625,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -600,9 +667,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -627,9 +698,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -654,9 +729,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -681,9 +760,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -719,9 +802,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -764,9 +851,13 @@ const SupportPage: React.FC = () => {
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
+                      background: (theme) => theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)'
+                        : 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%)',
                       backdropFilter: 'blur(20px)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: (theme) => theme.palette.mode === 'dark'
+                        ? '1px solid rgba(255,255,255,0.1)'
+                        : '1px solid rgba(0,0,0,0.1)',
                     }}
                   >
                     <CardContent>
@@ -820,7 +911,9 @@ const SupportPage: React.FC = () => {
         PaperProps={{
           sx: {
             backgroundColor: 'background.paper',
-            border: '1px solid rgba(0, 212, 255, 0.2)',
+            border: (theme) => theme.palette.mode === 'dark'
+              ? '1px solid rgba(0, 212, 255, 0.2)'
+              : '1px solid rgba(0, 212, 255, 0.3)',
           },
         }}
       >
@@ -858,7 +951,7 @@ const SupportPage: React.FC = () => {
         </DialogActions>
       </Dialog>
         </Box>
-      </Container>
+      </Box>
       
       {!inDashboard && <Footer />}
     </Box>

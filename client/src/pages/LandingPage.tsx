@@ -12,7 +12,8 @@ import {
   IconButton,
   Paper,
   Alert,
-  Snackbar
+  Snackbar,
+  useTheme
 } from '@mui/material';
 import {
   PlayArrow,
@@ -26,6 +27,7 @@ import {
   Star,
   AdminPanelSettings,
   RocketLaunch,
+  ShoppingCart,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { Navigation } from '@/components/layout/Navigation';
@@ -36,6 +38,7 @@ import { DemoRegistrationModal } from '@/components/DemoRegistrationModal';
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user, hasActiveLicense, hasActiveSubscription } = useAuth();
+  const theme = useTheme();
   const isSuperAdmin = isAuthenticated && String(user?.role || '').toUpperCase() === 'SUPERADMIN';
   
   // Check if user has active license or subscription
@@ -114,9 +117,28 @@ const LandingPage: React.FC = () => {
       <Navigation />
       
       {/* Hero Section */}
-      <Box sx={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)', position: 'relative', overflow: 'hidden', pt: { xs: 12, md: 16 }, pb: { xs: 8, md: 12 }, }} >
+      <Box sx={{ 
+        background: theme.palette.mode === 'dark' 
+          ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' 
+          : 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 50%, #667eea 100%)', 
+        position: 'relative', 
+        overflow: 'hidden', 
+        pt: { xs: 12, md: 16 }, 
+        pb: { xs: 8, md: 12 } 
+      }} >
         {/* Background Pattern */}
-        <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)', backgroundSize: '50px 50px', opacity: 0.5, }} />
+        <Box sx={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          backgroundImage: theme.palette.mode === 'dark' 
+            ? 'linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)'
+            : 'linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 0, 0, 0.02) 1px, transparent 1px)',
+          backgroundSize: '50px 50px', 
+          opacity: 0.5 
+        }} />
         
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
           <Box>
@@ -142,7 +164,9 @@ const LandingPage: React.FC = () => {
                       fontWeight: 700,
                       lineHeight: 1.1,
                       mb: 3,
-                      background: 'linear-gradient(135deg, #ffffff 0%, #00d4ff 100%)',
+                      background: theme.palette.mode === 'dark' 
+                        ? 'linear-gradient(135deg, #ffffff 0%, #00d4ff 100%)'
+                        : 'linear-gradient(135deg, #1a1a2e 0%, #00d4ff 100%)',
                       WebkitBackgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                       backgroundClip: 'text',
@@ -458,6 +482,55 @@ const LandingPage: React.FC = () => {
         </Container>
       </Box>
 
+      {/* Marketplace Section - Show for authenticated users */}
+      {isAuthenticated && (
+        <Box sx={{ backgroundColor: 'background.paper', py: { xs: 8, md: 12 } }}>
+          <Container maxWidth="lg">
+            <Box textAlign="center" sx={{ mb: 8 }}>
+              <Typography
+                variant="h2"
+                sx={{
+                  fontSize: { xs: '2rem', md: '3rem' },
+                  fontWeight: 600,
+                  mb: 2,
+                }}
+              >
+                Discover New Tools
+              </Typography>
+              <Typography
+                variant="h6"
+                color="text.secondary"
+                sx={{ maxWidth: 600, mx: 'auto', mb: 4 }}
+              >
+                Explore our marketplace of professional tools and add-ons to enhance your workflow
+              </Typography>
+              
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<ShoppingCart />}
+                onClick={() => navigate('/marketplace')}
+                sx={{
+                  px: 4,
+                  py: 1.5,
+                  fontSize: '1.1rem',
+                  borderRadius: 2,
+                  background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
+                  color: '#000',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #33ddff 0%, #7b8eed 100%)',
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 8px 25px rgba(0, 212, 255, 0.4)',
+                  },
+                }}
+              >
+                Browse Marketplace
+              </Button>
+            </Box>
+          </Container>
+        </Box>
+      )}
+
       {/* CTA Section */}
       <Container maxWidth="lg" sx={{ py: { xs: 8, md: 12 } }}>
         <Box sx={{ transition: 'all 0.3s ease', '&:hover': { transform: 'scale(1.01)', }, }} >
@@ -466,8 +539,13 @@ const LandingPage: React.FC = () => {
             sx={{
               p: { xs: 4, md: 8 },
               textAlign: 'center',
-              background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-              border: '1px solid rgba(0, 212, 255, 0.2)',
+              background: theme.palette.mode === 'dark'
+                ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)'
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              border: theme.palette.mode === 'dark'
+                ? '1px solid rgba(0, 212, 255, 0.2)'
+                : '1px solid rgba(102, 126, 234, 0.3)',
+              color: theme.palette.mode === 'dark' ? 'white' : 'white',
             }}
           >
             <Typography
@@ -476,6 +554,7 @@ const LandingPage: React.FC = () => {
                 fontSize: { xs: '1.8rem', md: '2.5rem' },
                 fontWeight: 600,
                 mb: 2,
+                color: 'white',
               }}
             >
               {hasActiveAccess ? 'Welcome Back!' : 'Ready to Transform Your Workflow?'}
@@ -483,8 +562,12 @@ const LandingPage: React.FC = () => {
             
             <Typography
               variant="h6"
-              color="text.secondary"
-              sx={{ mb: 4, maxWidth: 600, mx: 'auto' }}
+              sx={{ 
+                mb: 4, 
+                maxWidth: 600, 
+                mx: 'auto',
+                color: 'rgba(255, 255, 255, 0.9)',
+              }}
             >
               {hasActiveAccess 
                 ? 'Continue building amazing projects with your active subscription. Access all features and collaborate with your team.'
@@ -513,6 +596,9 @@ const LandingPage: React.FC = () => {
                     fontSize: '1.1rem',
                     background: 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)',
                     color: 'white',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #45a049 0%, #3d8b40 100%)',
+                    },
                   }}
                 >
                   Access Dashboard
@@ -528,6 +614,10 @@ const LandingPage: React.FC = () => {
                     fontSize: '1.1rem',
                     borderColor: 'rgba(255, 255, 255, 0.3)',
                     color: 'white',
+                    '&:hover': {
+                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                    },
                   }}
                 >
                   Account Settings
@@ -549,8 +639,15 @@ const LandingPage: React.FC = () => {
                     px: 4,
                     py: 1.5,
                     fontSize: '1.1rem',
-                    background: 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)',
-                    color: '#000',
+                    background: theme.palette.mode === 'dark'
+                      ? 'linear-gradient(135deg, #00d4ff 0%, #667eea 100%)'
+                      : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: theme.palette.mode === 'dark' ? '#000' : 'white',
+                    '&:hover': {
+                      background: theme.palette.mode === 'dark'
+                        ? 'linear-gradient(135deg, #00b8e6 0%, #5a6fd8 100%)'
+                        : 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                    },
                   }}
                 >
                   Start Your 14-Day Demo
@@ -566,6 +663,10 @@ const LandingPage: React.FC = () => {
                     fontSize: '1.1rem',
                     borderColor: 'rgba(255, 255, 255, 0.3)',
                     color: 'white',
+                    '&:hover': {
+                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                    },
                   }}
                 >
                   View Pricing Plans
@@ -575,8 +676,8 @@ const LandingPage: React.FC = () => {
             
             {!hasActiveAccess && (
               <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
-                <Typography variant="body2" color="text.secondary">
+                <CheckCircle sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 20 }} />
+                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
                   No credit card required • 14-day free trial • Cancel anytime
                 </Typography>
               </Box>
@@ -584,8 +685,8 @@ const LandingPage: React.FC = () => {
             
             {hasActiveAccess && (
               <Box sx={{ mt: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-                <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />
-                <Typography variant="body2" color="text.secondary">
+                <CheckCircle sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 20 }} />
+                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
                   Active subscription • Full access • Premium support
                 </Typography>
               </Box>

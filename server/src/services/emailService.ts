@@ -60,6 +60,186 @@ export class EmailService {
   }
 
   /**
+   * Send standalone order confirmation email
+   */
+  static async sendStandaloneOrderConfirmation(
+    userEmail: string,
+    order: any,
+    downloadLinks: any[]
+  ) {
+    try {
+      if (!resendClient) {
+        logger.warn('Resend not configured; skipping standalone order confirmation email');
+        return { success: true, messageId: null };
+      }
+
+      const orderDate = new Date(order.createdAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const totalAmount = (order.totalAmount / 100).toFixed(2);
+      const currency = order.currency?.toUpperCase() || 'USD';
+
+      // Group products by category for better organization
+      const productGroups = order.items.reduce((groups: any, item: any) => {
+        const category = item.product.category || 'General';
+        if (!groups[category]) {
+          groups[category] = [];
+        }
+        groups[category].push(item);
+        return groups;
+      }, {});
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Order Confirmation - Backbone Logic</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 8px 8px; }
+            .order-summary { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .product-item { border-bottom: 1px solid #eee; padding: 15px 0; }
+            .product-item:last-child { border-bottom: none; }
+            .product-name { font-weight: bold; color: #2c3e50; }
+            .product-price { color: #27ae60; font-weight: bold; }
+            .download-section { background: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .download-link { display: inline-block; background: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 5px; font-weight: bold; }
+            .download-link:hover { background: #219a52; }
+            .total { font-size: 18px; font-weight: bold; color: #2c3e50; text-align: right; margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee; }
+            .footer { text-align: center; margin-top: 30px; color: #7f8c8d; font-size: 14px; }
+            .category-header { font-weight: bold; color: #34495e; margin: 20px 0 10px 0; padding: 10px; background: #ecf0f1; border-radius: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🎉 Order Confirmation</h1>
+              <p>Thank you for your purchase!</p>
+            </div>
+            
+            <div class="content">
+              <div class="order-summary">
+                <h2>Order Details</h2>
+                <p><strong>Order Number:</strong> #${order.id}</p>
+                <p><strong>Order Date:</strong> ${orderDate}</p>
+                <p><strong>Email:</strong> ${userEmail}</p>
+                
+                <h3>Products Purchased</h3>
+                ${Object.entries(productGroups).map(([category, items]: [string, any]) => `
+                  <div class="category-header">${category}</div>
+                  ${items.map((item: any) => `
+                    <div class="product-item">
+                      <div class="product-name">${item.product.name}</div>
+                      <div>Version: ${item.product.version}</div>
+                      <div>Quantity: ${item.quantity}</div>
+                      <div class="product-price">$${((item.product.price * item.quantity) / 100).toFixed(2)}</div>
+                    </div>
+                  `).join('')}
+                `).join('')}
+                
+                <div class="total">
+                  Total: ${currency} $${totalAmount}
+                </div>
+              </div>
+
+              <div class="download-section">
+                <h2>📥 Download Your Products</h2>
+                <p>Click the links below to download your purchased Backbone tools:</p>
+                ${downloadLinks.map((link: any) => `
+                  <a href="${link.downloadUrl}" class="download-link">
+                    Download ${link.productName} v${link.version}
+                  </a>
+                `).join('')}
+                <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                  <strong>Note:</strong> Download links are valid for 30 days. Please save your files securely.
+                </p>
+              </div>
+
+              <div class="footer">
+                <p>Questions? Contact us at support@backbone-logic.com</p>
+                <p>© 2024 Backbone Logic. All rights reserved.</p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const text = `
+Order Confirmation - Backbone Logic
+
+Thank you for your purchase!
+
+Order Details:
+- Order Number: #${order.id}
+- Order Date: ${orderDate}
+- Email: ${userEmail}
+
+Products Purchased:
+${order.items.map((item: any) => `
+- ${item.product.name} v${item.product.version}
+  Quantity: ${item.quantity}
+  Price: $${((item.product.price * item.quantity) / 100).toFixed(2)}
+`).join('')}
+
+Total: ${currency} $${totalAmount}
+
+Download Links:
+${downloadLinks.map((link: any) => `
+- ${link.productName} v${link.version}: ${link.downloadUrl}
+`).join('')}
+
+Note: Download links are valid for 30 days. Please save your files securely.
+
+Questions? Contact us at support@backbone-logic.com
+© 2024 Backbone Logic. All rights reserved.
+      `;
+
+      const result = await resendClient.emails.send({
+        from: `${process.env.RESEND_FROM_NAME || 'Backbone Logic'} <${process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'}>`,
+        to: [userEmail],
+        subject: `Order Confirmation - Backbone Tools #${order.id}`,
+        html,
+        text,
+      });
+
+      if ((result as any)?.error) {
+        const err: any = (result as any).error;
+        logger.error('Failed to send standalone order confirmation email', {
+          error: err?.message,
+          orderId: order.id,
+          userEmail
+        });
+        return { success: false, messageId: null };
+      }
+
+      logger.info('Standalone order confirmation email sent successfully', {
+        orderId: order.id,
+        userEmail,
+        messageId: (result as any)?.data?.id
+      });
+
+      return { success: true, messageId: (result as any)?.data?.id };
+    } catch (error: any) {
+      logger.error('Error sending standalone order confirmation email', {
+        error: error.message,
+        orderId: order.id,
+        userEmail
+      });
+      return { success: false, messageId: null };
+    }
+  }
+
+  /**
    * Send license delivery email with license keys
    */
   static async sendLicenseDeliveryEmail(

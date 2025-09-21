@@ -25,7 +25,6 @@ interface PaymentRow {
     id: string;
     email: string;
     isEmailVerified: boolean;
-    kycStatus?: string;
     taxInformation?: any;
     businessProfile?: any;
   }
@@ -43,18 +42,16 @@ const AccountingDashboard: React.FC = () => {
     '#payments': 1,
     '#tax': 2,
     '#filings': 3,
-    '#kyc': 4,
-    '#compliance': 5,
-    '#terms': 6,
+    '#compliance': 4,
+    '#terms': 5,
   }), []);
   const tabIndexToHash: Record<number, string> = useMemo(() => ({
     0: 'overview',
     1: 'payments',
     2: 'tax',
     3: 'filings',
-    4: 'kyc',
-    5: 'compliance',
-    6: 'terms',
+    4: 'compliance',
+    5: 'terms',
   }), []);
 
   // Sync tab with URL hash
@@ -83,10 +80,8 @@ const AccountingDashboard: React.FC = () => {
   };
   const [overview, setOverview] = useState<any>(null);
   const [taxSummary, setTaxSummary] = useState<any>(null);
-  const [kyc, setKyc] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [termsRows, setTermsRows] = useState<Array<{ id: string; email: string; termsVersionAccepted?: string; termsAcceptedAt?: string; privacyPolicyVersionAccepted?: string; privacyPolicyAcceptedAt?: string }>>([]);
-  const [pendingKycCount, setPendingKycCount] = useState<number>(0);
   // Filing packet state
   const [filingFrom, setFilingFrom] = useState<string>('');
   const [filingTo, setFilingTo] = useState<string>('');
@@ -238,20 +233,16 @@ const AccountingDashboard: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       fetchPayments();
-      const [ov, tax, kycRes, ev, consentsLatest] = await Promise.all([
+      const [ov, tax, ev, consentsLatest] = await Promise.all([
         api.get('accounting/overview'),
         api.get('accounting/tax/summary'),
-        api.get('accounting/kyc'),
         api.get('accounting/compliance-events'),
         api.get(endpoints.accounting.consentsLatest()),
       ]);
       setOverview(ov.data?.data || null);
       setTaxSummary(tax.data?.data || null);
-      setKyc(kycRes.data?.data?.users || []);
       setEvents(ev.data?.data?.events || []);
       setTermsRows(consentsLatest.data?.data?.users || []);
-      const pendingCount = (kycRes.data?.data?.users || []).filter((u: any) => String(u.kycStatus || '').toUpperCase() !== 'COMPLETED').length;
-      setPendingKycCount(pendingCount);
       // Load company filing defaults from backend if available
       try {
         const resCompany = await api.get(endpoints.admin.companyFilingGet());
@@ -507,21 +498,14 @@ const AccountingDashboard: React.FC = () => {
         Accounting & Compliance
       </Typography>
       <Typography variant="body2" color="text.secondary" gutterBottom>
-        Financial reporting, tax, KYC/AML, and regulatory oversight snapshot.
+        Financial reporting, tax, and regulatory oversight snapshot.
       </Typography>
-
-      {pendingKycCount > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {pendingKycCount} user{pendingKycCount === 1 ? '' : 's'} require KYC verification. Review the KYC tab for details.
-        </Alert>
-      )}
 
       <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }}>
         <Tab label="Overview" />
         <Tab label="Payments" />
         <Tab label="Tax" />
         <Tab label="Filings" />
-        <Tab label="KYC" />
         <Tab label="Compliance" />
         <Tab label="Terms" />
       </Tabs>
@@ -666,12 +650,6 @@ const AccountingDashboard: React.FC = () => {
               <Paper sx={{ p: 2 }}>
                 <Typography variant="overline">Payments</Typography>
                 <Typography variant="h5">{overview?.totals?.paymentsCount || 0}</Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <Paper sx={{ p: 2 }}>
-                <Typography variant="overline">KYC Completed</Typography>
-                <Typography variant="h5">{overview?.kycCounts?.COMPLETED || 0}</Typography>
               </Paper>
             </Grid>
           </Grid>
@@ -876,41 +854,6 @@ const AccountingDashboard: React.FC = () => {
       {tab === 4 && (
         <Box>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>KYC Overview</Typography>
-            <Divider sx={{ mb: 1 }} />
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Completed At</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Nationality</TableCell>
-                  <TableCell>Residence</TableCell>
-                  <TableCell>Company</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {kyc.map((u: any) => (
-                  <TableRow key={u.id}>
-                    <TableCell>{u.email}</TableCell>
-                    <TableCell>{u.kycStatus}</TableCell>
-                    <TableCell>{u.kycCompletedAt ? new Date(u.kycCompletedAt).toLocaleDateString() : '-'}</TableCell>
-                    <TableCell>{u.complianceProfile?.firstName} {u.complianceProfile?.lastName}</TableCell>
-                    <TableCell>{u.complianceProfile?.nationality}</TableCell>
-                    <TableCell>{u.complianceProfile?.countryOfResidence}</TableCell>
-                    <TableCell>{u.businessProfile?.companyName}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Paper>
-        </Box>
-      )}
-
-      {tab === 5 && (
-        <Box>
-          <Paper sx={{ p: 2 }}>
             <Typography variant="subtitle1" gutterBottom>Compliance Events</Typography>
             <Divider sx={{ mb: 1 }} />
             <Table size="small">
@@ -935,7 +878,7 @@ const AccountingDashboard: React.FC = () => {
         </Box>
       )}
 
-      {tab === 6 && (
+      {tab === 5 && (
         <Box>
           <Paper sx={{ p: 2 }}>
             <Typography variant="subtitle1" gutterBottom>Terms & Privacy Acceptance</Typography>

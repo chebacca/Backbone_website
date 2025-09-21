@@ -437,37 +437,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       localStorage.setItem('auth_user', JSON.stringify(response.user));
 
-      // 🔥 CRITICAL FIX: Try to authenticate with Firebase Auth, but don't fail if user doesn't exist
-      try {
-        console.log('🔑 [Auth] Attempting Firebase Auth authentication for email/password user...');
-        const { auth } = await import('../services/firebase');
-        const { signInWithEmailAndPassword } = await import('firebase/auth');
-        
-        await signInWithEmailAndPassword(auth, email, password);
-        console.log('✅ [Auth] Successfully authenticated with Firebase Auth for email/password user');
-        
-        // Store the Firebase UID for Firestore queries
-        const firebaseUid = auth.currentUser?.uid;
-        if (firebaseUid) {
-          response.user.firebaseUid = firebaseUid;
-          console.log('🔗 [Auth] Stored Firebase UID for email/password user:', firebaseUid);
-        }
-      } catch (firebaseError: any) {
-        // Handle specific Firebase Auth errors gracefully
-        if (firebaseError.code === 'auth/user-not-found') {
-          console.log('ℹ️ [Auth] User not found in Firebase Auth - this is expected for some users');
-          console.log('ℹ️ [Auth] User will still have access to backend API but limited Firestore access');
-        } else if (firebaseError.code === 'auth/invalid-credential') {
-          console.log('ℹ️ [Auth] Invalid credentials for Firebase Auth - user may not have Firebase Auth account');
-          console.log('ℹ️ [Auth] User will still have access to backend API but limited Firestore access');
-        } else if (firebaseError.code === 'auth/wrong-password') {
-          console.log('ℹ️ [Auth] Wrong password for Firebase Auth - user may not have Firebase Auth account');
-          console.log('ℹ️ [Auth] User will still have access to backend API but limited Firestore access');
-        } else {
-          console.error('❌ [Auth] Unexpected Firebase Auth error:', firebaseError.code, firebaseError.message);
-          console.warn('⚠️ [Auth] Firestore access will be limited without Firebase Auth');
-        }
-        // Continue with login since server auth succeeded
+      // 🔥 CRITICAL FIX: Firebase Auth is now handled by the authService using Firebase Functions API
+      // No need for additional Firebase Auth calls here since authService.login() already handles it
+      console.log('✅ [Auth] Firebase Auth authentication handled by authService');
+      
+      // Store the Firebase UID if available
+      if (response.user?.firebaseUid) {
+        console.log('🔗 [Auth] Firebase UID available from authService:', response.user.firebaseUid);
       }
 
       // Clear UnifiedDataService cache for new login

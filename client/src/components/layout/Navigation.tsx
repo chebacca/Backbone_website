@@ -34,10 +34,12 @@ import {
   Group,
   Payment,
   Download,
+  ShoppingCart,
 } from '@mui/icons-material';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import ThemeToggle from '@/components/common/ThemeToggle';
 
 interface NavigationItem {
   label: string;
@@ -84,6 +86,7 @@ export const Navigation: React.FC = () => {
   const navigationItems: NavigationItem[] = useMemo(() => {
     const items: NavigationItem[] = [
       { label: 'Features', path: '/#features' },
+      { label: 'Market', path: '/marketplace', icon: <ShoppingCart /> },
       { label: 'Pricing', path: '/pricing' },
       { label: 'Documentation', path: '/documentation', icon: <Article /> },
       { label: 'Support', path: '/support', icon: <Support /> },
@@ -108,6 +111,7 @@ export const Navigation: React.FC = () => {
       return [
         { label: 'Admin', path: '/admin', icon: <AdminPanelSettings /> },
         { label: 'Accounting', path: '/accounting', icon: <ReceiptLongIcon /> },
+        { label: 'Marketplace', path: '/marketplace', icon: <ShoppingCart /> },
         { label: 'Support', path: '/support', icon: <Support /> },
         { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
       ];
@@ -116,6 +120,7 @@ export const Navigation: React.FC = () => {
     if (isAccounting) {
       return [
         { label: 'Accounting', path: '/accounting', icon: <ReceiptLongIcon /> },
+        { label: 'Marketplace', path: '/marketplace', icon: <ShoppingCart /> },
         { label: 'Support', path: '/support', icon: <Support /> },
       ];
     }
@@ -127,6 +132,7 @@ export const Navigation: React.FC = () => {
       { label: 'Cloud Projects', path: '/dashboard/cloud-projects', icon: <Cloud /> },
       { label: 'Team Management', path: '/dashboard/team', icon: <Group /> },
       { label: 'Billing & Payments', path: '/dashboard/billing', icon: <Payment /> },
+      { label: 'Marketplace', path: '/marketplace', icon: <ShoppingCart /> },
       { label: 'Support', path: '/support', icon: <Support /> },
       { label: 'Settings', path: '/dashboard/settings', icon: <Settings /> },
     ];
@@ -195,7 +201,8 @@ export const Navigation: React.FC = () => {
               <ListItemIcon sx={{ 
                 color: item.label === 'Admin' ? 'warning.main' : 
                        item.label === 'Licenses' ? 'primary.main' : 
-                       item.label === 'Dashboard' ? 'primary.main' : 'text.primary' 
+                       item.label === 'Dashboard' ? 'primary.main' : 
+                       item.label === 'Marketplace' ? 'secondary.main' : 'text.primary' 
               }}>
                 {item.icon}
               </ListItemIcon>
@@ -205,7 +212,8 @@ export const Navigation: React.FC = () => {
               sx={{ 
                 color: item.label === 'Admin' ? 'warning.main' : 
                        item.label === 'Licenses' ? 'primary.main' : 
-                       item.label === 'Dashboard' ? 'primary.main' : 'inherit' 
+                       item.label === 'Dashboard' ? 'primary.main' : 
+                       item.label === 'Marketplace' ? 'secondary.main' : 'inherit' 
               }}
             />
           </ListItem>
@@ -258,9 +266,13 @@ export const Navigation: React.FC = () => {
         position="fixed"
         elevation={0}
         sx={{
-          backgroundColor: 'rgba(26, 26, 46, 0.95)',
+          backgroundColor: theme.palette.mode === 'dark' 
+            ? 'rgba(26, 26, 46, 0.95)' 
+            : 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(10px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          borderBottom: theme.palette.mode === 'dark' 
+            ? '1px solid rgba(255, 255, 255, 0.1)' 
+            : '1px solid rgba(0, 0, 0, 0.1)',
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between' }}>
@@ -301,7 +313,9 @@ export const Navigation: React.FC = () => {
                 variant="h6"
                 sx={{
                   fontWeight: 600,
-                  background: 'linear-gradient(135deg, #ffffff 0%, #00d4ff 100%)',
+                  background: theme.palette.mode === 'dark' 
+                    ? 'linear-gradient(135deg, #ffffff 0%, #00d4ff 100%)'
+                    : 'linear-gradient(135deg, #1a1a2e 0%, #00d4ff 100%)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
@@ -359,6 +373,9 @@ export const Navigation: React.FC = () => {
               )}
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {/* Theme Toggle - Always visible */}
+                <ThemeToggle size="medium" />
+                
                 {isAuthenticated ? (
                   <>
                     {/* SUPERADMIN quick access button next to avatar */}
@@ -473,7 +490,9 @@ export const Navigation: React.FC = () => {
           sx: {
             mt: 1,
             backgroundColor: 'background.elevated',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            border: theme.palette.mode === 'dark' 
+              ? '1px solid rgba(255, 255, 255, 0.1)' 
+              : '1px solid rgba(0, 0, 0, 0.1)',
             minWidth: 200,
           },
         }}

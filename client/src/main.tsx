@@ -8,6 +8,55 @@ import { LoadingProvider } from './context/LoadingContext';
 import { StripeProvider } from './context/StripeContext';
 import './index.css';
 
+// Chrome extension and CSP error suppression
+const suppressChromeExtensionErrors = () => {
+  // Suppress common Chrome extension errors and CSP warnings
+  const originalConsoleError = console.error;
+  const originalConsoleWarn = console.warn;
+  
+  console.error = (...args) => {
+    const message = args[0]?.toString() || '';
+    
+    // Suppress Chrome extension related errors
+    if (
+      message.includes('FrameDoesNotExistError') ||
+      message.includes('The message port closed before a response was received') ||
+      message.includes('Could not establish connection. Receiving end does not exist') ||
+      message.includes('extensionState.js') ||
+      message.includes('heuristicsRedefinitions.js') ||
+      message.includes('utils.js') ||
+      message.includes('classifier.js') ||
+      message.includes('injectLeap.js') ||
+      message.includes('bootstrap') ||
+      message.includes('Failed to load resource: net::ERR_FILE_NOT_FOUND')
+    ) {
+      return; // Suppress these errors
+    }
+    
+    // Call original console.error for other messages
+    originalConsoleError.apply(console, args);
+  };
+  
+  console.warn = (...args) => {
+    const message = args[0]?.toString() || '';
+    
+    // Suppress CSP warnings that don't affect functionality
+    if (
+      message.includes('[Report Only] Refused to compile or instantiate WebAssembly module') ||
+      message.includes('unsafe-eval is not an allowed source') ||
+      message.includes('script-src \'self\'')
+    ) {
+      return; // Suppress these warnings
+    }
+    
+    // Call original console.warn for other messages
+    originalConsoleWarn.apply(console, args);
+  };
+};
+
+// Initialize Chrome extension error suppression
+suppressChromeExtensionErrors();
+
 // Simple error handling for React Error #301
 window.addEventListener('error', (event) => {
   if (event.error && event.error.message && 

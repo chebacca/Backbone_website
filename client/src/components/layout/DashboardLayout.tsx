@@ -42,11 +42,13 @@ import {
   ArrowBack,
   AccountBalance,
   Receipt,
+  Store,
 } from '@mui/icons-material';
 import { Link as RouterLink, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import SecurityNavigation from '../../pages/components/SecurityNavigation';
 import { RoleBasedAccessControl, NAVIGATION_ITEMS, UserRole } from '@/services/RoleBasedAccessControl';
+import ThemeToggle from '@/components/common/ThemeToggle';
 // import { motion } from 'framer-motion'; // Removed for Firebase compatibility
 
 const drawerWidth = 280;
@@ -81,7 +83,6 @@ const accountingNavigationItems: NavigationItem[] = [
   { text: 'Payments', icon: <Payment />, path: '/accounting#payments' },
   { text: 'Tax', icon: <Analytics />, path: '/accounting#tax' },
   { text: 'Filings', icon: <AccountBalance />, path: '/accounting#filings' },
-  { text: 'KYC', icon: <Security />, path: '/accounting#kyc' },
   { text: 'Compliance', icon: <Security />, path: '/accounting#compliance' },
   { text: 'Terms', icon: <Description />, path: '/accounting#terms' },
 ];
@@ -92,6 +93,15 @@ const adminNavigationItems: NavigationItem[] = [
   { text: 'Licenses', icon: <CardMembership />, path: '/admin#licenses' },
   { text: 'Invoices', icon: <Payment />, path: '/admin#invoices' },
   { text: 'System Health', icon: <Security />, path: '/admin#system' },
+];
+
+// Standalone-specific navigation items (for standalone users)
+const standaloneNavigationItems: NavigationItem[] = [
+  { text: 'Overview', icon: <Dashboard />, path: '/dashboard' },
+  { text: 'Licenses', icon: <CardMembership />, path: '/dashboard/licenses' },
+  { text: 'Downloads', icon: <Download />, path: '/dashboard/downloads' },
+  { text: 'Support', icon: <Support />, path: '/dashboard/support' },
+  { text: 'Settings', icon: <Settings />, path: '/dashboard/settings' },
 ];
 
 // Icon mapping function for RBAC navigation items
@@ -110,7 +120,8 @@ const getIconComponent = (iconName: string): React.ReactNode => {
     'AdminPanelSettings': <Security />,
     'Settings': <Settings />,
     'Support': <Support />,
-    'Notifications': <Notifications />
+    'Notifications': <Notifications />,
+    'Store': <Store />
   };
   return iconMap[iconName] || <Dashboard />;
 };
@@ -123,16 +134,14 @@ export const DashboardLayout: React.FC = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [dismissedKycBanner, setDismissedKycBanner] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('dismiss_kyc_banner') === '1';
-    } catch {
-      return false;
-    }
-  });
 
   // Check if user is accounting user
   const isAccountingUser = String(user?.role || '').toUpperCase() === 'ACCOUNTING';
+  
+  // Check if user is standalone user
+  const isStandaloneUser = String(user?.role || '').toUpperCase() === 'STANDALONE' || 
+                          String(user?.subscription?.plan || '').toUpperCase() === 'STANDALONE' ||
+                          user?.email?.includes('standalone');
 
   // Redirect accounting users to accounting dashboard
   useEffect(() => {
@@ -173,9 +182,6 @@ export const DashboardLayout: React.FC = () => {
   const isEnterprise = String(user?.subscription?.plan || '').toUpperCase() === 'ENTERPRISE';
   const roleUpper = String(user?.role || '').toUpperCase();
   const isEnterpriseAdminRole = roleUpper === 'ENTERPRISE_ADMIN';
-  const kycStatus = String((user as any)?.kycStatus || '').toUpperCase();
-  const needsKyc = kycStatus !== 'COMPLETED';
-  const showKycBanner = needsKyc && !dismissedKycBanner;
 
   // Compute navigation items based on user role and permissions
   const navigationItems: NavigationItem[] = React.useMemo(() => {
@@ -185,6 +191,12 @@ export const DashboardLayout: React.FC = () => {
     // Special sections use their own navigation
     if (inAccountingSection) return [...accountingNavigationItems];
     if (inAdminSection) return [...adminNavigationItems];
+    
+    // Standalone users get simplified navigation
+    if (isStandaloneUser) {
+      console.log('🔍 [DashboardLayout] Using standalone navigation for user:', user?.email);
+      return [...standaloneNavigationItems];
+    }
 
     // Use RBAC system to determine accessible navigation items
     const accessibleItems = RoleBasedAccessControl.getAccessibleNavigationItems(user);
@@ -202,7 +214,7 @@ export const DashboardLayout: React.FC = () => {
       badge: undefined, // RBAC NavigationItem doesn't have badge property
       chip: undefined   // RBAC NavigationItem doesn't have chip property
     }));
-  }, [location.pathname, user]);
+  }, [location.pathname, user, isStandaloneUser]);
 
   const NavigationList = () => (
     <Box sx={{ width: drawerWidth, height: '100%', backgroundColor: 'background.paper' }}>
@@ -487,6 +499,9 @@ export const DashboardLayout: React.FC = () => {
 
           <Box sx={{ flexGrow: 1 }} />
 
+          {/* Theme Toggle */}
+          <ThemeToggle size="medium" sx={{ mr: 1 }} />
+
           {/* Security Navigation */}
           <SecurityNavigation />
 
@@ -496,9 +511,7 @@ export const DashboardLayout: React.FC = () => {
             color="inherit"
             sx={{ mr: 1 }}
           >
-            <Badge badgeContent={needsKyc ? 1 : 0} color="primary">
-              <Notifications />
-            </Badge>
+            <Notifications />
           </IconButton>
 
           {/* Profile Menu */}
@@ -596,35 +609,6 @@ export const DashboardLayout: React.FC = () => {
       <Box component="main" sx={{ flexGrow: 1, width: { lg: `calc(100% - ${drawerWidth}px)` }, backgroundColor: 'background.default', minHeight: '100vh', }} >
         <Toolbar />
         <Box sx={{ p: 3 }}>
-          {showKycBanner && (
-            <Alert
-              severity="warning"
-              sx={{ mb: 2 }}
-              action={
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={() => navigate('/dashboard/settings#compliance')}
-                    sx={{ color: '#000' }}
-                  >
-                    Complete KYC
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      try { localStorage.setItem('dismiss_kyc_banner', '1'); } catch {}
-                      setDismissedKycBanner(true);
-                    }}
-                  >
-                    Dismiss
-                  </Button>
-                </Box>
-              }
-            >
-              Your account requires identity verification (KYC). Complete it in Settings to unlock all features.
-            </Alert>
-          )}
           <Outlet />
         </Box>
       </Box>

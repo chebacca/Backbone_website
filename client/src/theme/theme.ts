@@ -1,4 +1,5 @@
 import { createTheme, ThemeOptions } from '@mui/material/styles';
+import { ThemeMode } from '@/context/ThemeContext';
 
 // Define custom color palette
 const colors = {
@@ -39,17 +40,31 @@ const colors = {
   },
   
   // Dark theme colors
-  background: {
+  darkBackground: {
     default: '#0a0a0a',
     paper: '#1a1a2e',
     elevated: '#16213e',
   },
   
-  // Text colors
-  text: {
+  // Light theme colors
+  lightBackground: {
+    default: '#fafafa',
+    paper: '#ffffff',
+    elevated: '#f5f5f5',
+  },
+  
+  // Dark text colors
+  darkText: {
     primary: '#ffffff',
     secondary: 'rgba(255, 255, 255, 0.7)',
     disabled: 'rgba(255, 255, 255, 0.5)',
+  },
+  
+  // Light text colors
+  lightText: {
+    primary: '#212121',
+    secondary: 'rgba(0, 0, 0, 0.6)',
+    disabled: 'rgba(0, 0, 0, 0.38)',
   },
   
   // Success, error, warning, info
@@ -202,7 +217,7 @@ const components = {
   MuiCard: {
     styleOverrides: {
       root: {
-        backgroundColor: colors.background.paper,
+        backgroundColor: 'background.paper',
         backgroundImage: 'none',
         borderRadius: 0,
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
@@ -219,7 +234,7 @@ const components = {
   MuiPaper: {
     styleOverrides: {
       root: {
-        backgroundColor: colors.background.paper,
+        backgroundColor: 'background.paper',
         backgroundImage: 'none',
       },
       elevation1: {
@@ -292,7 +307,7 @@ const components = {
     styleOverrides: {
       paper: {
         borderRadius: 0,
-        backgroundColor: colors.background.paper,
+        backgroundColor: 'background.paper',
       },
     },
   },
@@ -302,7 +317,7 @@ const components = {
     styleOverrides: {
       paper: {
         borderRadius: 0,
-        backgroundColor: colors.background.elevated,
+        backgroundColor: 'background.elevated',
         boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
         border: '1px solid rgba(255, 255, 255, 0.1)',
       },
@@ -334,85 +349,188 @@ const components = {
     },
   },
   
-  // Data Grid overrides
-  MuiDataGrid: {
-    styleOverrides: {
-      root: {
-        border: 'none',
-        backgroundColor: colors.background.paper,
-        '& .MuiDataGrid-cell': {
-          borderColor: 'rgba(255, 255, 255, 0.1)',
+};
+
+// Create theme function that accepts mode
+export const createAppTheme = (mode: ThemeMode) => {
+  const isDark = mode === 'dark';
+  
+  const themeOptions: ThemeOptions = {
+    palette: {
+      mode,
+      primary: colors.primary,
+      secondary: colors.secondary,
+      background: isDark ? colors.darkBackground : colors.lightBackground,
+      text: isDark ? colors.darkText : colors.lightText,
+      success: colors.success,
+      error: colors.error,
+      warning: colors.warning,
+      info: colors.info,
+    },
+    typography,
+    components: {
+      ...components,
+      // Override components for light mode
+      MuiButton: {
+        ...components.MuiButton,
+        styleOverrides: {
+          ...components.MuiButton?.styleOverrides,
+          root: {
+            ...components.MuiButton?.styleOverrides?.root,
+            // Adjust button colors for light mode
+            ...(isDark ? {} : {
+              '&.MuiButton-contained': {
+                backgroundColor: colors.primary.main,
+                color: colors.primary.contrastText,
+                '&:hover': {
+                  backgroundColor: colors.primary.dark,
+                },
+              },
+              '&.MuiButton-outlined': {
+                borderColor: colors.primary.main,
+                color: colors.primary.main,
+                '&:hover': {
+                  backgroundColor: `${colors.primary.main}10`,
+                },
+              },
+            }),
+          },
         },
-        '& .MuiDataGrid-columnHeaders': {
-          backgroundColor: colors.background.elevated,
-          borderColor: 'rgba(255, 255, 255, 0.1)',
+      },
+      MuiAppBar: {
+        ...components.MuiAppBar,
+        styleOverrides: {
+          ...components.MuiAppBar?.styleOverrides,
+          root: {
+            ...components.MuiAppBar?.styleOverrides?.root,
+            backgroundColor: isDark ? colors.darkBackground.paper : colors.lightBackground.paper,
+            color: isDark ? colors.darkText.primary : colors.lightText.primary,
+          },
         },
-        '& .MuiDataGrid-footerContainer': {
-          borderColor: 'rgba(255, 255, 255, 0.1)',
+      },
+      MuiPaper: {
+        ...components.MuiPaper,
+        styleOverrides: {
+          ...components.MuiPaper?.styleOverrides,
+          root: {
+            ...components.MuiPaper?.styleOverrides?.root,
+            backgroundColor: isDark ? colors.darkBackground.paper : colors.lightBackground.paper,
+            color: isDark ? colors.darkText.primary : colors.lightText.primary,
+          },
+        },
+      },
+      MuiCard: {
+        ...components.MuiCard,
+        styleOverrides: {
+          ...components.MuiCard?.styleOverrides,
+          root: {
+            ...components.MuiCard?.styleOverrides?.root,
+            backgroundColor: isDark ? colors.darkBackground.paper : colors.lightBackground.paper,
+            color: isDark ? colors.darkText.primary : colors.lightText.primary,
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
+          },
+        },
+      },
+      MuiChip: {
+        ...components.MuiChip,
+        styleOverrides: {
+          ...components.MuiChip?.styleOverrides,
+          root: {
+            ...components.MuiChip?.styleOverrides?.root,
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+            color: isDark ? colors.darkText.primary : colors.lightText.primary,
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)',
+          },
+        },
+      },
+      MuiTypography: {
+        styleOverrides: {
+          root: {
+            color: isDark ? colors.darkText.primary : colors.lightText.primary,
+          },
+        },
+      },
+      MuiContainer: {
+        styleOverrides: {
+          root: {
+            backgroundColor: 'transparent',
+          },
         },
       },
     },
-  },
-};
-
-// Create the theme
-const themeOptions: ThemeOptions = {
-  palette: {
-    mode: 'dark',
-    primary: colors.primary,
-    secondary: colors.secondary,
-    background: colors.background,
-    text: colors.text,
-    success: colors.success,
-    error: colors.error,
-    warning: colors.warning,
-    info: colors.info,
-  },
-  typography,
-  components,
-  shape: {
-    borderRadius: 0,
-  },
-  spacing: 8,
-  breakpoints: {
-    values: {
-      xs: 0,
-      sm: 600,
-      md: 900,
-      lg: 1200,
-      xl: 1536,
+    shape: {
+      borderRadius: 0,
     },
-  },
-  shadows: [
-    'none',
-    '0 2px 8px rgba(0, 0, 0, 0.2)',
-    '0 4px 12px rgba(0, 0, 0, 0.3)',
-    '0 6px 16px rgba(0, 0, 0, 0.4)',
-    '0 8px 20px rgba(0, 0, 0, 0.5)',
-    '0 10px 24px rgba(0, 0, 0, 0.6)',
-    '0 12px 28px rgba(0, 0, 0, 0.7)',
-    '0 14px 32px rgba(0, 0, 0, 0.8)',
-    '0 16px 36px rgba(0, 0, 0, 0.9)',
-    '0 18px 40px rgba(0, 0, 0, 1)',
-    '0 20px 44px rgba(0, 0, 0, 1)',
-    '0 22px 48px rgba(0, 0, 0, 1)',
-    '0 24px 52px rgba(0, 0, 0, 1)',
-    '0 26px 56px rgba(0, 0, 0, 1)',
-    '0 28px 60px rgba(0, 0, 0, 1)',
-    '0 30px 64px rgba(0, 0, 0, 1)',
-    '0 32px 68px rgba(0, 0, 0, 1)',
-    '0 34px 72px rgba(0, 0, 0, 1)',
-    '0 36px 76px rgba(0, 0, 0, 1)',
-    '0 38px 80px rgba(0, 0, 0, 1)',
-    '0 40px 84px rgba(0, 0, 0, 1)',
-    '0 42px 88px rgba(0, 0, 0, 1)',
-    '0 44px 92px rgba(0, 0, 0, 1)',
-    '0 46px 96px rgba(0, 0, 0, 1)',
-    '0 48px 100px rgba(0, 0, 0, 1)',
-  ],
+    spacing: 8,
+    breakpoints: {
+      values: {
+        xs: 0,
+        sm: 600,
+        md: 900,
+        lg: 1200,
+        xl: 1536,
+      },
+    },
+    shadows: isDark ? [
+      'none',
+      '0 2px 8px rgba(0, 0, 0, 0.2)',
+      '0 4px 12px rgba(0, 0, 0, 0.3)',
+      '0 6px 16px rgba(0, 0, 0, 0.4)',
+      '0 8px 20px rgba(0, 0, 0, 0.5)',
+      '0 10px 24px rgba(0, 0, 0, 0.6)',
+      '0 12px 28px rgba(0, 0, 0, 0.7)',
+      '0 14px 32px rgba(0, 0, 0, 0.8)',
+      '0 16px 36px rgba(0, 0, 0, 0.9)',
+      '0 18px 40px rgba(0, 0, 0, 1)',
+      '0 20px 44px rgba(0, 0, 0, 1)',
+      '0 22px 48px rgba(0, 0, 0, 1)',
+      '0 24px 52px rgba(0, 0, 0, 1)',
+      '0 26px 56px rgba(0, 0, 0, 1)',
+      '0 28px 60px rgba(0, 0, 0, 1)',
+      '0 30px 64px rgba(0, 0, 0, 1)',
+      '0 32px 68px rgba(0, 0, 0, 1)',
+      '0 34px 72px rgba(0, 0, 0, 1)',
+      '0 36px 76px rgba(0, 0, 0, 1)',
+      '0 38px 80px rgba(0, 0, 0, 1)',
+      '0 40px 84px rgba(0, 0, 0, 1)',
+      '0 42px 88px rgba(0, 0, 0, 1)',
+      '0 44px 92px rgba(0, 0, 0, 1)',
+      '0 46px 96px rgba(0, 0, 0, 1)',
+      '0 48px 100px rgba(0, 0, 0, 1)',
+    ] : [
+      'none',
+      '0 2px 4px rgba(0, 0, 0, 0.1)',
+      '0 4px 8px rgba(0, 0, 0, 0.12)',
+      '0 6px 12px rgba(0, 0, 0, 0.14)',
+      '0 8px 16px rgba(0, 0, 0, 0.16)',
+      '0 10px 20px rgba(0, 0, 0, 0.18)',
+      '0 12px 24px rgba(0, 0, 0, 0.20)',
+      '0 14px 28px rgba(0, 0, 0, 0.22)',
+      '0 16px 32px rgba(0, 0, 0, 0.24)',
+      '0 18px 36px rgba(0, 0, 0, 0.26)',
+      '0 20px 40px rgba(0, 0, 0, 0.28)',
+      '0 22px 44px rgba(0, 0, 0, 0.30)',
+      '0 24px 48px rgba(0, 0, 0, 0.32)',
+      '0 26px 52px rgba(0, 0, 0, 0.34)',
+      '0 28px 56px rgba(0, 0, 0, 0.36)',
+      '0 30px 60px rgba(0, 0, 0, 0.38)',
+      '0 32px 64px rgba(0, 0, 0, 0.40)',
+      '0 34px 68px rgba(0, 0, 0, 0.42)',
+      '0 36px 72px rgba(0, 0, 0, 0.44)',
+      '0 38px 76px rgba(0, 0, 0, 0.46)',
+      '0 40px 80px rgba(0, 0, 0, 0.48)',
+      '0 42px 84px rgba(0, 0, 0, 0.50)',
+      '0 44px 88px rgba(0, 0, 0, 0.52)',
+      '0 46px 92px rgba(0, 0, 0, 0.54)',
+      '0 48px 96px rgba(0, 0, 0, 0.56)',
+    ],
+  };
+
+  return createTheme(themeOptions);
 };
 
-export const theme = createTheme(themeOptions);
+// Default theme (dark mode for backward compatibility)
+export const theme = createAppTheme('dark');
 
 // Export color palette for use in components
 export { colors };

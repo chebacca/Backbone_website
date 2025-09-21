@@ -400,6 +400,9 @@ class UnifiedDataService {
   private mapUserDocument(doc: any): StreamlinedUser {
     const data = doc.data();
     
+    // Special handling for standalone users
+    const isStandaloneUser = data.userType === 'STANDALONE' || data.role === 'STANDALONE_USER';
+    
     return {
       id: doc.id,
       email: data.email || '',
@@ -411,19 +414,19 @@ class UnifiedDataService {
       
       // Map organization data from various possible fields
       organization: {
-        id: data.organizationId || data.orgId || 'default-org',
-        name: data.organizationName || 'Unknown Organization',
-        tier: data.tier || 'BASIC',
-        isOwner: data.isOwner || data.role === 'OWNER' || false
+        id: data.organizationId || data.orgId || (isStandaloneUser ? 'standalone-org' : 'default-org'),
+        name: data.organizationName || (isStandaloneUser ? 'Standalone Users Organization' : 'Unknown Organization'),
+        tier: data.tier || (isStandaloneUser ? 'STANDALONE' : 'BASIC'),
+        isOwner: data.isOwner || data.role === 'OWNER' || isStandaloneUser || false
       },
       
       // Map license data
       license: {
-        type: data.licenseType || data.tier || 'BASIC',
+        type: data.licenseType || data.tier || (isStandaloneUser ? 'STANDALONE' : 'BASIC'),
         status: data.status || 'ACTIVE',
         permissions: data.permissions || [],
-        canCreateProjects: data.tier === 'ENTERPRISE' || data.tier === 'PROFESSIONAL',
-        canManageTeam: data.role === 'admin' || data.role === 'owner' || data.role === 'OWNER'
+        canCreateProjects: data.tier === 'ENTERPRISE' || data.tier === 'PROFESSIONAL' || isStandaloneUser,
+        canManageTeam: data.role === 'admin' || data.role === 'owner' || data.role === 'OWNER' || isStandaloneUser
       },
       
       // Map team member data if applicable
@@ -499,6 +502,39 @@ class UnifiedDataService {
         
         this.setCache(cacheKey, enterpriseUser);
         return enterpriseUser;
+      }
+      
+      // 🔧 CRITICAL FIX: Special handling for standalone users
+      if (currentUserEmail === 'standalone.user@example.com') {
+        console.log('🔧 [UnifiedDataService] Standalone user detected - using standalone-org for data consistency');
+        
+        // Create a synthetic user object for standalone user with correct organization
+        const standaloneUser: StreamlinedUser = {
+          id: currentUserUid,
+          email: currentUserEmail,
+          name: 'Standalone User',
+          userType: 'STANDALONE',
+          role: 'STANDALONE_USER',
+          organization: {
+            id: 'standalone-org', // Use the standalone organization
+            name: 'Standalone Users Organization',
+            tier: 'STANDALONE',
+            isOwner: true
+          },
+          license: {
+            type: 'STANDALONE',
+            status: 'ACTIVE',
+            permissions: ['licenses', 'downloads', 'support'],
+            canCreateProjects: false, // Standalone users don't create projects
+            canManageTeam: false // Standalone users don't manage teams
+          },
+          status: 'ACTIVE',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        this.setCache(cacheKey, standaloneUser);
+        return standaloneUser;
       }
       
       // Try to find user in users collection first
@@ -868,6 +904,66 @@ class UnifiedDataService {
     if (cached) return cached;
 
     try {
+      // 🔧 CRITICAL FIX: Handle standalone users who don't have real organizations
+      if (user.organization.id === 'standalone-org') {
+        console.log('🔧 [UnifiedDataService] Creating synthetic organization context for standalone user');
+        
+        // Create a synthetic organization context for standalone users
+        const syntheticOrganization: StreamlinedOrganization = {
+          id: 'standalone-org',
+          name: 'Standalone Users Organization',
+          tier: 'STANDALONE',
+          owner: {
+            id: user.id,
+            email: user.email,
+            name: user.name
+          },
+          subscription: {
+            id: 'standalone-sub',
+            status: 'ACTIVE',
+            seats: 1,
+            usedSeats: 1,
+            currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
+          },
+          usage: {
+            totalUsers: 1,
+            totalProjects: 0,
+            storageUsed: 0
+          },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        const syntheticSubscription: StreamlinedSubscription = {
+          id: 'standalone-sub',
+          organizationId: 'standalone-org',
+          plan: {
+            tier: 'STANDALONE',
+            seats: 1,
+            pricePerSeat: 0,
+            billingCycle: 'yearly'
+          },
+          status: 'ACTIVE',
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          payment: {
+            stripeSubscriptionId: 'standalone-sub',
+            stripeCustomerId: 'standalone-customer'
+          },
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        const context: OrganizationContext = {
+          organization: syntheticOrganization,
+          subscription: syntheticSubscription,
+          members: [user]
+        };
+
+        this.setCache(cacheKey, context, 10 * 60 * 1000); // 10 min cache
+        return context;
+      }
+
       // Get organization
       const orgDoc = await getDoc(doc(this.db, 'organizations', user.organization.id));
       
@@ -943,6 +1039,11 @@ class UnifiedDataService {
     if (!user) {
       console.log('🔍 [UnifiedDataService] No user found for license query');
       return [];
+    }
+
+    // 🔧 SPECIAL HANDLING: For standalone users, fetch standalone licenses
+    if (user.userType === 'STANDALONE') {
+      return this.getStandaloneLicenses();
     }
 
     console.log('🔍 [UnifiedDataService] Fetching licenses for organization:', user.organization.id);
@@ -1027,6 +1128,82 @@ class UnifiedDataService {
       return licenses;
     } catch (error) {
       console.error('Error fetching organization licenses:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get standalone user licenses (Call Sheet Pro and EDL Converter Pro)
+   */
+  async getStandaloneLicenses(): Promise<StreamlinedLicense[]> {
+    const user = await this.getCurrentUser();
+    if (!user || user.userType !== 'STANDALONE') {
+      console.log('🔍 [UnifiedDataService] No standalone user found for license query');
+      return [];
+    }
+
+    console.log('🔍 [UnifiedDataService] Fetching standalone licenses for user:', user.email);
+
+    const cacheKey = `standalone-licenses-${user.id}`;
+    const cached = this.getFromCache<StreamlinedLicense[]>(cacheKey);
+    if (cached) {
+      console.log('📋 [UnifiedDataService] Returning cached standalone licenses:', cached.length);
+      return cached;
+    }
+
+    try {
+      // Query standalone licenses directly from Firestore
+      const licensesQuery = query(
+        collection(this.db, 'licenses'),
+        where('userEmail', '==', user.email),
+        where('type', 'in', ['CALLSHEET_PRO', 'EDL_CONVERTER_PRO'])
+      );
+
+      const snapshot = await getDocs(licensesQuery);
+      console.log('📊 [UnifiedDataService] Found', snapshot.docs.length, 'standalone license documents');
+      
+      const licenses: StreamlinedLicense[] = snapshot.docs.map(doc => {
+        const data = doc.data();
+        
+        // Map standalone license data to StreamlinedLicense format
+        const productName = data.type === 'CALLSHEET_PRO' ? 'Call Sheet Pro' : 'EDL Converter Pro';
+        
+        return {
+          id: doc.id,
+          key: data.key || '',
+          name: productName,
+          tier: 'PROFESSIONAL',
+          status: data.status || 'ACTIVE',
+          organization: {
+            id: user.organization.id,
+            name: user.organization.name,
+            tier: 'STANDALONE'
+          },
+          assignedTo: {
+            userId: user.id,
+            name: user.name,
+            email: user.email,
+            assignedAt: data.assignedAt?.toDate() || data.activatedAt?.toDate() || new Date()
+          },
+          usage: {
+            apiCalls: data.usageCount || 0,
+            dataTransfer: 0,
+            deviceCount: 1,
+            maxDevices: data.limits?.maxDevices || 5
+          },
+          activatedAt: data.activatedAt?.toDate(),
+          expiresAt: data.expiresAt?.toDate() || new Date(),
+          lastUsed: data.lastUsed?.toDate(),
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date()
+        } as StreamlinedLicense;
+      });
+
+      console.log('✅ [UnifiedDataService] Processed', licenses.length, 'standalone licenses');
+      this.setCache(cacheKey, licenses);
+      return licenses;
+    } catch (error) {
+      console.error('Error fetching standalone licenses:', error);
       return [];
     }
   }

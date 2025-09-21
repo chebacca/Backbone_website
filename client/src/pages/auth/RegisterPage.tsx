@@ -37,7 +37,7 @@ interface RegisterFormData {
   email: string;
   password: string;
   confirmPassword: string;
-  // Address information for KYC/billing purposes
+  // Address information for billing purposes
   firstName: string;
   lastName: string;
   company?: string;
@@ -127,7 +127,7 @@ const RegisterPage: React.FC = () => {
         acceptTerms: data.acceptTerms,
         acceptPrivacy: data.acceptPrivacy,
         marketingConsent: data.marketingConsent,
-        // Address information for KYC/billing purposes
+        // Address information for billing purposes
         firstName: data.firstName,
         lastName: data.lastName,
         company: data.company,

@@ -27,18 +27,17 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
       if (!user) return;
 
       try {
-        // Debug logging
-        console.log('SecurityNavigation - User object:', user);
-        console.log('SecurityNavigation - User email:', user.email);
-        console.log('SecurityNavigation - User type:', typeof user);
-        console.log('SecurityNavigation - User has getIdTokenResult:', typeof user.getIdTokenResult);
+        // 🔧 CRITICAL FIX: Handle standalone users first
+        if (user.email === 'standalone.user@example.com') {
+          console.log('SecurityNavigation - Standalone user detected, setting role to USER');
+          setUserRole('USER');
+          return;
+        }
         
         // Check if user has getIdTokenResult method (Firebase Auth user)
         if (typeof user.getIdTokenResult === 'function') {
           const idTokenResult = await user.getIdTokenResult();
           const claims = idTokenResult.claims;
-          
-          console.log('SecurityNavigation - User claims:', claims);
         
           // Check for DEV ADMIN role
           const isDevAdmin = 
@@ -58,27 +57,17 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
             claims?.isOrgAdmin === true ||
             claims?.permissions?.includes('admin:organization') ||
             claims?.permissions?.includes('admin:team_members');
-
-          console.log('SecurityNavigation - isDevAdmin:', isDevAdmin);
-          console.log('SecurityNavigation - isOrgAdmin:', isOrgAdmin);
           
           if (isDevAdmin) {
-            console.log('SecurityNavigation - Setting role to DEV_ADMIN');
             setUserRole('DEV_ADMIN');
           } else if (isOrgAdmin) {
-            console.log('SecurityNavigation - Setting role to ORG_ADMIN');
             setUserRole('ORG_ADMIN');
             setOrganizationId(claims?.organizationId || user.organizationId);
           } else {
-            console.log('SecurityNavigation - Setting role to USER');
             setUserRole('USER');
           }
         } else {
           // Fallback: Check user object properties directly
-          console.log('SecurityNavigation - Using fallback role detection');
-          console.log('SecurityNavigation - User properties:', Object.keys(user));
-          
-          // Check if user has role property directly
           const userRole = user.role || user.userRole || user.user_type;
           const isDevAdmin = 
             userRole === 'DEV_ADMIN' || 
@@ -96,19 +85,13 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
             user.isOrgAdmin === true ||
             user.permissions?.includes('admin:organization') ||
             user.permissions?.includes('admin:team_members');
-
-          console.log('SecurityNavigation - Fallback isDevAdmin:', isDevAdmin);
-          console.log('SecurityNavigation - Fallback isOrgAdmin:', isOrgAdmin);
           
           if (isDevAdmin) {
-            console.log('SecurityNavigation - Setting role to DEV_ADMIN (fallback)');
             setUserRole('DEV_ADMIN');
           } else if (isOrgAdmin) {
-            console.log('SecurityNavigation - Setting role to ORG_ADMIN (fallback)');
             setUserRole('ORG_ADMIN');
             setOrganizationId(user.organizationId);
           } else {
-            console.log('SecurityNavigation - Setting role to USER (fallback)');
             setUserRole('USER');
           }
         }
@@ -188,17 +171,10 @@ const SecurityNavigation: React.FC<SecurityNavigationProps> = () => {
     navigate('/dashboard/security');
   };
 
-  // Debug logging
-  console.log('SecurityNavigation - Current userRole:', userRole);
-  console.log('SecurityNavigation - Should render:', userRole === 'DEV_ADMIN' || userRole === 'ORG_ADMIN');
-
   // Don't render anything if user doesn't have security access
   if (userRole !== 'DEV_ADMIN' && userRole !== 'ORG_ADMIN') {
-    console.log('SecurityNavigation - Not rendering, userRole:', userRole);
     return null;
   }
-
-  console.log('SecurityNavigation - Rendering security button');
   return (
     <Tooltip title={userRole === 'DEV_ADMIN' ? 'Master Security Dashboard' : 'Organization Security Dashboard'}>
       <IconButton

@@ -45,6 +45,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Popover,
   TextField,
   FormControl,
   InputLabel,
@@ -221,6 +222,8 @@ const LicensesPage: React.FC = () => {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [detailsPopoverOpen, setDetailsPopoverOpen] = useState(false);
+  const [detailsAnchorEl, setDetailsAnchorEl] = useState<HTMLElement | null>(null);
   
   // Filter state
   const [statusFilter, setStatusFilter] = useState<'all' | 'ACTIVE' | 'PENDING' | 'SUSPENDED' | 'EXPIRED'>('all');
@@ -261,7 +264,7 @@ const LicensesPage: React.FC = () => {
 
   // 🧮 COMPUTED LICENSE DATA: Generate from real organization data with filtering and sorting
   const licenseData = useMemo(() => {
-    if (!currentUser || !orgContext || !licenses) {
+    if (!currentUser || !licenses) {
       return {
         licenses: [],
         filteredLicenses: [],
@@ -274,6 +277,8 @@ const LicensesPage: React.FC = () => {
       };
     }
 
+    // 🔧 SPECIAL HANDLING: Different logic for standalone users vs organization users
+    const isStandaloneUser = currentUser.userType === 'STANDALONE';
     
     // Calculate stats from real license data
     const totalLicenses = licenses.length;
@@ -287,18 +292,32 @@ const LicensesPage: React.FC = () => {
       l.status === 'ACTIVE' && (!l.assignedToUserId || l.assignedToUserId === null)
     ).length;
 
-    // 🔧 FIXED: Calculate enterprise license stats based on ACTUAL licenses, not team member count
-    const enterpriseTotal = 250; // Enterprise plan comes with 250 licenses
-    const enterpriseAssigned = activeLicenses; // Count actual active licenses (each license = 1 assignment)
-    const enterpriseAvailable = Math.max(0, enterpriseTotal - enterpriseAssigned);
+    let enterpriseTotal = 0;
+    let enterpriseAssigned = 0;
+    let enterpriseAvailable = 0;
+
+    if (isStandaloneUser) {
+      // For standalone users, show their purchased licenses
+      enterpriseTotal = 2; // Call Sheet Pro + EDL Converter Pro
+      enterpriseAssigned = activeLicenses; // Count actual active licenses
+      enterpriseAvailable = Math.max(0, enterpriseTotal - enterpriseAssigned);
+    } else {
+      // For organization users, use enterprise license pool
+      enterpriseTotal = 250; // Enterprise plan comes with 250 licenses
+      enterpriseAssigned = activeLicenses; // Count actual active licenses (each license = 1 assignment)
+      enterpriseAvailable = Math.max(0, enterpriseTotal - enterpriseAssigned);
+    }
     
     // Debug: Log the raw data to understand what we're counting
     console.log('🔍 [LicensesPage] Raw data for calculation:', {
+      userType: currentUser.userType,
+      isStandaloneUser,
       ownerEmail: currentUser?.email,
       teamMembers: teamMembers?.map(m => ({ email: m.email, status: m.status, role: m.role })) || [],
       licenses: licenses?.map(l => ({ 
         id: l.id, 
         key: l.key, 
+        name: l.name,
         status: l.status, 
         assignedToUserId: l.assignedToUserId,
         assignedToEmail: l.assignedToEmail 
@@ -316,13 +335,14 @@ const LicensesPage: React.FC = () => {
       enterpriseTotal,
       enterpriseAssigned,
       enterpriseAvailable,
-      calculation: `${activeLicenses} active licenses assigned out of ${enterpriseTotal} total enterprise licenses`
+      calculation: `${activeLicenses} active licenses assigned out of ${enterpriseTotal} total ${isStandaloneUser ? 'standalone' : 'enterprise'} licenses`
     });
     
-    console.log('📊 [LicensesPage] Enterprise license stats:', {
+    console.log('📊 [LicensesPage] License stats:', {
       enterpriseTotal,
       enterpriseAssigned,
-      enterpriseAvailable
+      enterpriseAvailable,
+      isStandaloneUser
     });
 
     const stats: LicenseStats = {
@@ -330,7 +350,7 @@ const LicensesPage: React.FC = () => {
       activeLicenses,
       expiringSoon,
       unassignedLicenses,
-      // Enterprise license info - now properly calculated
+      // License info - calculated based on user type
       enterpriseAvailable,
       enterpriseTotal,
       enterpriseAssigned
@@ -363,8 +383,8 @@ const LicensesPage: React.FC = () => {
       return a.name.localeCompare(b.name);
     });
 
-    return { licenses, filteredLicenses: sortedLicenses, stats };
-  }, [currentUser, orgContext, licenses, statusFilter]);
+    return { licenses, filteredLicenses: sortedLicenses, stats, isStandaloneUser };
+  }, [currentUser, orgContext, licenses, statusFilter, teamMembers]);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, license: License) => {
     console.log('🔧 [LicensesPage] Menu clicked for license:', license);
@@ -376,6 +396,16 @@ const LicensesPage: React.FC = () => {
     setAnchorEl(null);
     // Don't clear selectedLicense here as it might be needed for dialogs
     // setSelectedLicense(null);
+  };
+
+  const handleViewDetails = (license: License) => {
+    setSelectedLicense(license);
+    setDetailsPopoverOpen(true);
+  };
+
+  const handleDetailsClose = () => {
+    setDetailsPopoverOpen(false);
+    setDetailsAnchorEl(null);
   };
 
   const handleCopyLicense = (key: string) => {
@@ -655,10 +685,14 @@ const LicensesPage: React.FC = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-            License Management
+            {licenseData.isStandaloneUser ? 'My Product Licenses' : 'License Management'}
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Manage your {orgContext.organization?.name || 'Organization'} licenses and assignments
+            {licenseData.isStandaloneUser ? (
+              'Manage your Call Sheet Pro and EDL Converter Pro licenses'
+            ) : (
+              `Manage your ${orgContext?.organization?.name || 'Organization'} licenses and assignments`
+            )}
             {licenses && (
               <Box component="span" sx={{ marginLeft: '8px', fontWeight: 500, color: 'primary.main' }}>
                 • {licenses.length} total licenses
@@ -677,7 +711,7 @@ const LicensesPage: React.FC = () => {
               fontWeight: 600,
             }}
           >
-            Purchase Licenses
+            {licenseData.isStandaloneUser ? 'Purchase Products' : 'Purchase Licenses'}
           </Button>
         </Box>
       </Box>
@@ -707,19 +741,27 @@ const LicensesPage: React.FC = () => {
                     <Star /> {licenseData.stats.enterpriseTotal}
                   </Typography>
                   <Typography variant="h6" sx={{ opacity: 0.9, mb: 1 }}>
-                    Enterprise Licenses
+                    {licenseData.isStandaloneUser ? 'Standalone Licenses' : 'Enterprise Licenses'}
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.8 }}>
                     Available: {licenseData.stats.enterpriseAvailable}/{licenseData.stats.enterpriseTotal}
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.7, fontSize: '0.75rem', display: 'block', mt: 0.5 }}>
-                    Used: {licenseData.stats.enterpriseAssigned} (1 owner + {teamMembers ? teamMembers.filter(m => m.status?.toLowerCase() === 'active' && m.email !== currentUser?.email).length : 0} team members + {Math.max(0, (licenseData.stats.activeLicenses - (licenses ? licenses.filter(l => l.status === 'ACTIVE' && l.assignedTo?.email === currentUser?.email).length : 0)))} other active licenses)
+                    {licenseData.isStandaloneUser ? (
+                      `Used: ${licenseData.stats.enterpriseAssigned} (Call Sheet Pro + EDL Converter Pro)`
+                    ) : (
+                      `Used: ${licenseData.stats.enterpriseAssigned} (1 owner + ${teamMembers ? teamMembers.filter(m => m.status?.toLowerCase() === 'active' && m.email !== currentUser?.email).length : 0} team members + ${Math.max(0, (licenseData.stats.activeLicenses - (licenses ? licenses.filter(l => l.status === 'ACTIVE' && l.assignedTo?.email === currentUser?.email).length : 0)))} other active licenses)`
+                    )}
                   </Typography>
                 </Box>
                 <CardMembership sx={{ fontSize: 48, opacity: 0.8 }} />
               </Box>
               <Typography variant="body2" sx={{ opacity: 0.7, fontSize: '0.875rem' }}>
-                Unlimited projects • Full feature access • Team collaboration
+                {licenseData.isStandaloneUser ? (
+                  'Call Sheet Pro • EDL Converter Pro • Professional features'
+                ) : (
+                  'Unlimited projects • Full feature access • Team collaboration'
+                )}
               </Typography>
             </CardContent>
           </Card>
@@ -779,24 +821,34 @@ const LicensesPage: React.FC = () => {
                 boxShadow: '0 8px 25px rgba(79, 172, 254, 0.3)'
               }
             }}
-            onClick={() => setStatusFilter('EXPIRED')}
+            onClick={() => setStatusFilter(licenseData.isStandaloneUser ? 'all' : 'EXPIRED')}
           >
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                 <Box>
                   <Typography variant="h3" fontWeight="bold">
-                    {licenseData.stats.expiringSoon}
+                    {licenseData.isStandaloneUser ? licenseData.stats.totalLicenses : licenseData.stats.expiringSoon}
                   </Typography>
                   <Typography variant="h6" sx={{ opacity: 0.9, mb: 1 }}>
-                    Expiring Soon
+                    {licenseData.isStandaloneUser ? 'My Licenses' : 'Expiring Soon'}
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                    Need attention
+                    {licenseData.isStandaloneUser ? 'Your purchased products' : 'Need attention'}
                   </Typography>
                 </Box>
-                <Warning sx={{ fontSize: 48, opacity: 0.8 }} />
+                {licenseData.isStandaloneUser ? (
+                  <Key sx={{ fontSize: 48, opacity: 0.8 }} />
+                ) : (
+                  <Warning sx={{ fontSize: 48, opacity: 0.8 }} />
+                )}
               </Box>
-              {licenseData.stats.expiringSoon > 0 ? (
+              {licenseData.isStandaloneUser ? (
+                <Typography variant="body2" sx={{ opacity: 0.7, fontSize: '0.875rem' }}>
+                  {licenseData.stats.totalLicenses === 0 ? 'No licenses purchased yet' : 
+                   licenseData.stats.totalLicenses === 1 ? '1 product license active' :
+                   `${licenseData.stats.totalLicenses} product licenses active`}
+                </Typography>
+              ) : licenseData.stats.expiringSoon > 0 ? (
                 <Button 
                   variant="contained" 
                   size="small" 
@@ -833,7 +885,11 @@ const LicensesPage: React.FC = () => {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {statusFilter === 'all' ? 'All Licenses' : statusFilter === 'EXPIRED' ? 'Expiring Soon Licenses' : `${statusFilter} Licenses`} ({licenseData.filteredLicenses.length})
+                {licenseData.isStandaloneUser ? (
+                  statusFilter === 'all' ? 'My Product Licenses' : `${statusFilter} Licenses`
+                ) : (
+                  statusFilter === 'all' ? 'All Licenses' : statusFilter === 'EXPIRED' ? 'Expiring Soon Licenses' : `${statusFilter} Licenses`
+                )} ({licenseData.filteredLicenses.length})
               </Typography>
               {statusFilter !== 'all' && (
                 <Chip
@@ -870,14 +926,22 @@ const LicensesPage: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>License</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Product</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Tier</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Assigned To</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Department</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Expires</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  {!licenseData.isStandaloneUser && (
+                    <>
+                      <TableCell sx={{ fontWeight: 600 }}>Assigned To</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Department</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Role</TableCell>
+                    </>
+                  )}
+                  {!licenseData.isStandaloneUser && (
+                    <TableCell sx={{ fontWeight: 600 }}>Expires</TableCell>
+                  )}
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    {licenseData.isStandaloneUser ? 'Details' : 'Actions'}
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -909,70 +973,87 @@ const LicensesPage: React.FC = () => {
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>
-                      {license.assignedTo ? (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar
-                            sx={{ width: 24, height: 24 }}
-                          >
-                            {getUserInitials(license.assignedTo, teamMembers)}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                              {getUserDisplayName(license.assignedTo, teamMembers)}
+                    {!licenseData.isStandaloneUser && (
+                      <>
+                        <TableCell>
+                          {license.assignedTo ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Avatar
+                                sx={{ width: 24, height: 24 }}
+                              >
+                                {getUserInitials(license.assignedTo, teamMembers)}
+                              </Avatar>
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  {getUserDisplayName(license.assignedTo, teamMembers)}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {license.assignedTo.email}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">
+                              Unassigned
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {license.assignedTo.email}
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            {license.assignedTo ? 
+                              teamMembers?.find(m => m.email === license.assignedTo?.email)?.department || 'Not specified' 
+                              : '—'
+                            }
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {license.assignedTo ? (
+                            <Chip
+                              label={teamMembers?.find(m => m.email === license.assignedTo?.email)?.role || 'Member'}
+                              color="primary"
+                              size="small"
+                              variant="outlined"
+                            />
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">
+                              —
                             </Typography>
-                          </Box>
-                        </Box>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          Unassigned
+                          )}
+                        </TableCell>
+                      </>
+                    )}
+                    {!licenseData.isStandaloneUser && (
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          color={
+                            new Date(license.expiresAt) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                              ? 'warning.main'
+                              : 'text.primary'
+                          }
+                        >
+                          {new Date(license.expiresAt).toLocaleDateString()}
                         </Typography>
-                      )}
-                    </TableCell>
+                      </TableCell>
+                    )}
                     <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {license.assignedTo ? 
-                          teamMembers?.find(m => m.email === license.assignedTo?.email)?.department || 'Not specified' 
-                          : '—'
-                        }
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {license.assignedTo ? (
-                        <Chip
-                          label={teamMembers?.find(m => m.email === license.assignedTo?.email)?.role || 'Member'}
-                          color="primary"
+                      {licenseData.isStandaloneUser ? (
+                        <Button
                           size="small"
                           variant="outlined"
-                        />
+                          onClick={() => handleViewDetails(license)}
+                          startIcon={<Assignment />}
+                        >
+                          Details
+                        </Button>
                       ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          —
-                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => handleMenuClick(event, license)}
+                        >
+                          <MoreVert />
+                        </IconButton>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        color={
-                          new Date(license.expiresAt) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-                            ? 'warning.main'
-                            : 'text.primary'
-                        }
-                      >
-                        {new Date(license.expiresAt).toLocaleDateString()}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <IconButton
-                        size="small"
-                        onClick={(event) => handleMenuClick(event, license)}
-                      >
-                        <MoreVert />
-                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1556,6 +1637,162 @@ const LicensesPage: React.FC = () => {
         expiringLicenses={expiringLicenses}
         onRenewalComplete={handleRenewalComplete}
       />
+
+      {/* License Details Popover for Standalone Users */}
+      <Popover
+        open={detailsPopoverOpen}
+        onClose={handleDetailsClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        PaperProps={{ 
+          sx: { 
+            p: 3, 
+            maxWidth: 500, 
+            minWidth: 400,
+            backgroundColor: 'background.paper',
+            border: '1px solid rgba(0, 212, 255, 0.2)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)'
+          } 
+        }}
+      >
+        {selectedLicense && (
+          <Box>
+            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Assignment color="primary" />
+              License Details
+            </Typography>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {/* Product Information */}
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Product Information
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="Product Name"
+                    value={selectedLicense.name}
+                    disabled
+                    size="small"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <CardMembership />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Tier"
+                    value={selectedLicense.tier}
+                    disabled
+                    size="small"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Star />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+                <TextField
+                  fullWidth
+                  label="License Key"
+                  value={selectedLicense.key}
+                  disabled
+                  size="small"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Key />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+
+              {/* Status Information */}
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Status Information
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Status"
+                    value={selectedLicense.status}
+                    disabled
+                    size="small"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <CheckCircle />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Created Date"
+                    value={selectedLicense.createdAt ? new Date(selectedLicense.createdAt).toLocaleDateString() : 'Unknown'}
+                    disabled
+                    size="small"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Schedule />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+              </Box>
+
+              {/* Features Information */}
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Features & Capabilities
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  <Chip label="Unlimited Usage" size="small" color="primary" variant="outlined" />
+                  <Chip label="Full Feature Access" size="small" color="primary" variant="outlined" />
+                  <Chip label="No Expiration" size="small" color="success" variant="outlined" />
+                  <Chip label="Priority Support" size="small" color="secondary" variant="outlined" />
+                </Box>
+              </Box>
+
+              {/* Action Buttons */}
+              <Box sx={{ display: 'flex', gap: 2, mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<ContentCopy />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(selectedLicense.key);
+                    enqueueSnackbar('License key copied to clipboard', { variant: 'success' });
+                  }}
+                  size="small"
+                >
+                  Copy Key
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Download />}
+                  onClick={() => {
+                    // Navigate to downloads page
+                    window.location.href = '/dashboard/downloads';
+                  }}
+                  size="small"
+                >
+                  Download App
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+        )}
+      </Popover>
     </Box>
   );
 };

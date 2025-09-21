@@ -365,8 +365,11 @@ export class LicenseService {
         }
       }
 
-      if (license.expiresAt && new Date() > new Date(license.expiresAt)) {
-        // Auto-expire the license
+      // Check if this is a standalone license (no expiration)
+      const isStandaloneLicense = license.key.startsWith('CSP-') || license.key.startsWith('EDL-');
+      
+      if (!isStandaloneLicense && license.expiresAt && new Date() > new Date(license.expiresAt)) {
+        // Auto-expire the license (only for non-standalone licenses)
         await firestoreService.updateLicense(license.id, { status: 'EXPIRED' } as any);
         return { valid: false, error: 'License has expired' };
       }

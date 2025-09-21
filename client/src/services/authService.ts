@@ -73,21 +73,49 @@ export interface ResetPasswordRequest {
 
 export const authService = {
   /**
-   * Login user
+   * Login user using Firebase Functions API
    */
   async login(email: string, password: string): Promise<LoginResponse | Login2FAChallengeResponse> {
-    // For Firebase-only project, use Firebase Auth directly
     try {
-      const { auth } = await import('./firebase');
-      const { signInWithEmailAndPassword } = await import('firebase/auth');
+      // Call Firebase Functions API to get custom token
+      const apiBaseUrl = 'https://api-oup5qxogca-uc.a.run.app';
+      console.log('🔥 [AuthService] Calling Firebase Functions API...');
       
-      // Sign in with Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const response = await fetch(`${apiBaseUrl}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}: Authentication failed`);
+      }
+      
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Authentication failed');
+      }
+      
+      console.log('✅ [AuthService] Firebase Functions authentication successful');
+      
+      // Get the custom token from the response
+      const customToken = result.firebaseCustomToken || result.data?.firebaseCustomToken || result.data?.tokens?.accessToken;
+      if (!customToken) {
+        throw new Error('No authentication token received');
+      }
+      
+      // Get Firebase Auth instance and sign in with custom token
+      const { auth } = await import('./firebase');
+      const { signInWithCustomToken } = await import('firebase/auth');
+      
+      const userCredential = await signInWithCustomToken(auth, customToken);
       const firebaseUser = userCredential.user;
       
-      // Load user data from Firestore
-      const { loadUserFromFirestore } = await import('./firebase');
-      const userData = await loadUserFromFirestore(firebaseUser);
+      // Use user data from API response
+      const userData = result.user || result.data?.user;
       
       // Return user data in expected format
       return {
@@ -96,7 +124,7 @@ export const authService = {
         refreshToken: await firebaseUser.getIdToken(true), // Force refresh
       };
     } catch (error: any) {
-      console.error('Firebase Auth login failed:', error);
+      console.error('Firebase Functions login failed:', error);
       throw new Error(error.message || 'Login failed');
     }
   },

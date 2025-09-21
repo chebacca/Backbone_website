@@ -605,14 +605,29 @@ export class TeamMemberService extends BaseService {
       
       // Also check projectTeamMembers collection if it exists
       try {
-        const projectTeamMembersCollection = await this.firestoreAdapter.queryDocuments<ProjectTeamMember>('projectTeamMembers', [
+        const projectTeamMembersCollection = await this.firestoreAdapter.queryDocuments<any>('projectTeamMembers', [
           { field: 'projectId', operator: '==', value: projectId }
         ]);
         
         for (const ptm of projectTeamMembersCollection) {
           // Avoid duplicates
           if (!teamMembers.find(tm => tm.teamMemberId === ptm.teamMemberId)) {
-            teamMembers.push(ptm);
+            teamMembers.push({
+              id: ptm.teamMemberId || ptm.id,
+              teamMemberId: ptm.teamMemberId || ptm.id,
+              projectId: projectId,
+              role: ptm.role || 'member',
+              permissions: ptm.permissions || ['read'],
+              assignedAt: ptm.assignedAt || new Date().toISOString(),
+              isActive: ptm.isActive !== false,
+              email: ptm.teamMemberEmail || ptm.userEmail || ptm.email,
+              name: ptm.teamMemberName || ptm.name || ptm.teamMemberEmail || ptm.userEmail,
+              status: ptm.status || 'active',
+              department: ptm.department || 'Not specified',
+              firstName: ptm.firstName,
+              lastName: ptm.lastName,
+              displayName: ptm.displayName || ptm.teamMemberName
+            });
           }
         }
       } catch (collectionError) {
@@ -1193,7 +1208,6 @@ export class TeamMemberService extends BaseService {
         marketingConsent: false,
         dataProcessingConsent: false,
         identityVerified: false,
-        kycStatus: 'PENDING',
         isTeamMember: true,
         organizationId: teamMemberData.organizationId,
         memberRole: teamMemberData.role || 'MEMBER',

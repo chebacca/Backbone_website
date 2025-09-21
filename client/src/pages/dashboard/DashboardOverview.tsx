@@ -57,6 +57,7 @@ import {
 } from 'firebase/firestore';
 import MetricCard from '@/components/common/MetricCard';
 import { useOrganizationLicenses, useOrganizationTeamMembers } from '@/hooks/useStreamlinedData';
+import { useCurrentUser } from '@/hooks/useStreamlinedData';
 
 // Utility function to safely convert Firestore dates
 const convertFirestoreDate = (value: any): Date | null => {
@@ -157,13 +158,12 @@ const DashboardOverview: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   
-  // 🚀 STREAMLINED: Use organization license and team data hooks
+  // 🚀 STREAMLINED: Use UnifiedDataService hooks for consistent data
+  const { data: currentUser, loading: userLoading } = useCurrentUser();
   const { data: licenses, loading: licensesLoading } = useOrganizationLicenses();
   const { data: teamMembersData, loading: teamMembersLoading } = useOrganizationTeamMembers();
   
-  // State for data
-  const [currentUser, setCurrentUser] = useState<DashboardUser | null>(null);
-  const [organization, setOrganization] = useState<DashboardOrganization | null>(null);
+  // State for additional data
   const [projects, setProjects] = useState<DashboardProject[]>([]);
   const [teamMembers, setTeamMembers] = useState<DashboardUser[]>([]);
   
@@ -178,61 +178,29 @@ const DashboardOverview: React.FC = () => {
   // ============================================================================
 
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    if (!isAuthenticated || !user || !currentUser) return;
 
-    const fetchDashboardData = async () => {
+    const fetchAdditionalData = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Fetching data for authenticated user
-
-        // Get current user data from Firestore - try both UID and email as document ID
-        const firebaseUid = user.firebaseUid || user.id;
-        const userEmail = user.email;
-        
-        let userDoc = await getDoc(doc(db, 'users', firebaseUid));
-        
-        // If not found by UID, try by email
-        if (!userDoc.exists() && userEmail) {
-          console.log('🔍 [DashboardOverview] User not found by UID, trying email:', userEmail);
-          userDoc = await getDoc(doc(db, 'users', userEmail));
-        }
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setCurrentUser({
-            id: userDoc.id,
-            ...userData,
-            createdAt: convertFirestoreDate(userData.createdAt) || new Date(),
-            updatedAt: convertFirestoreDate(userData.updatedAt) || new Date(),
-          } as DashboardUser);
-          console.log('✅ [DashboardOverview] Found user data:', userData.email);
-        } else {
-          console.warn('⚠️ [DashboardOverview] User document not found for UID or email:', firebaseUid, userEmail);
+        // For standalone users, we don't fetch projects or team members
+        // as they don't have cloud projects or team management
+        if (currentUser.userType === 'STANDALONE' || currentUser.role === 'STANDALONE_USER') {
+          console.log('🔧 [DashboardOverview] Standalone user detected - skipping projects and team members');
+          setProjects([]);
+          setTeamMembers([]);
+          setLoading(false);
+          return;
         }
 
-        // Get organization data if user has organizationId
-        if (user.organizationId) {
-          const orgDoc = await getDoc(doc(db, 'organizations', user.organizationId));
-          if (orgDoc.exists()) {
-            const orgData = orgDoc.data();
-            setOrganization({
-              id: orgDoc.id,
-              ...orgData,
-              createdAt: convertFirestoreDate(orgData.createdAt) || new Date(),
-              updatedAt: convertFirestoreDate(orgData.updatedAt) || new Date(),
-            } as DashboardOrganization);
-          }
-        }
-
-        // Get projects for the user's organization
-        if (user.organizationId) {
-                      // Querying projects for organization
+        // Get projects for the user's organization (only for non-standalone users)
+        if (currentUser.organization?.id) {
           try {
             const projectsQuery = query(
               collection(db, 'projects'),
-              where('organizationId', '==', user.organizationId),
+              where('organizationId', '==', currentUser.organization.id),
               orderBy('createdAt', 'desc'),
               limit(10)
             );
@@ -247,51 +215,44 @@ const DashboardOverview: React.FC = () => {
             setProjects(projectsData);
           } catch (projectsError) {
             console.error('❌ [DashboardOverview] Error fetching projects:', projectsError);
-            throw projectsError;
+            // Don't throw error for projects, just log it
           }
         }
 
-        // Get team members for the organization
-        if (user.organizationId) {
-                      // Querying team members for organization
-          try {
-            const teamQuery = query(
-              collection(db, 'teamMembers'),
-              where('organizationId', '==', user.organizationId),
-              where('status', 'in', ['ACTIVE', 'active'])
-            );
-            const teamSnapshot = await getDocs(teamQuery);
-            console.log('✅ [DashboardOverview] Team members found:', teamSnapshot.size);
-            const teamData = teamSnapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data(),
-              createdAt: convertFirestoreDate(doc.data().createdAt) || new Date(),
-              updatedAt: convertFirestoreDate(doc.data().updatedAt) || new Date(),
-            } as DashboardUser));
-            setTeamMembers(teamData);
-          } catch (teamError) {
-            console.error('❌ [DashboardOverview] Error fetching team members:', teamError);
-            throw teamError;
-          }
+        // Team members are already loaded via useOrganizationTeamMembers hook
+        // Convert to DashboardUser format for compatibility
+        if (teamMembersData) {
+          const teamData = teamMembersData.map(member => ({
+            id: member.id,
+            email: member.email,
+            name: member.firstName + ' ' + member.lastName,
+            role: member.role,
+            userType: 'TEAM_MEMBER',
+            organizationId: member.organizationId,
+            status: member.status,
+            createdAt: member.createdAt,
+            updatedAt: member.updatedAt,
+          } as DashboardUser));
+          setTeamMembers(teamData);
         }
 
       } catch (err) {
-        console.error('Error fetching dashboard data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch dashboard data');
+        console.error('Error fetching additional dashboard data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to fetch additional data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
-  }, [isAuthenticated, user]);
+    fetchAdditionalData();
+  }, [isAuthenticated, user, currentUser, teamMembersData]);
 
   // ============================================================================
   // COMPUTED VALUES
   // ============================================================================
 
   const metrics = useMemo((): DashboardMetrics => {
-    if (!currentUser || !organization) {
+    if (!currentUser) {
       return {
         activeLicenses: 0,
         totalLicenses: 0,
@@ -322,8 +283,8 @@ const DashboardOverview: React.FC = () => {
     const teamMemberCount = teamMembersData?.length || teamMembers.length;
     const projectCount = projects.length;
 
-    // Plan information
-    const currentPlan = organization.tier || 'BASIC';
+    // Plan information from currentUser organization data
+    const currentPlan = currentUser.organization?.tier || 'BASIC';
     const hasEnterpriseFeatures = currentPlan === 'ENTERPRISE';
     
     // Calculate renewal date (placeholder - would come from subscription data)
@@ -340,7 +301,7 @@ const DashboardOverview: React.FC = () => {
       projectCount,
       teamMemberCount,
     };
-  }, [currentUser, organization, projects, teamMembers, licenses, teamMembersData]);
+  }, [currentUser, projects, teamMembers, licenses, teamMembersData]);
 
   // User role detection
   const userRole = useMemo(() => {
@@ -354,7 +315,7 @@ const DashboardOverview: React.FC = () => {
   // LOADING STATE
   // ============================================================================
 
-  if (authLoading || loading) {
+  if (authLoading || userLoading || loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <Box textAlign="center">
@@ -420,7 +381,7 @@ const DashboardOverview: React.FC = () => {
   // NO DATA STATE
   // ============================================================================
 
-  if (!currentUser || !organization) {
+  if (!currentUser) {
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="info">
@@ -452,9 +413,9 @@ const DashboardOverview: React.FC = () => {
             </Button>
             <Button 
               variant="outlined" 
-              onClick={() => navigate('/dashboard/team')}
+              onClick={() => navigate('/dashboard/support')}
             >
-              Check Team Status
+              Contact Support
             </Button>
           </Box>
         </Alert>
@@ -474,7 +435,7 @@ const DashboardOverview: React.FC = () => {
           Welcome back, {currentUser.name || currentUser.email}
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          {organization.name} • {metrics.currentPlan} Plan • {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+          {currentUser.organization?.name || 'Standalone User'} • {metrics.currentPlan} Plan • {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
         </Typography>
       </Box>
 
@@ -525,51 +486,93 @@ const DashboardOverview: React.FC = () => {
                 Quick Actions
               </Typography>
               <List>
-                <ListItem button onClick={() => navigate('/dashboard/cloud-projects')}>
-                  <ListItemIcon>
-                    <Assessment />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Manage Projects" 
-                    secondary={`${metrics.projectCount} active projects`}
-                  />
-                  <ArrowForward />
-                </ListItem>
-                <Divider />
-                <ListItem button onClick={() => navigate('/dashboard/team')}>
-                  <ListItemIcon>
-                    <People />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Team Management" 
-                    secondary={`${metrics.teamMemberCount} team members`}
-                  />
-                  <ArrowForward />
-                </ListItem>
-                <Divider />
-                <ListItem button onClick={() => navigate('/dashboard/licenses')}>
-                  <ListItemIcon>
-                    <CardMembership />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="License Management" 
-                    secondary={`${metrics.activeLicenses} active licenses`}
-                  />
-                  <ArrowForward />
-                </ListItem>
-                {isAdmin && (
+                {/* Show different actions for standalone vs subscription users */}
+                {currentUser.userType === 'STANDALONE' || currentUser.role === 'STANDALONE_USER' ? (
+                  // Standalone user actions
                   <>
-                    <Divider />
-                    <ListItem button onClick={() => navigate('/dashboard/billing')}>
+                    <ListItem button onClick={() => navigate('/dashboard/licenses')}>
                       <ListItemIcon>
-                        <Payment />
+                        <CardMembership />
                       </ListItemIcon>
                       <ListItemText 
-                        primary="Billing & Subscription" 
-                        secondary={`${metrics.currentPlan} plan • Renews ${metrics.daysUntilRenewal}`}
+                        primary="License Management" 
+                        secondary={`${metrics.activeLicenses} active licenses`}
                       />
                       <ArrowForward />
                     </ListItem>
+                    <Divider />
+                    <ListItem button onClick={() => navigate('/dashboard/downloads')}>
+                      <ListItemIcon>
+                        <Download />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary="Downloads" 
+                        secondary="Download your licensed applications"
+                      />
+                      <ArrowForward />
+                    </ListItem>
+                    <Divider />
+                    <ListItem button onClick={() => navigate('/dashboard/support')}>
+                      <ListItemIcon>
+                        <Security />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary="Support" 
+                        secondary="Get help with your standalone license"
+                      />
+                      <ArrowForward />
+                    </ListItem>
+                  </>
+                ) : (
+                  // Subscription user actions
+                  <>
+                    <ListItem button onClick={() => navigate('/dashboard/cloud-projects')}>
+                      <ListItemIcon>
+                        <Assessment />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary="Manage Projects" 
+                        secondary={`${metrics.projectCount} active projects`}
+                      />
+                      <ArrowForward />
+                    </ListItem>
+                    <Divider />
+                    <ListItem button onClick={() => navigate('/dashboard/team')}>
+                      <ListItemIcon>
+                        <People />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary="Team Management" 
+                        secondary={`${metrics.teamMemberCount} team members`}
+                      />
+                      <ArrowForward />
+                    </ListItem>
+                    <Divider />
+                    <ListItem button onClick={() => navigate('/dashboard/licenses')}>
+                      <ListItemIcon>
+                        <CardMembership />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary="License Management" 
+                        secondary={`${metrics.activeLicenses} active licenses`}
+                      />
+                      <ArrowForward />
+                    </ListItem>
+                    {isAdmin && (
+                      <>
+                        <Divider />
+                        <ListItem button onClick={() => navigate('/dashboard/billing')}>
+                          <ListItemIcon>
+                            <Payment />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="Billing & Subscription" 
+                            secondary={`${metrics.currentPlan} plan • Renews ${metrics.daysUntilRenewal}`}
+                          />
+                          <ArrowForward />
+                        </ListItem>
+                      </>
+                    )}
                   </>
                 )}
               </List>
@@ -577,9 +580,58 @@ const DashboardOverview: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* Recent Projects */}
+        {/* Recent Projects or Standalone Info */}
         <Grid item xs={12} md={6}>
-          {projects && projects.length > 0 ? (
+          {currentUser.userType === 'STANDALONE' || currentUser.role === 'STANDALONE_USER' ? (
+            // Standalone user info card
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Standalone License Info
+                </Typography>
+                <List>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CardMembership />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="License Type" 
+                      secondary={metrics.currentPlan}
+                    />
+                  </ListItem>
+                  <Divider />
+                  <ListItem>
+                    <ListItemIcon>
+                      <Security />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Status" 
+                      secondary="Active"
+                    />
+                  </ListItem>
+                  <Divider />
+                  <ListItem>
+                    <ListItemIcon>
+                      <Download />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Downloads Available" 
+                      secondary="Call Sheet Pro, EDL Converter Pro"
+                    />
+                  </ListItem>
+                </List>
+                <Box sx={{ mt: 2, textAlign: 'center' }}>
+                  <Button 
+                    variant="contained" 
+                    onClick={() => navigate('/dashboard/downloads')}
+                  >
+                    View Downloads
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+          ) : projects && projects.length > 0 ? (
+            // Subscription user projects
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>

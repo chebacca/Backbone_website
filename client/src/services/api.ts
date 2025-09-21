@@ -434,7 +434,6 @@ export const endpoints = {
     updateBillingAddress: () => 'users/billing-address',
     updateTaxInformation: () => 'users/tax-information',
     updateBusinessProfile: () => 'users/business-profile',
-    kycVerify: () => 'users/kyc/verify',
     consent: () => 'users/consent',
     consentHistory: () => 'users/consent-history',
     auditLog: () => 'users/audit-log',
@@ -483,7 +482,6 @@ export const endpoints = {
   accounting: {
     payments: () => 'accounting/payments',
     exportPayments: () => 'accounting/payments/export',
-    kyc: () => 'accounting/kyc',
     consentsLatest: () => 'accounting/consents/latest',
     userConsentHistory: (userId: string) => `accounting/users/${userId}/consent-history`,
   },

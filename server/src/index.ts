@@ -22,6 +22,7 @@ import teamMemberManagementRouter from './routes/team-member-management.js';
 import storageRouter from './routes/storage.js';
 import demoRouter from './routes/demo.js';
 import userValidationRouter from './routes/user-validation.js';
+import standalonePaymentsRouter from './routes/standalonePayments.js';
 // Dashboard API routes for compatibility
 import { sessionsRouter } from './routes/sessions.js';
 import { callsheetsRouter } from './routes/callsheets.js';
@@ -171,6 +172,7 @@ app.use('/api/team-member-management', teamMemberManagementRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/demo', demoRouter);
 app.use('/api/validation', userValidationRouter);
+app.use('/api/standalone-payments', standalonePaymentsRouter);
 
 // Dashboard API routes for compatibility (return empty data for licensing website)
 app.use('/api/sessions', sessionsRouter);

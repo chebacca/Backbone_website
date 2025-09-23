@@ -1,7 +1,0 @@
-{
-  "service": "website-licensing",
-  "name": "Dashboard v14 Licensing Website",
-  "environment": "development",
-  "version": "dev",
-  "timestamp": "__BUILD_TIME__"
-}

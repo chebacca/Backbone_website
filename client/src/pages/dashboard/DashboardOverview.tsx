@@ -187,7 +187,7 @@ const DashboardOverview: React.FC = () => {
 
         // For standalone users, we don't fetch projects or team members
         // as they don't have cloud projects or team management
-        if (currentUser.userType === 'STANDALONE' || currentUser.role === 'STANDALONE_USER') {
+        if (currentUser.userType === 'STANDALONE' || currentUser.user_type === 'STANDALONE' || currentUser.role === 'STANDALONE') {
           console.log('🔧 [DashboardOverview] Standalone user detected - skipping projects and team members');
           setProjects([]);
           setTeamMembers([]);
@@ -487,7 +487,7 @@ const DashboardOverview: React.FC = () => {
               </Typography>
               <List>
                 {/* Show different actions for standalone vs subscription users */}
-                {currentUser.userType === 'STANDALONE' || currentUser.role === 'STANDALONE_USER' ? (
+                {currentUser.userType === 'STANDALONE' || currentUser.user_type === 'STANDALONE' || currentUser.role === 'STANDALONE' ? (
                   // Standalone user actions
                   <>
                     <ListItem button onClick={() => navigate('/dashboard/licenses')}>
@@ -582,7 +582,7 @@ const DashboardOverview: React.FC = () => {
 
         {/* Recent Projects or Standalone Info */}
         <Grid item xs={12} md={6}>
-          {currentUser.userType === 'STANDALONE' || currentUser.role === 'STANDALONE_USER' ? (
+          {currentUser.userType === 'STANDALONE' || currentUser.user_type === 'STANDALONE' || currentUser.role === 'STANDALONE' ? (
             // Standalone user info card
             <Card>
               <CardContent>

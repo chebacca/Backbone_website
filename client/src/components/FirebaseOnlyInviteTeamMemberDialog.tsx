@@ -36,6 +36,7 @@ import { useSnackbar } from 'notistack';
 import { auth, db } from '@/services/firebase';
 import { collection, addDoc, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { StreamlinedLicense } from '@/types';
 
 interface FirebaseOnlyInviteTeamMemberDialogProps {
   open: boolean;
@@ -204,7 +205,7 @@ const FirebaseOnlyInviteTeamMemberDialog: React.FC<FirebaseOnlyInviteTeamMemberD
         .map(doc => ({
           id: doc.id,
           ...doc.data()
-        }))
+        } as StreamlinedLicense))
         .filter(license => !license.assignedToUserId || license.assignedToUserId === null);
 
       if (availableLicenses.length === 0) {

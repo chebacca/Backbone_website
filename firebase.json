@@ -1,7 +1,7 @@
 {
   "hosting": [
     {
-      "target": "main",
+      "target": "backbone-logic",
       "public": "deploy",
       "ignore": [
         "firebase.json",

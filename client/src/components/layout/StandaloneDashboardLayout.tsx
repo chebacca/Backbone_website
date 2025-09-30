@@ -81,7 +81,7 @@ export const StandaloneDashboardLayout: React.FC = () => {
   const navigate = useNavigate();
 
   // Check if user is standalone user
-  const isStandaloneUser = String(user?.userType || '').toUpperCase() === 'STANDALONE';
+  const isStandaloneUser = String(user?.userType || user?.user_type || '').toUpperCase() === 'STANDALONE';
 
   // Redirect non-standalone users away from standalone routes
   useEffect(() => {

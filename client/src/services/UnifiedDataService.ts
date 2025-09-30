@@ -30,6 +30,7 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { firestoreCollectionManager, COLLECTIONS } from './FirestoreCollectionManager';
+import { LicensePool } from '@/types';
 
 // ============================================================================
 // STREAMLINED TYPE DEFINITIONS
@@ -401,7 +402,7 @@ class UnifiedDataService {
     const data = doc.data();
     
     // Special handling for standalone users
-    const isStandaloneUser = data.userType === 'STANDALONE' || data.role === 'STANDALONE_USER';
+    const isStandaloneUser = data.userType === 'STANDALONE' || data.role === 'STANDALONE';
     
     return {
       id: doc.id,
@@ -514,7 +515,7 @@ class UnifiedDataService {
           email: currentUserEmail,
           name: 'Standalone User',
           userType: 'STANDALONE',
-          role: 'STANDALONE_USER',
+          role: 'STANDALONE',
           organization: {
             id: 'standalone-org', // Use the standalone organization
             name: 'Standalone Users Organization',
@@ -2534,4 +2535,5 @@ class UnifiedDataService {
 
 // Export singleton instance
 export const unifiedDataService = UnifiedDataService.getInstance();
+export { UnifiedDataService };
 export default unifiedDataService;

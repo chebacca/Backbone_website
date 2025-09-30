@@ -480,8 +480,8 @@ export const RoleGuide: React.FC<RoleGuideProps> = ({
   const allTemplates = useMemo(() => {
     try {
       // Import enhanced templates dynamically
-      const enhancedModule = require('./EnhancedRoleTemplates');
-      const enhancedTemplates = enhancedModule.getAllEnhancedTemplates();
+      const enhancedModule = (globalThis as any).require?.('./EnhancedRoleTemplates');
+      const enhancedTemplates = enhancedModule?.getAllEnhancedTemplates?.();
       
       // If we have enhanced templates, use them
       if (enhancedTemplates && enhancedTemplates.length > 0) {

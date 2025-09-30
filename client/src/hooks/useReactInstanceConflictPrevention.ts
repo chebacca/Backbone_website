@@ -17,7 +17,7 @@ export const useReactInstanceConflictPrevention = (options: ReactInstanceConflic
   const { componentName, delay = 0, maxRetries = 3 } = options;
   const [isSafeToRender, setIsSafeToRender] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<number | null>(null);
   const frameRef = useRef<number | null>(null);
 
   const checkReactInstance = useCallback(() => {

@@ -1,20 +1,13 @@
 {
   "projects": {
     "default": "backbone-logic",
-    "staging1": "backbone-logic",
-    "webonly": "backbone-logic"
+    "licensing": "backbone-logic"
   },
   "targets": {
     "backbone-logic": {
       "hosting": {
-        "main": [
-          "backbone-logic"
-        ],
-        "backbone-client.web": [
-          "backbone-client"
-        ],
         "backbone-logic": [
-          "main"
+          "backbone-logic"
         ]
       }
     }

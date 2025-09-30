@@ -130,6 +130,7 @@ import { ErrorBoundary } from './common/ErrorBoundary';
 import { ProjectRoleManagementDialog } from './ProjectRoleManagementDialog';
 import TeamRoleWizard from './TeamRoleWizard';
 import { projectRoleService, ProjectRole } from '../services/ProjectRoleService';
+import { ProjectTeamMember } from '@/types';
 
 interface CloudProject {
     id: string;
@@ -1015,7 +1016,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
             // Update the projectTeamMemberCounts state
             const newCounts: Record<string, number> = {};
             projectIds.forEach(projectId => {
-                newCounts[projectId] = teamMemberBatch[projectId]?.length || 0;
+                newCounts[projectId] = (teamMemberBatch as Record<string, ProjectTeamMember[]>)[projectId]?.length || 0;
             });
             
             setProjectTeamMemberCounts(newCounts);
@@ -1303,7 +1304,7 @@ export const DashboardCloudProjectsBridge: React.FC<DashboardCloudProjectsBridge
                 // Convert batch result to count format
                 const teamMemberCounts = projectIds.map(projectId => ({
                     projectId,
-                    count: teamMemberBatch[projectId]?.length || 0
+                    count: (teamMemberBatch as Record<string, ProjectTeamMember[]>)[projectId]?.length || 0
                 }));
                 
                 // Create lookup maps

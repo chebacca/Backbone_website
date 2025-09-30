@@ -7,7 +7,8 @@ import { getAuth } from 'firebase/auth';
 
 const SecurityDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
+  const authLoading = user?.loading || false;
   const [userRole, setUserRole] = useState<'DEV_ADMIN' | 'ORG_ADMIN' | 'USER'>('USER');
   const [organizationId, setOrganizationId] = useState<string | undefined>();
   const [permissionLoading, setPermissionLoading] = useState(true);
@@ -35,23 +36,24 @@ const SecurityDashboardPage: React.FC = () => {
           console.log('SecurityDashboard - Firebase Auth claims:', claims);
           
           // Check for DEV ADMIN role
+          const claimsData = claims as any;
           const isDevAdmin = 
-            claims?.role === 'DEV_ADMIN' || 
-            claims?.role === 'SuperAdmin' ||
-            claims?.role === 'SUPERADMIN' ||
-            claims?.isDevAdmin === true ||
-            claims?.permissions?.includes('security:master_access') ||
-            claims?.permissions?.includes('admin:master_security');
+            claimsData?.role === 'DEV_ADMIN' || 
+            claimsData?.role === 'SuperAdmin' ||
+            claimsData?.role === 'SUPERADMIN' ||
+            claimsData?.isDevAdmin === true ||
+            claimsData?.permissions?.includes('security:master_access') ||
+            claimsData?.permissions?.includes('admin:master_security');
 
           // Check for ORG ADMIN role
           const isOrgAdmin = 
-            claims?.role === 'ADMIN' || 
-            claims?.role === 'ORG_ADMIN' ||
-            claims?.role === 'SuperAdmin' ||
-            claims?.role === 'SUPERADMIN' ||
-            claims?.isOrgAdmin === true ||
-            claims?.permissions?.includes('admin:organization') ||
-            claims?.permissions?.includes('admin:team_members');
+            claimsData?.role === 'ADMIN' || 
+            claimsData?.role === 'ORG_ADMIN' ||
+            claimsData?.role === 'SuperAdmin' ||
+            claimsData?.role === 'SUPERADMIN' ||
+            claimsData?.isOrgAdmin === true ||
+            claimsData?.permissions?.includes('admin:organization') ||
+            claimsData?.permissions?.includes('admin:team_members');
 
           console.log('SecurityDashboard - Firebase Auth isDevAdmin:', isDevAdmin);
           console.log('SecurityDashboard - Firebase Auth isOrgAdmin:', isOrgAdmin);
@@ -62,7 +64,7 @@ const SecurityDashboardPage: React.FC = () => {
           } else if (isOrgAdmin) {
             console.log('SecurityDashboard - Setting role to ORG_ADMIN (Firebase Auth)');
             setUserRole('ORG_ADMIN');
-            setOrganizationId(claims?.organizationId || user?.organizationId);
+            setOrganizationId(claimsData?.organizationId || user?.organizationId);
           } else {
             console.log('SecurityDashboard - Setting role to USER (Firebase Auth)');
             setUserRole('USER');

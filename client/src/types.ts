@@ -5,26 +5,44 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
+  userType?: string;
+  user_type?: string;
   createdAt: Date;
   updatedAt: Date;
   isEmailVerified: boolean;
   organizationId?: string;
+  organizationName?: string;
   lastLoginAt?: Date;
   // Firebase Authentication integration
   firebaseUid?: string;
+  // Additional properties for compatibility
+  getIdToken?: () => Promise<string>;
+  getIdTokenResult?: () => Promise<any>;
+  userRole?: string;
+  isDevAdmin?: boolean;
+  isOrgAdmin?: boolean;
+  permissions?: string[];
+  loading?: boolean;
 }
 
 export enum UserRole {
   USER = 'USER',
   ADMIN = 'ADMIN',
   ENTERPRISE_ADMIN = 'ENTERPRISE_ADMIN',
-  ACCOUNTING = 'ACCOUNTING'
+  ACCOUNTING = 'ACCOUNTING',
+  TEAM_MEMBER = 'TEAM_MEMBER',
+  ACCOUNT_OWNER = 'ACCOUNT_OWNER',
+  OWNER = 'OWNER',
+  SUPERADMIN = 'SUPERADMIN',
+  STANDALONE = 'STANDALONE'
 }
 
 export enum SubscriptionTier {
   BASIC = 'BASIC',
   PRO = 'PRO',
-  ENTERPRISE = 'ENTERPRISE'
+  PROFESSIONAL = 'PROFESSIONAL',
+  ENTERPRISE = 'ENTERPRISE',
+  STANDALONE = 'STANDALONE'
 }
 
 export enum SubscriptionStatus {
@@ -73,6 +91,10 @@ export interface License {
   createdAt: Date;
   updatedAt: Date;
   organizationId?: string;
+  // Additional properties for compatibility
+  assignedToUserId?: string;
+  assignedToEmail?: string;
+  assignedTo?: string;
 }
 
 export interface Organization {
@@ -284,4 +306,80 @@ export interface WebhookResponse {
   received: boolean;
   processed: boolean;
   error?: string;
+}
+
+// Additional types for compatibility
+export interface StreamlinedLicense {
+  id: string;
+  key: string;
+  status: LicenseStatus;
+  tier?: string;
+  createdAt: string;
+  expiresAt: string;
+  assignedTo?: string;
+  assignedToUserId?: string;
+  assignedToEmail?: string;
+}
+
+export interface LicenseStats {
+  totalLicenses: number;
+  activeLicenses: number;
+  expiringSoon: number;
+  unassignedLicenses: number;
+  enterpriseTotal?: number;
+  enterpriseAvailable?: number;
+  enterpriseAssigned?: number;
+}
+
+export interface ProjectTeamMember {
+  id: string;
+  userId: string;
+  projectId: string;
+  role: string;
+  status: string;
+  assignedToUserId?: string;
+  key?: string;
+  tier?: string;
+}
+
+export enum TeamMemberRole {
+  ADMIN = 'admin',
+  OWNER = 'owner',
+  MEMBER = 'member',
+  VIEWER = 'viewer'
+}
+
+export enum TeamMemberStatus {
+  ACTIVE = 'active',
+  PENDING = 'pending',
+  SUSPENDED = 'suspended',
+  REMOVED = 'removed'
+}
+
+export interface NavigationItem {
+  id: string;
+  label: string;
+  path: string;
+  icon?: string;
+  badge?: string;
+  chip?: string;
+}
+
+export interface LicensePool {
+  id: string;
+  name: string;
+  licenses: StreamlinedLicense[];
+}
+
+// Global type declarations
+declare global {
+  var require: any;
+  var process: any;
+  var global: any;
+  namespace NodeJS {
+    interface Global {
+      require: any;
+      process: any;
+    }
+  }
 }

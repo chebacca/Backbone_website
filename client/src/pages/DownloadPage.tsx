@@ -84,7 +84,7 @@ const DownloadPage: React.FC = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to validate download token');
+        throw new Error((data as any)?.message || 'Failed to validate download token');
       }
 
       setDownloadData(data.data);

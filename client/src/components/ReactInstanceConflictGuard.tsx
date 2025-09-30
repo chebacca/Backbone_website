@@ -5,8 +5,40 @@
  * only one React instance is active at a time.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Component, ReactNode } from 'react';
 import { getReactInstanceManager } from '@/utils/reactInstanceManager';
+
+// Simple ErrorBoundary component
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback: ReactNode;
+  onError?: (error: Error) => void;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean }> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    if (this.props.onError) {
+      this.props.onError(error);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+
+    return this.props.children;
+  }
+}
 
 interface ReactInstanceConflictGuardProps {
   children: React.ReactNode;
@@ -69,7 +101,9 @@ const ReactInstanceConflictGuard: React.FC<ReactInstanceConflictGuardProps> = ({
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+    };
   }, [checkReactInstance, retryRender]);
 
   // If not safe to render, show fallback or nothing
@@ -79,9 +113,9 @@ const ReactInstanceConflictGuard: React.FC<ReactInstanceConflictGuardProps> = ({
 
   // Wrap children in error boundary
   return (
-    <React.ErrorBoundary
+    <ErrorBoundary
       fallback={<>{fallback}</>}
-      onError={(error) => {
+      onError={(error: Error) => {
         if (error.message.includes('Error #301') || error.message.includes('invariant=301')) {
           console.warn(`🚨 [${componentName}] React Error #301 caught by error boundary`);
           setIsSafeToRender(false);
@@ -90,7 +124,7 @@ const ReactInstanceConflictGuard: React.FC<ReactInstanceConflictGuardProps> = ({
       }}
     >
       {children}
-    </React.ErrorBoundary>
+    </ErrorBoundary>
   );
 };
 

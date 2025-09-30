@@ -555,6 +555,21 @@ router.post('/purchase', [
       paymentId: payment.id
     });
 
+    // Update user claims with new license information
+    try {
+      const { LicenseClaimsService } = await import('../services/LicenseClaimsService.js');
+      
+      // Update claims for the primary license
+      if (licenses.length > 0) {
+        const primaryLicense = licenses[0];
+        await LicenseClaimsService.updateLicenseClaimsAfterPurchase(userId, primaryLicense.id);
+        console.log('✅ [License Purchase] User claims updated with license information');
+      }
+    } catch (claimsError) {
+      console.warn('⚠️ [License Purchase] Failed to update user claims:', claimsError);
+      // Don't fail the purchase if claims update fails
+    }
+
     return res.json({
       success: true,
       message: 'Licenses purchased successfully',

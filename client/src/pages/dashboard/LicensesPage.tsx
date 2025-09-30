@@ -278,7 +278,7 @@ const LicensesPage: React.FC = () => {
     }
 
     // 🔧 SPECIAL HANDLING: Different logic for standalone users vs organization users
-    const isStandaloneUser = currentUser.userType === 'STANDALONE';
+    const isStandaloneUser = currentUser.userType === 'STANDALONE' || currentUser.user_type === 'STANDALONE' || currentUser.role === 'STANDALONE';
     
     // Calculate stats from real license data
     const totalLicenses = licenses.length;
@@ -289,7 +289,7 @@ const LicensesPage: React.FC = () => {
       return expiryDate <= thirtyDaysFromNow;
     }).length;
     const unassignedLicenses = licenses.filter(l => 
-      l.status === 'ACTIVE' && (!l.assignedToUserId || l.assignedToUserId === null)
+      l.status === 'ACTIVE' && (!(l as any).assignedToUserId || (l as any).assignedToUserId === null)
     ).length;
 
     let enterpriseTotal = 0;
@@ -319,8 +319,8 @@ const LicensesPage: React.FC = () => {
         key: l.key, 
         name: l.name,
         status: l.status, 
-        assignedToUserId: l.assignedToUserId,
-        assignedToEmail: l.assignedToEmail 
+        assignedToUserId: (l as any).assignedToUserId,
+        assignedToEmail: (l as any).assignedToEmail 
       })) || [],
       totalLicenses,
       activeLicenses,
@@ -738,19 +738,19 @@ const LicensesPage: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                 <Box>
                   <Typography variant="h3" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Star /> {licenseData.stats.enterpriseTotal}
+                    <Star /> {(licenseData.stats as any).enterpriseTotal}
                   </Typography>
                   <Typography variant="h6" sx={{ opacity: 0.9, mb: 1 }}>
                     {licenseData.isStandaloneUser ? 'Standalone Licenses' : 'Enterprise Licenses'}
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.8 }}>
-                    Available: {licenseData.stats.enterpriseAvailable}/{licenseData.stats.enterpriseTotal}
+                    Available: {(licenseData.stats as any).enterpriseAvailable}/{(licenseData.stats as any).enterpriseTotal}
                   </Typography>
                   <Typography variant="caption" sx={{ opacity: 0.7, fontSize: '0.75rem', display: 'block', mt: 0.5 }}>
                     {licenseData.isStandaloneUser ? (
-                      `Used: ${licenseData.stats.enterpriseAssigned} (Call Sheet Pro + EDL Converter Pro)`
+                      `Used: ${(licenseData.stats as any).enterpriseAssigned} (Call Sheet Pro + EDL Converter Pro)`
                     ) : (
-                      `Used: ${licenseData.stats.enterpriseAssigned} (1 owner + ${teamMembers ? teamMembers.filter(m => m.status?.toLowerCase() === 'active' && m.email !== currentUser?.email).length : 0} team members + ${Math.max(0, (licenseData.stats.activeLicenses - (licenses ? licenses.filter(l => l.status === 'ACTIVE' && l.assignedTo?.email === currentUser?.email).length : 0)))} other active licenses)`
+                      `Used: ${(licenseData.stats as any).enterpriseAssigned} (1 owner + ${teamMembers ? teamMembers.filter(m => m.status?.toLowerCase() === 'active' && m.email !== currentUser?.email).length : 0} team members + ${Math.max(0, (licenseData.stats.activeLicenses - (licenses ? licenses.filter(l => l.status === 'ACTIVE' && l.assignedTo?.email === currentUser?.email).length : 0)))} other active licenses)`
                     )}
                   </Typography>
                 </Box>

@@ -53,6 +53,7 @@
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "resend": "^6.0.1",
+    "shared-firebase-functions": "file:../../shared-firebase-functions",
     "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
     "stripe": "^14.14.0",

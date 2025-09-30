@@ -193,10 +193,10 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
       // First filter to only show team members with proper license assignments or admin users
       const realTeamMembers = teamMembers.filter(member => {
         // Always show admin users
-        if (member.role === TeamMemberRole.ADMIN) return true;
+        if (member.role === TeamMemberRole.ADMIN || member.role === 'admin') return true;
         
         // Only show members with active status and proper license assignments
-        if (member.status === TeamMemberStatus.ACTIVE && (member.licenseAssignment?.licenseId || member.licenseType)) {
+        if ((member.status === TeamMemberStatus.ACTIVE || member.status === 'active') && (member.licenseAssignment?.licenseId || member.licenseType)) {
           return true;
         }
         
@@ -239,10 +239,10 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
       // Filter to only real team members with proper license assignments or admin users
       const realTeamMembers = teamMembers.filter(member => {
         // Always count admin users
-        if (member.role === TeamMemberRole.ADMIN) return true;
+        if (member.role === TeamMemberRole.ADMIN || member.role === 'admin') return true;
         
         // Only count members with active status and proper license assignments
-        if (member.status === TeamMemberStatus.ACTIVE && (member.licenseAssignment?.licenseId || member.licenseType)) {
+        if ((member.status === TeamMemberStatus.ACTIVE || member.status === 'active') && (member.licenseAssignment?.licenseId || member.licenseType)) {
           return true;
         }
         
@@ -250,8 +250,8 @@ const EnhancedTeamPage: React.FC = React.memo(() => {
       });
 
       const totalMembers = realTeamMembers.length;
-      const activeMembers = realTeamMembers.filter(m => m?.status === TeamMemberStatus.ACTIVE).length;
-      const pendingInvites = realTeamMembers.filter(m => m?.status === TeamMemberStatus.PENDING).length;
+      const activeMembers = realTeamMembers.filter(m => m?.status === TeamMemberStatus.ACTIVE || m?.status === 'active').length;
+      const pendingInvites = realTeamMembers.filter(m => m?.status === TeamMemberStatus.PENDING || m?.status === 'pending').length;
       const assignedLicenses = realTeamMembers.filter(m => m?.licenseAssignment?.licenseId || m?.licenseType).length;
       const totalLicenses = licenses?.length || 0;
       const availableLicenses = Math.max(0, totalLicenses - assignedLicenses);

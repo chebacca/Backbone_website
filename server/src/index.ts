@@ -179,6 +179,55 @@ app.use('/api/sessions', sessionsRouter);
 app.use('/api/callsheets', callsheetsRouter);
 app.use('/api/timecard', timecardRouter);
 
+// ============================================================================
+// SHARED FIREBASE FUNCTIONS ROUTES
+// ============================================================================
+
+// Shared Firebase Functions Integration
+import { SharedFunctionsService, createSharedFunctionRoute } from './sharedFunctions.js';
+
+// Auth routes using shared functions
+app.post('/api/shared/auth/login', createSharedFunctionRoute(SharedFunctionsService.handleLoginUser));
+app.post('/api/shared/auth/register', createSharedFunctionRoute(SharedFunctionsService.handleRegisterUser));
+app.post('/api/shared/auth/verify-email', createSharedFunctionRoute(SharedFunctionsService.handleVerifyEmail));
+app.post('/api/shared/auth/resend-verification', createSharedFunctionRoute(SharedFunctionsService.handleResendVerificationEmail));
+app.post('/api/shared/auth/forgot-password', createSharedFunctionRoute(SharedFunctionsService.handleForgotPassword));
+app.post('/api/shared/auth/reset-password', createSharedFunctionRoute(SharedFunctionsService.handleResetPassword));
+app.get('/api/shared/auth/check-email', createSharedFunctionRoute(SharedFunctionsService.handleCheckEmailAvailability));
+app.get('/api/shared/auth/validate-session', createSharedFunctionRoute(SharedFunctionsService.handleValidateSession));
+app.post('/api/shared/auth/refresh-claims', createSharedFunctionRoute(SharedFunctionsService.handleRefreshUserClaims));
+app.get('/api/shared/auth/status', createSharedFunctionRoute(SharedFunctionsService.handleGetAuthStatus));
+
+// Project routes using shared functions
+app.post('/api/shared/projects', createSharedFunctionRoute(SharedFunctionsService.handleCreateProject));
+app.get('/api/shared/projects', createSharedFunctionRoute(SharedFunctionsService.handleListProjects));
+app.put('/api/shared/projects/:id', createSharedFunctionRoute(SharedFunctionsService.handleUpdateProject));
+app.delete('/api/shared/projects/:id', createSharedFunctionRoute(SharedFunctionsService.handleDeleteProject));
+
+// Dataset routes using shared functions
+app.post('/api/shared/datasets', createSharedFunctionRoute(SharedFunctionsService.handleCreateDataset));
+app.get('/api/shared/datasets', createSharedFunctionRoute(SharedFunctionsService.handleListDatasets));
+app.put('/api/shared/datasets/:id', createSharedFunctionRoute(SharedFunctionsService.handleUpdateDataset));
+app.delete('/api/shared/datasets/:id', createSharedFunctionRoute(SharedFunctionsService.handleDeleteDataset));
+
+// Session routes using shared functions
+app.post('/api/shared/sessions', createSharedFunctionRoute(SharedFunctionsService.handleCreateSession));
+app.get('/api/shared/sessions', createSharedFunctionRoute(SharedFunctionsService.handleListSessions));
+app.put('/api/shared/sessions/:id', createSharedFunctionRoute(SharedFunctionsService.handleUpdateSession));
+app.delete('/api/shared/sessions/:id', createSharedFunctionRoute(SharedFunctionsService.handleDeleteSession));
+
+// License routes using shared functions
+app.post('/api/shared/licenses', createSharedFunctionRoute(SharedFunctionsService.handleCreateLicense));
+app.get('/api/shared/licenses', createSharedFunctionRoute(SharedFunctionsService.handleListLicenses));
+app.put('/api/shared/licenses/:id', createSharedFunctionRoute(SharedFunctionsService.handleUpdateLicense));
+app.delete('/api/shared/licenses/:id', createSharedFunctionRoute(SharedFunctionsService.handleDeleteLicense));
+
+// Payment routes using shared functions
+app.post('/api/shared/payments', createSharedFunctionRoute(SharedFunctionsService.handleCreatePayment));
+app.get('/api/shared/payments', createSharedFunctionRoute(SharedFunctionsService.handleListPayments));
+app.put('/api/shared/payments/:id', createSharedFunctionRoute(SharedFunctionsService.handleUpdatePayment));
+app.delete('/api/shared/payments/:id', createSharedFunctionRoute(SharedFunctionsService.handleDeletePayment));
+
 // Public test endpoints (no authentication required)
 app.get('/api/test', (req, res) => {
   res.json({ success: true, message: 'API is working' });
